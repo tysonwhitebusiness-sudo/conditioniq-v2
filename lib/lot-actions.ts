@@ -20,7 +20,7 @@ export interface LotSpot {
 
 // ── Shapes (zones, borders, markers) ─────────────────────────────────────────
 
-export interface ZoneConfig   { x: number; y: number; width: number; height: number }
+export interface ZoneConfig   { x: number; y: number; width: number; height: number; rotation?: number }
 export interface BorderConfig { points: { x: number; y: number }[]; closed: boolean }
 export interface MarkerConfig { x: number; y: number; marker_type: 'entrance' | 'exit' | 'custom' }
 export type ShapeConfig = ZoneConfig | BorderConfig | MarkerConfig

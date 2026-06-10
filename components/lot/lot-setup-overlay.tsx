@@ -40,16 +40,18 @@ interface Props {
   locationId?: string | null
   bgUrl: string | null
   bgPan: { x: number; y: number }
+  bgRotation: number
   onSpotsChange: (s: LotSpot[]) => void
   onShapesChange: (s: LotShape[]) => void
   onBgChange: (url: string | null) => void
   onBgPanChange: (pan: { x: number; y: number }) => void
+  onBgRotationChange: (r: number) => void
   onDone: () => void
 }
 
 export default function LotSetupOverlay({
-  spots, shapes, companyId, locationId, bgUrl, bgPan,
-  onSpotsChange, onShapesChange, onBgChange, onBgPanChange, onDone,
+  spots, shapes, companyId, locationId, bgUrl, bgPan, bgRotation,
+  onSpotsChange, onShapesChange, onBgChange, onBgPanChange, onBgRotationChange, onDone,
 }: Props) {
   const canvasRef  = useRef<HTMLDivElement>(null)
   const fileRef    = useRef<HTMLInputElement>(null)
@@ -88,6 +90,7 @@ export default function LotSetupOverlay({
   const [eSStroke, setESStroke] = useState(2)
   const [eSFill, setESFill]   = useState(0.05)
   const [eMType, setEMType]   = useState<'entrance'|'exit'|'custom'>('entrance')
+  const [eZoneRot, setEZoneRot] = useState(0)
   const [confirmDel, setConfirmDel] = useState(false)
   const [saving, setSaving]   = useState(false)
 
@@ -136,6 +139,7 @@ export default function LotSetupOverlay({
     setESStroke(sh.stroke_width); setELabel(sh.label ?? '')
     setESFill(sh.fill_opacity)
     if (sh.shape_type === 'marker') setEMType((sh.config as MarkerConfig).marker_type)
+    if (sh.shape_type === 'zone') setEZoneRot((sh.config as ZoneConfig).rotation ?? 0)
     setConfirmDel(false)
   }
 
@@ -238,7 +242,7 @@ export default function LotSetupOverlay({
     const sh = await createLotShape(companyId, {
       location_id: locationId ?? null, shape_type: 'zone',
       label: null, color: '#00B4D8', fill_opacity: 0.18, stroke_width: 2,
-      config: { x, y, width: w, height: h },
+      config: { x, y, width: w, height: h, rotation: 0 },
     })
     if (!sh) return
     onShapesChange([...shapesRef.current, sh]); selectShape(sh)
@@ -288,6 +292,13 @@ export default function LotSetupOverlay({
       const cfg = selShape.config as MarkerConfig
       const mColor = MARKER_COLOR[eMType]
       const updated = { ...base, color: mColor, config: { ...cfg, marker_type: eMType }, label: eLabel || null }
+      await updateLotShape(selShape.id, updated as any)
+      onShapesChange(shapes.map(s => s.id === selShape.id ? { ...s, ...updated } as LotShape : s))
+      return
+    }
+    if (selShape.shape_type === 'zone') {
+      const cfg = { ...(selShape.config as ZoneConfig), rotation: eZoneRot }
+      const updated = { ...base, config: cfg }
       await updateLotShape(selShape.id, updated as any)
       onShapesChange(shapes.map(s => s.id === selShape.id ? { ...s, ...updated } as LotShape : s))
       return
@@ -363,7 +374,6 @@ export default function LotSetupOverlay({
     zoneDragRef.current = null
   }
 
-  const bgPos = `calc(50% + ${livePan.x}px) calc(50% + ${livePan.y}px)`
   const canvasW = `${Math.max(1, zoom) * 100}%`
 
   return (
@@ -384,6 +394,19 @@ export default function LotSetupOverlay({
         <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
         <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
         <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color="rgba(255,255,255,0.55)"/></button>
+
+        {bgUrl && (
+          <>
+            <Sep/>
+            <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn} title="Rotate BG CCW">
+              <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↺</span>
+            </button>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:26, textAlign:'center' }}>{bgRotation}°</span>
+            <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn} title="Rotate BG CW">
+              <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↻</span>
+            </button>
+          </>
+        )}
 
         {tool === 'border' && borderPts.length > 0 && (
           <>
@@ -429,16 +452,27 @@ export default function LotSetupOverlay({
               onPointerUp={handleCanvasUp}
               style={{
                 position:'relative', paddingBottom:'56.25%',
-                background: bgUrl ? undefined : '#1B2D40',
-                backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
-                backgroundSize: bgUrl ? 'cover' : undefined,
-                backgroundPosition: bgUrl ? bgPos : undefined,
+                background:'#1B2D40',
                 borderRadius:10, overflow:'hidden',
                 border:'1px solid rgba(255,255,255,0.12)',
                 cursor: tool==='spot'||tool==='zone' ? 'crosshair' : tool==='border' ? 'cell' : tool==='marker' ? 'copy' : 'default',
                 userSelect:'none',
               }}
             >
+              {/* Background image with pan + rotation */}
+              {bgUrl && (
+                <img
+                  src={bgUrl}
+                  alt=""
+                  style={{
+                    position:'absolute', inset:0, width:'100%', height:'100%',
+                    objectFit:'cover', pointerEvents:'none', zIndex:0,
+                    transformOrigin:'center',
+                    transform:`translate(${livePan.x}px, ${livePan.y}px) rotate(${bgRotation}deg)`,
+                  }}
+                />
+              )}
+
               {/* SVG: grid + zones + borders + markers + drawing previews */}
               <svg
                 onClick={handleSvgClick}
@@ -459,8 +493,10 @@ export default function LotSetupOverlay({
                 {shapes.filter(s => s.shape_type === 'zone').map(sh => {
                   const c = sh.config as ZoneConfig
                   const isSel = selected?.id === sh.id
+                  const cx = c.x + c.width / 2, cy = c.y + c.height / 2
+                  const rot = c.rotation ?? 0
                   return (
-                    <g key={sh.id}>
+                    <g key={sh.id} transform={rot ? `rotate(${rot}, ${cx}, ${cy})` : undefined}>
                       <rect
                         x={c.x} y={c.y} width={c.width} height={c.height}
                         fill={sh.color} fillOpacity={sh.fill_opacity}
@@ -472,7 +508,7 @@ export default function LotSetupOverlay({
                         data-shape-id={sh.id}
                       />
                       {sh.label && (
-                        <text x={c.x + c.width/2} y={c.y + 2.8} textAnchor="middle" fill={sh.color} fontSize={2.4} fontWeight="700" fontFamily="system-ui" pointerEvents="none">{sh.label}</text>
+                        <text x={cx} y={c.y + 2.8} textAnchor="middle" fill={sh.color} fontSize={2.4} fontWeight="700" fontFamily="system-ui" pointerEvents="none">{sh.label}</text>
                       )}
                       {isSel && <rect x={c.x-0.5} y={c.y-0.5} width={c.width+1} height={c.height+1} fill="none" stroke="#00B4D8" strokeWidth={0.5} rx={0.8} strokeDasharray="2,1" pointerEvents="none"/>}
                     </g>
@@ -635,6 +671,7 @@ export default function LotSetupOverlay({
               eSStroke={eSStroke} setESStroke={setESStroke}
               eSFill={eSFill} setESFill={setESFill}
               eMType={eMType} setEMType={setEMType}
+              eZoneRot={eZoneRot} setEZoneRot={setEZoneRot}
               confirmDel={confirmDel} setConfirmDel={setConfirmDel}
               saving={saving}
               onSave={handleSaveShape}
@@ -723,7 +760,7 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
 
 // ── Shape properties panel ────────────────────────────────────────────────────
 
-function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setESOp, eSStroke, setESStroke, eSFill, setESFill, eMType, setEMType, confirmDel, setConfirmDel, saving, onSave, onDelete, onClose }: any) {
+function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setESOp, eSStroke, setESStroke, eSFill, setESFill, eMType, setEMType, eZoneRot, setEZoneRot, confirmDel, setConfirmDel, saving, onSave, onDelete, onClose }: any) {
   const isZone   = shape.shape_type === 'zone'
   const isBorder = shape.shape_type === 'border'
   const isMarker = shape.shape_type === 'marker'
@@ -768,9 +805,14 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
           </Field>
 
           {isZone && (
-            <Field label={`Fill opacity  ${Math.round(eSOp*100)}%`}>
-              <input type="range" min={0.03} max={0.6} step={0.01} value={eSOp} onChange={e=>setESOp(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
-            </Field>
+            <>
+              <Field label={`Fill opacity  ${Math.round(eSOp*100)}%`}>
+                <input type="range" min={0.03} max={0.6} step={0.01} value={eSOp} onChange={e=>setESOp(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+              </Field>
+              <Field label={`Rotation  ${eZoneRot}°`}>
+                <input type="range" min={0} max={359} step={1} value={eZoneRot} onChange={e=>setEZoneRot(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+              </Field>
+            </>
           )}
 
           {isBorder && (

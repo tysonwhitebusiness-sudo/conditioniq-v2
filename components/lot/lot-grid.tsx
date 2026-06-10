@@ -21,6 +21,7 @@ interface Props {
   mode: LotGridMode
   bgUrl: string | null
   bgPan?: { x: number; y: number }
+  bgRotation?: number
   selectedSpotId?: string | null
   onSpotClick?: (spot: LotSpot) => void
   onCanvasClick?: (xPct: number, yPct: number) => void
@@ -30,7 +31,7 @@ interface Props {
 }
 
 export default function LotGrid({
-  spots, shapes = [], mode, bgUrl, bgPan, selectedSpotId,
+  spots, shapes = [], mode, bgUrl, bgPan, bgRotation = 0, selectedSpotId,
   onSpotClick, onCanvasClick, onBgPanChange, onSpotDragMove, onSpotDragEnd,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -96,8 +97,6 @@ export default function LotGrid({
     spotDragging.current = null
   }
 
-  const bgPos = `calc(50% + ${livePan.x}px) calc(50% + ${livePan.y}px)`
-
   return (
     <div
       ref={containerRef}
@@ -107,14 +106,25 @@ export default function LotGrid({
       style={{
         position: 'relative', width: '100%', paddingBottom: '56.25%',
         background: bgUrl ? undefined : '#F0F4F8',
-        backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
-        backgroundSize: bgUrl ? 'cover' : undefined,
-        backgroundPosition: bgUrl ? bgPos : undefined,
         borderRadius: 12, overflow: 'hidden', border: '1px solid #E1E8F0',
         cursor: mode === 'setup' ? 'crosshair' : 'default',
         userSelect: 'none',
       }}
     >
+      {/* Background image with pan + rotation */}
+      {bgUrl && (
+        <img
+          src={bgUrl}
+          alt=""
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', pointerEvents: 'none', zIndex: 0,
+            transformOrigin: 'center',
+            transform: `translate(${livePan.x}px, ${livePan.y}px) rotate(${bgRotation}deg)`,
+          }}
+        />
+      )}
+
       {/* SVG overlay for shapes */}
       {shapes.length > 0 && (
         <svg
@@ -124,14 +134,17 @@ export default function LotGrid({
         >
           {shapes.filter(s => s.shape_type === 'zone').map(s => {
             const c = s.config as ZoneConfig
+            const cx = c.x + c.width / 2
+            const cy = c.y + c.height / 2
+            const rot = c.rotation ?? 0
             return (
-              <g key={s.id}>
+              <g key={s.id} transform={rot ? `rotate(${rot}, ${cx}, ${cy})` : undefined}>
                 <rect x={c.x} y={c.y} width={c.width} height={c.height}
                   fill={s.color} fillOpacity={s.fill_opacity}
                   stroke={s.color} strokeWidth={0.4} rx={0.5}
                 />
                 {s.label && (
-                  <text x={c.x + c.width / 2} y={c.y + 2.5} textAnchor="middle"
+                  <text x={cx} y={c.y + 2.5} textAnchor="middle"
                     fill={s.color} fontSize={2.2} fontWeight="700" fontFamily="system-ui"
                   >{s.label}</text>
                 )}

@@ -20,24 +20,33 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const canSetup = isOwnerUser || companyRole === 'admin'
 
   const bgPanKey = `lot_bg_pan_${companyId}_${locationId ?? 'main'}`
+  const bgRotKey = `lot_bg_rot_${companyId}_${locationId ?? 'main'}`
 
   const [spots, setSpots]   = useState<LotSpot[]>([])
   const [shapes, setShapes] = useState<LotShape[]>([])
   const [bgUrl, setBgUrl]   = useState<string | null>(null)
-  const [bgPan, setBgPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [bgPan, setBgPan]   = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [bgRotation, setBgRotation] = useState(0)
   const [loading, setLoading] = useState(true)
   const [setupOpen, setSetupOpen] = useState(false)
   const [assignSpot, setAssignSpot] = useState<LotSpot | null>(null)
   const [detailSpot, setDetailSpot] = useState<LotSpot | null>(null)
 
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem(bgPanKey) : null
-    if (saved) { try { setBgPan(JSON.parse(saved)) } catch { /* ignore */ } }
-  }, [bgPanKey])
+    const savedPan = typeof window !== 'undefined' ? localStorage.getItem(bgPanKey) : null
+    if (savedPan) { try { setBgPan(JSON.parse(savedPan)) } catch { /* ignore */ } }
+    const savedRot = typeof window !== 'undefined' ? localStorage.getItem(bgRotKey) : null
+    if (savedRot) { try { setBgRotation(JSON.parse(savedRot)) } catch { /* ignore */ } }
+  }, [bgPanKey, bgRotKey])
 
   const handleBgPanChange = (pan: { x: number; y: number }) => {
     setBgPan(pan)
     localStorage.setItem(bgPanKey, JSON.stringify(pan))
+  }
+
+  const handleBgRotationChange = (rot: number) => {
+    setBgRotation(rot)
+    localStorage.setItem(bgRotKey, JSON.stringify(rot))
   }
 
   const load = async () => {
@@ -118,6 +127,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         mode="view"
         bgUrl={bgUrl}
         bgPan={bgPan}
+        bgRotation={bgRotation}
         onSpotClick={handleSpotClick}
       />
 
@@ -130,10 +140,12 @@ export default function StorageLotView({ companyId, locationId }: Props) {
           locationId={locationId}
           bgUrl={bgUrl}
           bgPan={bgPan}
+          bgRotation={bgRotation}
           onSpotsChange={setSpots}
           onShapesChange={setShapes}
           onBgChange={setBgUrl}
           onBgPanChange={handleBgPanChange}
+          onBgRotationChange={handleBgRotationChange}
           onDone={() => setSetupOpen(false)}
         />
       )}

@@ -40,13 +40,14 @@ export default function MembersPage() {
   const handleAdd = async () => {
     if (!email.trim() || !user) return
     setAdding(true); setAddError('')
-    try {
-      await addCompanyMember(companyId, email.trim().toLowerCase(), newRole, user.id)
+    const result = await addCompanyMember(companyId, email.trim().toLowerCase(), newRole, user.id)
+    if (result?.error) {
+      setAddError(result.error)
+    } else {
       setEmail('')
       await load()
-    } catch (e: any) {
-      setAddError(e.message)
-    } finally { setAdding(false) }
+    }
+    setAdding(false)
   }
 
   const handleRoleChange = async (memberId: string, role: 'admin' | 'inspector') => {

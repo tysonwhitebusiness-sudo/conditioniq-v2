@@ -37,22 +37,32 @@ export async function getCompanyMembers(companyId: string) {
   return data ?? []
 }
 
-export async function addCompanyMember(companyId: string, email: string, role: CompanyRole, invitedBy: string) {
+export async function addCompanyMember(
+  companyId: string,
+  email: string,
+  role: CompanyRole,
+  invitedBy: string,
+): Promise<{ error?: string }> {
   const supabase = createClient()
 
   // Find user by email
-  const { data: profile } = await supabase
+  const { data: profile, error: lookupError } = await supabase
     .from('user_profiles')
     .select('id')
     .eq('email', email)
-    .single()
+    .maybeSingle()
 
-  if (!profile) throw new Error('No account found with that email. They must sign up first.')
+  if (lookupError) return { error: `Lookup failed: ${lookupError.message}` }
+  if (!profile) return { error: 'No account found with that email. They must sign up first.' }
 
   const { error } = await supabase
     .from('company_members')
-    .upsert({ company_id: companyId, user_id: profile.id, role, invited_by: invitedBy }, { onConflict: 'company_id,user_id' })
-  if (error) throw error
+    .upsert(
+      { company_id: companyId, user_id: profile.id, role, invited_by: invitedBy },
+      { onConflict: 'company_id,user_id' },
+    )
+  if (error) return { error: error.message }
+  return {}
 }
 
 export async function updateCompanyMemberRole(memberId: string, role: CompanyRole) {

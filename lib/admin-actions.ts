@@ -76,7 +76,14 @@ export async function getAllCompanies() {
 
 export async function updateCompanyBilling(
   companyId: string,
-  updates: { reports_used?: number; reports_included?: number; billing_cycle_start?: string; subscription_tier?: string }
+  updates: {
+    reports_used?: number
+    reports_included?: number
+    billing_cycle_start?: string
+    subscription_tier?: string
+    billing_interval?: string
+    legacy_pricing?: boolean
+  }
 ) {
   const supabase = createClient()
   await supabase.from('companies').update(updates).eq('id', companyId)

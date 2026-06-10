@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 
-export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map'
+export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map' | 'white_label'
 
 export interface FeatureFlag {
   feature_key: FeatureKey
@@ -17,6 +17,7 @@ const DEFAULTS: FeatureFlags = {
   locations:         { feature_key: 'locations',         enabled: true,  config: {} },
   team_members:      { feature_key: 'team_members',      enabled: true,  config: {} },
   lot_map:           { feature_key: 'lot_map',           enabled: false, config: {} },
+  white_label:       { feature_key: 'white_label',       enabled: true,  config: {} },
 }
 
 export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> {
@@ -31,6 +32,7 @@ export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> 
     locations:         { ...DEFAULTS.locations },
     team_members:      { ...DEFAULTS.team_members },
     lot_map:           { ...DEFAULTS.lot_map },
+    white_label:       { ...DEFAULTS.white_label },
   }
   for (const row of (data ?? [])) {
     const key = row.feature_key as FeatureKey

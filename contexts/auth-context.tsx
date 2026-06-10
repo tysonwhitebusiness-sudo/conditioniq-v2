@@ -27,6 +27,8 @@ interface Company {
   billing_cycle_start: string
   stripe_customer_id: string | null
   account_type: string
+  legacy_pricing: boolean
+  billing_interval: string
 }
 
 interface AuthContextValue {
@@ -163,6 +165,7 @@ export function createFakeAuthContext(opts?: {
     subscription_tier: 'starter', reports_used: 0, reports_included: 30,
     billing_cycle_start: new Date().toISOString(),
     stripe_customer_id: null, account_type: 'standard',
+    legacy_pricing: false, billing_interval: 'monthly',
   } : null
 
   const fakeProfile: UserProfile | null = inspectorName ? {

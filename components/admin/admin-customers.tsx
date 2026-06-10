@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { getAllCompanies, updateCompanyBilling, getCompanyInspections, getCompanyNotes, addCompanyNote } from '@/lib/admin-actions'
 import { getFeatureFlags, upsertFeatureFlag } from '@/lib/feature-flags'
 import type { FeatureFlags, FeatureKey } from '@/lib/feature-flags'
+import { getPlan, getDefaultMemberCap, ADD_ONS, ADD_ON_ELIGIBLE_PLANS, type PlanKey } from '@/lib/pricing'
 import { useAuth } from '@/contexts/auth-context'
 import { Search, Ghost, X, Plus, ChevronRight, Lock, LayoutGrid } from 'lucide-react'
 
@@ -20,11 +21,12 @@ const STATUS_COLORS: Record<string, string> = {
   queued: '#94A3B8', pending_arrival: '#94A3B8', on_lot: '#00B4D8', in_progress: '#8B5CF6', one_off: '#F97316', released: '#10B981',
 }
 
-const FLAG_DEFS: { key: FeatureKey; label: string }[] = [
+const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
   { key: 'send_to_inspector', label: 'Send to Inspector' },
   { key: 'locations',         label: 'Locations'          },
   { key: 'team_members',      label: 'Team Members'        },
   { key: 'lot_map',           label: 'Lot Map'             },
+  { key: 'white_label',       label: 'White Label PDF'     },
 ]
 
 const TIERS = ['demo', 'legacy_starter', 'starter', 'growth', 'pro', 'enterprise']
@@ -68,7 +70,12 @@ export default function AdminCustomers() {
 
   const openCompany = useCallback(async (company: Record<string, unknown>) => {
     setSelected(company)
-    setEditBilling({ reports_used: company.reports_used, reports_included: company.reports_included, subscription_tier: company.subscription_tier })
+    setEditBilling({
+      reports_used: company.reports_used,
+      reports_included: company.reports_included,
+      subscription_tier: company.subscription_tier,
+      billing_interval: (company.billing_interval as string) ?? 'monthly',
+    })
     const [ins, n, f] = await Promise.all([
       getCompanyInspections(company.id as string),
       getCompanyNotes(company.id as string),
@@ -82,8 +89,13 @@ export default function AdminCustomers() {
   const saveBilling = async () => {
     if (!selected || !editBilling) return
     setSaving(true)
-    await updateCompanyBilling(selected.id as string, editBilling as Parameters<typeof updateCompanyBilling>[1])
-    setCompanies(prev => prev.map(c => c.id === selected.id ? { ...c, ...editBilling } : c))
+    // Auto-derive legacy_pricing from tier
+    const legacy_pricing = editBilling.subscription_tier === 'legacy_starter'
+    const payload = { ...editBilling, legacy_pricing } as Parameters<typeof updateCompanyBilling>[1]
+    await updateCompanyBilling(selected.id as string, payload)
+    const updated = { ...editBilling, legacy_pricing }
+    setCompanies(prev => prev.map(c => c.id === selected.id ? { ...c, ...updated } : c))
+    setSelected(prev => prev ? { ...prev, ...updated } : prev)
     setSaving(false)
   }
 
@@ -115,6 +127,19 @@ export default function AdminCustomers() {
     const matchTier = !tierFilter || c.subscription_tier === tierFilter
     return matchSearch && matchTier
   })
+
+  // ── Derived billing display values ─────────────────────────────────────────
+  const currentTier = (editBilling?.subscription_tier as string) ?? 'starter'
+  const currentInterval = (editBilling?.billing_interval as string) ?? 'monthly'
+  const currentPlan = getPlan(currentTier)
+  const isLegacyBilling = currentTier === 'legacy_starter'
+  const isAddOnEligible = !isLegacyBilling && ADD_ON_ELIGIBLE_PLANS.has(currentTier as PlanKey)
+  const planCap = getDefaultMemberCap(currentTier)
+  const planCostDisplay = currentTier === 'enterprise' ? 'Custom'
+    : currentTier === 'demo' ? 'Free'
+    : currentInterval === 'annual'
+      ? `$${currentPlan.annualCost.toLocaleString()}/yr`
+      : `$${currentPlan.monthlyCost}/mo`
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
@@ -171,6 +196,9 @@ export default function AdminCustomers() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{company.name as string}</span>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: pc.bg, color: pc.color, flexShrink: 0 }}>{tier.toUpperCase()}</span>
+                    {(company.legacy_pricing as boolean) && (
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', flexShrink: 0 }}>LEGACY</span>
+                    )}
                     <span style={{ fontSize: 12, color: '#94A3B8', flexShrink: 0 }}>{ageDays}d old</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -192,15 +220,21 @@ export default function AdminCustomers() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' }}>
           <div style={{ flex: 1, background: 'rgba(13,27,42,0.4)' }} onClick={() => setSelected(null)} />
           <div style={{ width: 480, background: '#FFF', overflowY: 'auto', boxShadow: '-8px 0 32px rgba(13,27,42,0.12)' }}>
+
             {/* Header */}
             <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #E1E8F0', position: 'sticky', top: 0, background: '#FFF', zIndex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>{selected.name as string}</h2>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: (PLAN_COLORS[selected.subscription_tier as string] ?? PLAN_COLORS.starter).bg, color: (PLAN_COLORS[selected.subscription_tier as string] ?? PLAN_COLORS.starter).color }}>
                       {(selected.subscription_tier as string ?? 'starter').toUpperCase()}
                     </span>
+                    {(selected.legacy_pricing as boolean) && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', border: '1px solid #FED7AA' }}>
+                        LEGACY PRICING
+                      </span>
+                    )}
                     <span style={{ fontSize: 12, color: '#94A3B8' }}>{Math.floor((Date.now() - new Date(selected.created_at as string).getTime()) / 86400000)} days old</span>
                   </div>
                 </div>
@@ -211,6 +245,7 @@ export default function AdminCustomers() {
             </div>
 
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
               {/* Ghost Mode */}
               <button
                 onClick={() => { setImpersonatedCompany(selected as Parameters<typeof setImpersonatedCompany>[0]); setSelected(null) }}
@@ -219,9 +254,10 @@ export default function AdminCustomers() {
                 <Ghost size={16} /> Enter Ghost Mode
               </button>
 
-              {/* Billing */}
+              {/* Billing Controls */}
               <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
                 <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 16px' }}>Billing Controls</p>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Reports Used</label>
@@ -236,14 +272,46 @@ export default function AdminCustomers() {
                       style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   </div>
                 </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Plan</label>
-                  <select value={(editBilling?.subscription_tier as string) ?? 'starter'}
-                    onChange={e => setEditBilling(b => ({ ...b!, subscription_tier: e.target.value }))}
-                    style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
-                    {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Plan</label>
+                    <select value={(editBilling?.subscription_tier as string) ?? 'starter'}
+                      onChange={e => setEditBilling(b => ({ ...b!, subscription_tier: e.target.value }))}
+                      style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
+                      {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Billing Interval</label>
+                    <select value={(editBilling?.billing_interval as string) ?? 'monthly'}
+                      onChange={e => setEditBilling(b => ({ ...b!, billing_interval: e.target.value }))}
+                      style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
+                      <option value="monthly">Monthly</option>
+                      <option value="annual">Annual</option>
+                    </select>
+                  </div>
                 </div>
+
+                {/* Plan pricing info */}
+                <div style={{ background: '#F8FAFC', borderRadius: 8, padding: '8px 12px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: '#64748B' }}>{currentPlan.name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0D1B2A' }}>{planCostDisplay}</span>
+                    {currentTier !== 'enterprise' && currentTier !== 'demo' && (
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                        +${currentPlan.additionalReportCost}/report overage · {currentPlan.reportsIncluded} included
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {isLegacyBilling && (
+                  <div style={{ background: '#FFF0E8', borderRadius: 8, padding: '7px 12px', marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, color: '#C2410C', fontWeight: 600 }}>Legacy pricing applies — original rates locked for this account.</span>
+                  </div>
+                )}
+
                 <button onClick={saveBilling} disabled={saving}
                   style={{ width: '100%', height: 40, background: saving ? '#E1E8F0' : '#F4A62A', color: saving ? '#94A3B8' : '#0D1B2A', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit' }}>
                   {saving ? 'Saving...' : 'Save Changes'}
@@ -255,10 +323,10 @@ export default function AdminCustomers() {
                 <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Feature Flags</p>
                 {!flags ? (
                   <p style={{ fontSize: 13, color: '#94A3B8', margin: '12px 0 0' }}>Loading...</p>
-                ) : FLAG_DEFS.map(f => {
+                ) : CORE_FLAG_DEFS.map(f => {
                   const flag = flags[f.key]
                   const isOn = flag?.enabled ?? (f.key !== 'lot_map')
-                  const cap = (flag?.config?.cap as number) ?? 3
+                  const cap = (flag?.config?.cap as number) ?? planCap ?? 3
                   return (
                     <div key={f.key}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #F0F4F8' }}>
@@ -268,27 +336,24 @@ export default function AdminCustomers() {
                         </div>
                         <Toggle checked={isOn} onChange={v => handleFlagToggle(f.key, v)} />
                       </div>
+
                       {f.key === 'lot_map' && isOn && selected && (
                         <div style={{ padding: '10px 0', paddingLeft: 20, borderBottom: '1px solid #F0F4F8' }}>
-                          <a
-                            href={`/lot`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              height: 32, padding: '0 14px', borderRadius: 8,
-                              border: '1px solid #E1E8F0', background: '#F8FAFC',
-                              color: '#0D1B2A', fontSize: 12, fontWeight: 600,
-                              textDecoration: 'none',
-                            }}
-                          >
+                          <a href="/lot" target="_blank" rel="noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#F8FAFC', color: '#0D1B2A', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
                             <LayoutGrid size={13} /> Edit Lot Layout
                           </a>
                         </div>
                       )}
+
                       {f.key === 'team_members' && isOn && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', paddingLeft: 20, borderBottom: '1px solid #F0F4F8' }}>
-                          <span style={{ fontSize: 12, color: '#4A5568', flex: 1 }}>Member Cap</span>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: 12, color: '#4A5568' }}>Member Cap</span>
+                            <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 6 }}>
+                              (plan default: {planCap === null ? '∞' : planCap})
+                            </span>
+                          </div>
                           <div style={{ display: 'flex', gap: 4 }}>
                             {[3, 5, 10].map(n => (
                               <button key={n} onClick={() => handleCapChange(n)}
@@ -303,6 +368,33 @@ export default function AdminCustomers() {
                   )
                 })}
               </div>
+
+              {/* Add-Ons — only for non-legacy starter/growth */}
+              {isAddOnEligible && (
+                <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Add-Ons</p>
+                  {!flags ? (
+                    <p style={{ fontSize: 13, color: '#94A3B8', margin: '12px 0 0' }}>Loading...</p>
+                  ) : ADD_ONS.map(addon => {
+                    const flagKey = addon.key as FeatureKey
+                    const flag = flags[flagKey]
+                    const isOn = flag?.enabled ?? (flagKey === 'white_label')
+                    const price = currentInterval === 'annual'
+                      ? `$${addon.annualCost}/yr`
+                      : `$${addon.monthlyCost}/mo`
+                    return (
+                      <div key={addon.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #F0F4F8' }}>
+                        <div>
+                          <span style={{ fontSize: 14, color: '#0D1B2A' }}>{addon.name}</span>
+                          <span style={{ fontSize: 12, color: '#94A3B8', marginLeft: 8 }}>{price}</span>
+                          <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>{addon.description}</p>
+                        </div>
+                        <Toggle checked={isOn} onChange={v => handleFlagToggle(flagKey, v)} />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Recent Inspections */}
               <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
@@ -346,6 +438,7 @@ export default function AdminCustomers() {
                     </div>
                   ))}
               </div>
+
             </div>
           </div>
         </div>

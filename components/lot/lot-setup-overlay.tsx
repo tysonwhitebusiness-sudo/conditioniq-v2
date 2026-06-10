@@ -1,7 +1,8 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import { Upload, Check, Trash2, AlertTriangle, X, Minus, Plus, Grid3X3, MousePointer2, Move } from 'lucide-react'
+import { Upload, Check, Trash2, AlertTriangle, X, Minus, Plus, Grid3X3, Settings2 } from 'lucide-react'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import {
   createLotSpot, updateLotSpot, deleteLotSpot,
   uploadLotBackground, removeLotBackground, generateNextLabel,
@@ -93,6 +94,9 @@ export default function LotSetupOverlay({
   const [eZoneRot, setEZoneRot] = useState(0)
   const [confirmDel, setConfirmDel] = useState(false)
   const [saving, setSaving]   = useState(false)
+  const [mSettingsOpen, setMSettingsOpen] = useState(false)
+
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => { setLivePan(bgPan) }, [bgPan.x, bgPan.y])
 
@@ -380,70 +384,89 @@ export default function LotSetupOverlay({
     <div style={{ position:'fixed', inset:0, zIndex:100, background:'rgba(13,27,42,0.97)', display:'flex', flexDirection:'column' }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
-      <div style={{ height:52, background:'#1B2D40', display:'flex', alignItems:'center', padding:'0 14px', gap:8, flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ height: isMobile ? 48 : 52, background:'#1B2D40', display:'flex', alignItems:'center', padding:'0 14px', gap:8, flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
         <span style={{ fontSize:14, fontWeight:700, color:'#FFF', marginRight:4 }}>Edit Lot Layout</span>
 
         <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display:'none' }}/>
-        <TBtn label={bgUploading ? 'Uploading…' : 'BG Image'} icon={<Upload size={12}/>} onClick={() => fileRef.current?.click()} disabled={bgUploading}/>
-        {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackground(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
 
-        <Sep/>
-        <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
-        <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
-        <Sep/>
-        <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
-        <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
-        <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color="rgba(255,255,255,0.55)"/></button>
-
-        {bgUrl && (
+        {/* Desktop controls */}
+        {!isMobile && (
           <>
+            <TBtn label={bgUploading ? 'Uploading…' : 'BG Image'} icon={<Upload size={12}/>} onClick={() => fileRef.current?.click()} disabled={bgUploading}/>
+            {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackground(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
             <Sep/>
-            <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn} title="Rotate BG CCW">
-              <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↺</span>
-            </button>
-            <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:26, textAlign:'center' }}>{bgRotation}°</span>
-            <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn} title="Rotate BG CW">
-              <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↻</span>
-            </button>
-          </>
-        )}
-
-        {tool === 'border' && borderPts.length > 0 && (
-          <>
+            <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
+            <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
             <Sep/>
-            <span style={{ fontSize:11, color:'#F4A62A' }}>{borderPts.length} pts</span>
-            <TBtn label="✓ Finish" active onClick={finishBorder}/>
-            <TBtn label="✕ Cancel" danger onClick={() => setBorderPts([])}/>
+            <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
+            <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color="rgba(255,255,255,0.55)"/></button>
+            {bgUrl && (
+              <>
+                <Sep/>
+                <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn} title="Rotate BG CCW">
+                  <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↺</span>
+                </button>
+                <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:26, textAlign:'center' }}>{bgRotation}°</span>
+                <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn} title="Rotate BG CW">
+                  <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↻</span>
+                </button>
+              </>
+            )}
+            {tool === 'border' && borderPts.length > 0 && (
+              <>
+                <Sep/>
+                <span style={{ fontSize:11, color:'#F4A62A' }}>{borderPts.length} pts</span>
+                <TBtn label="✓ Finish" active onClick={finishBorder}/>
+                <TBtn label="✕ Cancel" danger onClick={() => setBorderPts([])}/>
+              </>
+            )}
           </>
         )}
 
         <div style={{ flex:1 }}/>
-        <span style={{ fontSize:11, color:'rgba(255,255,255,0.28)', maxWidth:220, textAlign:'right', lineHeight:1.35 }}>{HINT[tool]}</span>
+
+        {/* Mobile: hint text for border drawing */}
+        {isMobile && tool === 'border' && borderPts.length > 0 && (
+          <span style={{ fontSize:11, color:'#F4A62A' }}>{borderPts.length} pts</span>
+        )}
+
+        {/* Mobile settings button */}
+        {isMobile && (
+          <button onClick={() => setMSettingsOpen(o => !o)} style={{ ...iconBtn, width:34, height:34, background: mSettingsOpen ? 'rgba(0,180,216,0.2)' : 'transparent', outline: mSettingsOpen ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}>
+            <Settings2 size={15} color={mSettingsOpen ? '#00B4D8' : 'rgba(255,255,255,0.6)'}/>
+          </button>
+        )}
+
+        {!isMobile && <span style={{ fontSize:11, color:'rgba(255,255,255,0.28)', maxWidth:220, textAlign:'right', lineHeight:1.35 }}>{HINT[tool]}</span>}
         <button onClick={onDone} style={{ height:34, padding:'0 16px', borderRadius:8, background:'#00B4D8', border:'none', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
           <Check size={13}/> Done
         </button>
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────────── */}
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      <div style={{ flex:1, display:'flex', overflow:'hidden', flexDirection:'column' }}>
+        <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
-        {/* ── Tool palette ──────────────────────────────────────────────────── */}
-        <div style={{ width:58, background:'#131D2B', borderRight:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', alignItems:'center', paddingTop:10, gap:2, flexShrink:0 }}>
-          {TOOLS.map(t => (
-            <button key={t.id} title={`${t.label} (${t.key})`}
-              onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }}
-              style={{ width:44, height:44, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}
-            >
-              <span style={{ fontSize:16, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
-              <span style={{ fontSize:8, fontWeight:600, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.35)', letterSpacing:'0.03em' }}>{t.label}</span>
-            </button>
-          ))}
-          <div style={{ height:1, width:36, background:'rgba(255,255,255,0.07)', margin:'4px 0' }}/>
-          <span style={{ fontSize:8, color:'rgba(255,255,255,0.2)', textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P Z B M</span>
-        </div>
+        {/* ── Tool palette (desktop only) ────────────────────────────────────── */}
+        {!isMobile && (
+          <div style={{ width:58, background:'#131D2B', borderRight:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', alignItems:'center', paddingTop:10, gap:2, flexShrink:0 }}>
+            {TOOLS.map(t => (
+              <button key={t.id} title={`${t.label} (${t.key})`}
+                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }}
+                style={{ width:44, height:44, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}
+              >
+                <span style={{ fontSize:16, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
+                <span style={{ fontSize:8, fontWeight:600, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.35)', letterSpacing:'0.03em' }}>{t.label}</span>
+              </button>
+            ))}
+            <div style={{ height:1, width:36, background:'rgba(255,255,255,0.07)', margin:'4px 0' }}/>
+            <span style={{ fontSize:8, color:'rgba(255,255,255,0.2)', textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P Z B M</span>
+          </div>
+        )}
 
         {/* ── Canvas ────────────────────────────────────────────────────────── */}
-        <div style={{ flex:1, overflow:'auto', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:24, background:'#0B1520' }}>
+        <div style={{ flex:1, overflow:'auto', display:'flex', alignItems:'flex-start', justifyContent:'center', padding: isMobile ? 8 : 24, background:'#0B1520' }}>
           <div style={{ width: canvasW, minWidth:'100%', flexShrink:0 }}>
             <div
               ref={canvasRef}
@@ -645,44 +668,138 @@ export default function LotSetupOverlay({
           </div>
         </div>
 
-        {/* ── Properties panel ──────────────────────────────────────────────── */}
-        <div style={{ width:254, background:'#1B2D40', borderLeft:'1px solid rgba(255,255,255,0.06)', flexShrink:0, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-          {selSpot ? (
-            <SpotPanel
-              spot={selSpot}
-              eLabel={eLabel} setELabel={setELabel}
-              eNotes={eNotes} setENotes={setENotes}
-              eW={eW} setEW={setEW}
-              eH={eH} setEH={setEH}
-              eRot={eRot} setERot={setERot}
-              eColor={eColor} setEColor={setEColor}
-              confirmDel={confirmDel} setConfirmDel={setConfirmDel}
-              saving={saving}
-              onSave={handleSaveSpot}
-              onDelete={handleDeleteSpot}
-              onClose={() => setSelected(null)}
-            />
-          ) : selShape ? (
-            <ShapePanel
-              shape={selShape}
-              eLabel={eLabel} setELabel={setELabel}
-              eSColor={eSColor} setESColor={setESColor}
-              eSOp={eSOp} setESOp={setESOp}
-              eSStroke={eSStroke} setESStroke={setESStroke}
-              eSFill={eSFill} setESFill={setESFill}
-              eMType={eMType} setEMType={setEMType}
-              eZoneRot={eZoneRot} setEZoneRot={setEZoneRot}
-              confirmDel={confirmDel} setConfirmDel={setConfirmDel}
-              saving={saving}
-              onSave={handleSaveShape}
-              onDelete={handleDeleteShape}
-              onClose={() => setSelected(null)}
-            />
-          ) : (
-            <EmptyPanel tool={tool}/>
-          )}
-        </div>
-      </div>
+        {/* ── Properties panel (desktop only) ───────────────────────────────── */}
+        {!isMobile && (
+          <div style={{ width:254, background:'#1B2D40', borderLeft:'1px solid rgba(255,255,255,0.06)', flexShrink:0, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+            {selSpot ? (
+              <SpotPanel
+                spot={selSpot}
+                eLabel={eLabel} setELabel={setELabel}
+                eNotes={eNotes} setENotes={setENotes}
+                eW={eW} setEW={setEW}
+                eH={eH} setEH={setEH}
+                eRot={eRot} setERot={setERot}
+                eColor={eColor} setEColor={setEColor}
+                confirmDel={confirmDel} setConfirmDel={setConfirmDel}
+                saving={saving}
+                onSave={handleSaveSpot}
+                onDelete={handleDeleteSpot}
+                onClose={() => setSelected(null)}
+              />
+            ) : selShape ? (
+              <ShapePanel
+                shape={selShape}
+                eLabel={eLabel} setELabel={setELabel}
+                eSColor={eSColor} setESColor={setESColor}
+                eSOp={eSOp} setESOp={setESOp}
+                eSStroke={eSStroke} setESStroke={setESStroke}
+                eSFill={eSFill} setESFill={setESFill}
+                eMType={eMType} setEMType={setEMType}
+                eZoneRot={eZoneRot} setEZoneRot={setEZoneRot}
+                confirmDel={confirmDel} setConfirmDel={setConfirmDel}
+                saving={saving}
+                onSave={handleSaveShape}
+                onDelete={handleDeleteShape}
+                onClose={() => setSelected(null)}
+              />
+            ) : (
+              <EmptyPanel tool={tool}/>
+            )}
+          </div>
+        )}
+        </div>{/* end flex row */}
+
+        {/* ── Mobile bottom tool strip ───────────────────────────────────────── */}
+        {isMobile && (
+          <div style={{ background:'#131D2B', borderTop:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 8px', flexShrink:0, gap:4 }}>
+            {TOOLS.map(t => (
+              <button key={t.id}
+                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }}
+                style={{ flex:1, height:48, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none', padding:0 }}
+              >
+                <span style={{ fontSize:18, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
+                <span style={{ fontSize:9, fontWeight:600, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.35)', letterSpacing:'0.03em' }}>{t.label}</span>
+              </button>
+            ))}
+            {tool === 'border' && borderPts.length > 0 && (
+              <>
+                <div style={{ width:1, height:32, background:'rgba(255,255,255,0.1)' }}/>
+                <button onClick={finishBorder} style={{ height:38, padding:'0 12px', borderRadius:8, background:'rgba(0,180,216,0.2)', border:'1.5px solid rgba(0,180,216,0.5)', color:'#00B4D8', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✓ Finish</button>
+                <button onClick={() => setBorderPts([])} style={{ height:38, padding:'0 12px', borderRadius:8, background:'transparent', border:'1px solid rgba(239,68,68,0.4)', color:'#EF4444', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✕</button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Mobile settings bottom sheet ───────────────────────────────────── */}
+        {isMobile && mSettingsOpen && (
+          <div style={{ background:'#1B2D40', borderTop:'1px solid rgba(255,255,255,0.1)', padding:'12px 16px 16px', flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Settings</span>
+              <button onClick={() => setMSettingsOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}><X size={14} color="rgba(255,255,255,0.4)"/></button>
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display:'none' }}/>
+              <TBtn label={bgUploading ? 'Uploading…' : 'BG Image'} icon={<Upload size={12}/>} onClick={() => fileRef.current?.click()} disabled={bgUploading}/>
+              {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackground(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
+              <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
+              <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Zoom</span>
+              <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
+              <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
+              <button onClick={zoomIn} style={iconBtn}><Plus size={11} color="rgba(255,255,255,0.55)"/></button>
+            </div>
+            {bgUrl && (
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Rotate</span>
+                <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↺</span></button>
+                <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:28, textAlign:'center' }}>{bgRotation}°</span>
+                <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↻</span></button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Mobile properties bottom sheet ────────────────────────────────── */}
+        {isMobile && (selSpot || selShape) && (
+          <div style={{ background:'#1B2D40', borderTop:'1px solid rgba(255,255,255,0.1)', maxHeight:'55vh', overflowY:'auto', flexShrink:0 }}>
+            {selSpot ? (
+              <SpotPanel
+                spot={selSpot}
+                eLabel={eLabel} setELabel={setELabel}
+                eNotes={eNotes} setENotes={setENotes}
+                eW={eW} setEW={setEW}
+                eH={eH} setEH={setEH}
+                eRot={eRot} setERot={setERot}
+                eColor={eColor} setEColor={setEColor}
+                confirmDel={confirmDel} setConfirmDel={setConfirmDel}
+                saving={saving}
+                onSave={handleSaveSpot}
+                onDelete={handleDeleteSpot}
+                onClose={() => setSelected(null)}
+              />
+            ) : selShape ? (
+              <ShapePanel
+                shape={selShape}
+                eLabel={eLabel} setELabel={setELabel}
+                eSColor={eSColor} setESColor={setESColor}
+                eSOp={eSOp} setESOp={setESOp}
+                eSStroke={eSStroke} setESStroke={setESStroke}
+                eSFill={eSFill} setESFill={setESFill}
+                eMType={eMType} setEMType={setEMType}
+                eZoneRot={eZoneRot} setEZoneRot={setEZoneRot}
+                confirmDel={confirmDel} setConfirmDel={setConfirmDel}
+                saving={saving}
+                onSave={handleSaveShape}
+                onDelete={handleDeleteShape}
+                onClose={() => setSelected(null)}
+              />
+            ) : null}
+          </div>
+        )}
+      </div>{/* end body column */}
     </div>
   )
 }

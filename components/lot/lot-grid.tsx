@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
+import { useMediaQuery } from '@/hooks/use-media-query'
 
 export type LotGridMode = 'view' | 'setup'
 
@@ -37,7 +38,10 @@ export default function LotGrid({
   const containerRef = useRef<HTMLDivElement>(null)
   const spotDragging = useRef<{ spotId: string; lastX: number; lastY: number } | null>(null)
   const panCapture = useRef<{ startCX: number; startCY: number; startPX: number; startPY: number } | null>(null)
+  const pinchRef = useRef<{ dist: number; baseScale: number } | null>(null)
   const [livePan, setLivePan] = useState<{ x: number; y: number }>(bgPan ?? { x: 0, y: 0 })
+  const [viewScale, setViewScale] = useState(1)
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => { setLivePan(bgPan ?? { x: 0, y: 0 }) }, [bgPan?.x, bgPan?.y])
 
@@ -69,6 +73,24 @@ export default function LotGrid({
     panCapture.current = null
   }
 
+  const getPinchDist = (t1: React.Touch, t2: React.Touch) => {
+    const dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      pinchRef.current = { dist: getPinchDist(e.touches[0], e.touches[1]), baseScale: viewScale }
+    }
+  }
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      const newDist = getPinchDist(e.touches[0], e.touches[1])
+      const ratio = newDist / pinchRef.current.dist
+      setViewScale(Math.max(0.8, Math.min(4, pinchRef.current.baseScale * ratio)))
+    }
+  }
+  const handleTouchEnd = () => { pinchRef.current = null }
+
   const toContainerPct = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return null
@@ -97,18 +119,29 @@ export default function LotGrid({
     spotDragging.current = null
   }
 
+  const aspectRatio = isMobile ? '75%' : '56.25%'
+
   return (
+    <div
+      style={{ position: 'relative', width: '100%', overflow: 'hidden', touchAction: 'none' }}
+      onTouchStart={mode === 'view' ? handleTouchStart : undefined}
+      onTouchMove={mode === 'view' ? handleTouchMove : undefined}
+      onTouchEnd={mode === 'view' ? handleTouchEnd : undefined}
+    >
     <div
       ref={containerRef}
       onPointerDown={handleContainerPointerDown}
       onPointerMove={handleContainerPointerMove}
       onPointerUp={handleContainerPointerUp}
       style={{
-        position: 'relative', width: '100%', paddingBottom: '56.25%',
+        position: 'relative', width: '100%', paddingBottom: aspectRatio,
         background: bgUrl ? undefined : '#F0F4F8',
         borderRadius: 12, overflow: 'hidden', border: '1px solid #E1E8F0',
         cursor: mode === 'setup' ? 'crosshair' : 'default',
         userSelect: 'none',
+        transform: mode === 'view' && viewScale !== 1 ? `scale(${viewScale})` : undefined,
+        transformOrigin: '50% 0',
+        transition: 'transform 0.05s',
       }}
     >
       {/* Background image with pan + rotation */}
@@ -235,6 +268,14 @@ export default function LotGrid({
           </div>
         )
       })}
+    </div>
+    {/* Double-tap reset hint on mobile */}
+    {isMobile && mode === 'view' && viewScale !== 1 && (
+      <button
+        onPointerDown={e => { e.stopPropagation(); setViewScale(1) }}
+        style={{ position: 'absolute', top: 8, right: 8, zIndex: 20, height: 28, padding: '0 10px', borderRadius: 8, background: 'rgba(13,27,42,0.75)', border: 'none', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+      >Reset zoom</button>
+    )}
     </div>
   )
 }

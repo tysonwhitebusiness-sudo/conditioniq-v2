@@ -9,6 +9,7 @@ import AssignVehicleModal from './assign-vehicle-modal'
 import VehicleDetailSlideOver from './vehicle-detail-slide-over'
 import { getLotSpots, getLotBackground, getLotShapes } from '@/lib/lot-actions'
 import type { LotSpot, LotShape } from '@/lib/lot-actions'
+import { useMediaQuery } from '@/hooks/use-media-query'
 
 interface Props {
   companyId: string
@@ -16,8 +17,9 @@ interface Props {
 }
 
 export default function StorageLotView({ companyId, locationId }: Props) {
-  const { user, isOwnerUser, companyRole } = useAuth()
-  const canSetup = isOwnerUser || companyRole === 'admin'
+  const { user, isOwnerUser } = useAuth()
+  const canSetup = isOwnerUser
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   const bgPanKey = `lot_bg_pan_${companyId}_${locationId ?? 'main'}`
   const bgRotKey = `lot_bg_rot_${companyId}_${locationId ?? 'main'}`
@@ -81,24 +83,30 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100 }}>
+    <div style={{ padding: isMobile ? '12px 16px' : 24, maxWidth: 1100 }}>
       {/* Summary bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: 0, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16, marginBottom: isMobile ? 12 : 20, flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#0D1B2A', margin: 0, flex: 1 }}>
           Lot Map
         </h1>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <StatChip label="Total Spots" value={total} />
-          <StatChip label="Occupied" value={occupied} color="#00B4D8" />
-          <StatChip label="Available" value={available} color="#10B981" />
-        </div>
+        {isMobile ? (
+          <span style={{ fontSize: 13, color: '#4A5568', fontWeight: 600 }}>
+            <span style={{ color: '#00B4D8' }}>{occupied}</span>/{total} occupied · <span style={{ color: '#10B981' }}>{available}</span> free
+          </span>
+        ) : (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <StatChip label="Total Spots" value={total} />
+            <StatChip label="Occupied" value={occupied} color="#00B4D8" />
+            <StatChip label="Available" value={available} color="#10B981" />
+          </div>
+        )}
 
         {canSetup && (
           <button
             onClick={() => setSetupOpen(true)}
             style={{
-              height: 38, padding: '0 16px', borderRadius: 10,
+              height: isMobile ? 34 : 38, padding: '0 16px', borderRadius: 10,
               border: '1px solid #E1E8F0', background: '#FFF',
               color: '#0D1B2A', fontSize: 13, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit',
@@ -110,15 +118,17 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         )}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        {LEGEND.map(l => (
-          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
-            <span style={{ fontSize: 12, color: '#4A5568' }}>{l.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* Legend — desktop only */}
+      {!isMobile && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          {LEGEND.map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
+              <span style={{ fontSize: 12, color: '#4A5568' }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Lot grid */}
       <LotGrid

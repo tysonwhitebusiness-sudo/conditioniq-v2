@@ -9,9 +9,33 @@ export interface LotSpot {
   label: string
   x_position: number
   y_position: number
+  width: number
+  height: number
+  rotation: number
+  custom_color: string | null
   notes: string | null
   created_at: string
   active_assignment: ActiveAssignment | null
+}
+
+// ── Shapes (zones, borders, markers) ─────────────────────────────────────────
+
+export interface ZoneConfig   { x: number; y: number; width: number; height: number }
+export interface BorderConfig { points: { x: number; y: number }[]; closed: boolean }
+export interface MarkerConfig { x: number; y: number; marker_type: 'entrance' | 'exit' | 'custom' }
+export type ShapeConfig = ZoneConfig | BorderConfig | MarkerConfig
+
+export interface LotShape {
+  id: string
+  company_id: string
+  location_id: string | null
+  shape_type: 'zone' | 'border' | 'marker'
+  label: string | null
+  color: string
+  fill_opacity: number
+  stroke_width: number
+  config: ShapeConfig
+  created_at: string
 }
 
 export interface ActiveAssignment {
@@ -111,7 +135,10 @@ export async function createLotSpot(
 
 export async function updateLotSpot(
   spotId: string,
-  updates: Partial<{ label: string; x_position: number; y_position: number; notes: string | null }>,
+  updates: Partial<{
+    label: string; x_position: number; y_position: number; notes: string | null
+    width: number; height: number; rotation: number; custom_color: string | null
+  }>,
 ): Promise<void> {
   const supabase = createClient()
   await supabase.from('lot_spots').update(updates).eq('id', spotId)
@@ -192,6 +219,41 @@ export async function uploadLotBackground(
 export async function removeLotBackground(companyId: string, locationId?: string | null): Promise<void> {
   const supabase = createClient()
   await supabase.storage.from('lot-backgrounds').remove([bgPath(companyId, locationId)])
+}
+
+// ── Shapes ────────────────────────────────────────────────────────────────────
+
+export async function getLotShapes(companyId: string, locationId?: string | null): Promise<LotShape[]> {
+  const supabase = createClient()
+  let q = supabase.from('lot_shapes').select('*').eq('company_id', companyId).order('created_at')
+  if (locationId) q = q.eq('location_id', locationId)
+  else if (locationId === null) q = q.is('location_id', null)
+  const { data } = await q
+  return (data ?? []) as LotShape[]
+}
+
+export async function createLotShape(
+  companyId: string,
+  shape: Omit<LotShape, 'id' | 'company_id' | 'created_at'>,
+): Promise<LotShape | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('lot_shapes')
+    .insert({ company_id: companyId, ...shape })
+    .select()
+    .single()
+  if (error) { console.error('[lot] createShape', error); return null }
+  return data as LotShape
+}
+
+export async function updateLotShape(id: string, updates: Partial<Omit<LotShape, 'id' | 'company_id' | 'created_at'>>): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('lot_shapes').update(updates).eq('id', id)
+}
+
+export async function deleteLotShape(id: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('lot_shapes').delete().eq('id', id)
 }
 
 // ── Occupancy ─────────────────────────────────────────────────────────────────

@@ -7,8 +7,8 @@ import LotGrid from './lot-grid'
 import LotSetupOverlay from './lot-setup-overlay'
 import AssignVehicleModal from './assign-vehicle-modal'
 import VehicleDetailSlideOver from './vehicle-detail-slide-over'
-import { getLotSpots, getLotBackground } from '@/lib/lot-actions'
-import type { LotSpot } from '@/lib/lot-actions'
+import { getLotSpots, getLotBackground, getLotShapes } from '@/lib/lot-actions'
+import type { LotSpot, LotShape } from '@/lib/lot-actions'
 
 interface Props {
   companyId: string
@@ -21,8 +21,9 @@ export default function StorageLotView({ companyId, locationId }: Props) {
 
   const bgPanKey = `lot_bg_pan_${companyId}_${locationId ?? 'main'}`
 
-  const [spots, setSpots] = useState<LotSpot[]>([])
-  const [bgUrl, setBgUrl] = useState<string | null>(null)
+  const [spots, setSpots]   = useState<LotSpot[]>([])
+  const [shapes, setShapes] = useState<LotShape[]>([])
+  const [bgUrl, setBgUrl]   = useState<string | null>(null)
   const [bgPan, setBgPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [loading, setLoading] = useState(true)
   const [setupOpen, setSetupOpen] = useState(false)
@@ -40,12 +41,12 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   }
 
   const load = async () => {
-    const [s, bg] = await Promise.all([
+    const [s, sh, bg] = await Promise.all([
       getLotSpots(companyId, locationId),
+      getLotShapes(companyId, locationId),
       getLotBackground(companyId, locationId),
     ])
-    setSpots(s)
-    setBgUrl(bg)
+    setSpots(s); setShapes(sh); setBgUrl(bg)
     setLoading(false)
   }
 
@@ -113,6 +114,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
       {/* Lot grid */}
       <LotGrid
         spots={spots}
+        shapes={shapes}
         mode="view"
         bgUrl={bgUrl}
         bgPan={bgPan}
@@ -123,11 +125,13 @@ export default function StorageLotView({ companyId, locationId }: Props) {
       {setupOpen && (
         <LotSetupOverlay
           spots={spots}
+          shapes={shapes}
           companyId={companyId}
           locationId={locationId}
           bgUrl={bgUrl}
           bgPan={bgPan}
           onSpotsChange={setSpots}
+          onShapesChange={setShapes}
           onBgChange={setBgUrl}
           onBgPanChange={handleBgPanChange}
           onDone={() => setSetupOpen(false)}

@@ -19,12 +19,25 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const { user, isOwnerUser, companyRole } = useAuth()
   const canSetup = isOwnerUser || companyRole === 'admin'
 
+  const bgPanKey = `lot_bg_pan_${companyId}_${locationId ?? 'main'}`
+
   const [spots, setSpots] = useState<LotSpot[]>([])
   const [bgUrl, setBgUrl] = useState<string | null>(null)
+  const [bgPan, setBgPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [loading, setLoading] = useState(true)
   const [setupOpen, setSetupOpen] = useState(false)
   const [assignSpot, setAssignSpot] = useState<LotSpot | null>(null)
   const [detailSpot, setDetailSpot] = useState<LotSpot | null>(null)
+
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(bgPanKey) : null
+    if (saved) { try { setBgPan(JSON.parse(saved)) } catch { /* ignore */ } }
+  }, [bgPanKey])
+
+  const handleBgPanChange = (pan: { x: number; y: number }) => {
+    setBgPan(pan)
+    localStorage.setItem(bgPanKey, JSON.stringify(pan))
+  }
 
   const load = async () => {
     const [s, bg] = await Promise.all([
@@ -102,6 +115,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         spots={spots}
         mode="view"
         bgUrl={bgUrl}
+        bgPan={bgPan}
         onSpotClick={handleSpotClick}
       />
 
@@ -112,8 +126,10 @@ export default function StorageLotView({ companyId, locationId }: Props) {
           companyId={companyId}
           locationId={locationId}
           bgUrl={bgUrl}
+          bgPan={bgPan}
           onSpotsChange={setSpots}
           onBgChange={setBgUrl}
+          onBgPanChange={handleBgPanChange}
           onDone={() => setSetupOpen(false)}
         />
       )}

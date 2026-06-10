@@ -14,14 +14,16 @@ interface Props {
   companyId: string
   locationId?: string | null
   bgUrl: string | null
+  bgPan: { x: number; y: number }
   onSpotsChange: (spots: LotSpot[]) => void
   onBgChange: (url: string | null) => void
+  onBgPanChange: (pan: { x: number; y: number }) => void
   onDone: () => void
 }
 
 export default function LotSetupOverlay({
-  spots, companyId, locationId, bgUrl,
-  onSpotsChange, onBgChange, onDone,
+  spots, companyId, locationId, bgUrl, bgPan,
+  onSpotsChange, onBgChange, onBgPanChange, onDone,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
@@ -163,15 +165,17 @@ export default function LotSetupOverlay({
         {/* Canvas area */}
         <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '0 0 12px', textAlign: 'center' }}>
-            Click canvas to add spot · Drag to move · Click spot to edit
+            Click canvas to add spot · Drag canvas to pan image · Drag spot to move · Click spot to edit
           </p>
           <LotGrid
             spots={spots}
             mode="setup"
             bgUrl={bgUrl}
+            bgPan={bgPan}
             selectedSpotId={selectedId}
             onSpotClick={handleSpotClick}
             onCanvasClick={handleCanvasClick}
+            onBgPanChange={onBgPanChange}
             onSpotDragMove={handleSpotDragMove}
             onSpotDragEnd={handleSpotDragEnd}
           />

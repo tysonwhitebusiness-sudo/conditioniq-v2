@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LotSpot } from '@/lib/lot-actions'
 
 export type LotGridMode = 'view' | 'setup'
@@ -19,36 +19,76 @@ interface Props {
   spots: LotSpot[]
   mode: LotGridMode
   bgUrl: string | null
+  bgPan?: { x: number; y: number }
   selectedSpotId?: string | null
   onSpotClick?: (spot: LotSpot) => void
   onCanvasClick?: (xPct: number, yPct: number) => void
-  /** Called continuously during drag for live visual feedback */
+  onBgPanChange?: (pan: { x: number; y: number }) => void
   onSpotDragMove?: (spotId: string, xPct: number, yPct: number) => void
-  /** Called once on pointer-up with final position — use this for DB writes */
   onSpotDragEnd?: (spotId: string, xPct: number, yPct: number) => void
 }
 
 export default function LotGrid({
-  spots, mode, bgUrl, selectedSpotId,
-  onSpotClick, onCanvasClick, onSpotDragMove, onSpotDragEnd,
+  spots, mode, bgUrl, bgPan, selectedSpotId,
+  onSpotClick, onCanvasClick, onBgPanChange, onSpotDragMove, onSpotDragEnd,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const dragging = useRef<{ spotId: string; lastX: number; lastY: number } | null>(null)
+  const spotDragging = useRef<{ spotId: string; lastX: number; lastY: number } | null>(null)
+  const panCapture = useRef<{ startCX: number; startCY: number; startPX: number; startPY: number } | null>(null)
+  const [livePan, setLivePan] = useState<{ x: number; y: number }>(bgPan ?? { x: 0, y: 0 })
 
-  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  useEffect(() => { setLivePan(bgPan ?? { x: 0, y: 0 }) }, [bgPan?.x, bgPan?.y])
+
+  // ── Canvas (background pan + click-to-place) ────────────────────────────────
+
+  const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (mode !== 'setup') return
     if ((e.target as HTMLElement).dataset.spot) return
-    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-    const xPct = ((e.clientX - rect.left) / rect.width) * 100
-    const yPct = ((e.clientY - rect.top) / rect.height) * 100
-    onCanvasClick?.(xPct, yPct)
+    panCapture.current = {
+      startCX: e.clientX, startCY: e.clientY,
+      startPX: livePan.x, startPY: livePan.y,
+    }
+    ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
   }
+
+  const handleContainerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panCapture.current) return
+    const dx = e.clientX - panCapture.current.startCX
+    const dy = e.clientY - panCapture.current.startCY
+    setLivePan({ x: panCapture.current.startPX + dx, y: panCapture.current.startPY + dy })
+  }
+
+  const handleContainerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panCapture.current) return
+    const dx = e.clientX - panCapture.current.startCX
+    const dy = e.clientY - panCapture.current.startCY
+    const moved = Math.sqrt(dx * dx + dy * dy)
+
+    if (moved < 5) {
+      // True click — place a spot
+      setLivePan({ x: panCapture.current.startPX, y: panCapture.current.startPY })
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (rect) {
+        onCanvasClick?.(
+          ((e.clientX - rect.left) / rect.width) * 100,
+          ((e.clientY - rect.top) / rect.height) * 100,
+        )
+      }
+    } else {
+      // Pan drag — persist the new position
+      const newPan = { x: panCapture.current.startPX + dx, y: panCapture.current.startPY + dy }
+      onBgPanChange?.(newPan)
+    }
+    panCapture.current = null
+  }
+
+  // ── Spot drag ───────────────────────────────────────────────────────────────
 
   const handleSpotPointerDown = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
     if (mode !== 'setup') return
     e.stopPropagation()
     ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
-    dragging.current = { spotId: spot.id, lastX: spot.x_position, lastY: spot.y_position }
+    spotDragging.current = { spotId: spot.id, lastX: spot.x_position, lastY: spot.y_position }
     onSpotClick?.(spot)
   }
 
@@ -61,50 +101,52 @@ export default function LotGrid({
     }
   }
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
-    if (!dragging.current || dragging.current.spotId !== spot.id) return
+  const handleSpotPointerMove = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
+    if (!spotDragging.current || spotDragging.current.spotId !== spot.id) return
     const pos = toContainerPct(e.clientX, e.clientY)
     if (!pos) return
-    dragging.current.lastX = pos.x
-    dragging.current.lastY = pos.y
+    spotDragging.current.lastX = pos.x
+    spotDragging.current.lastY = pos.y
     onSpotDragMove?.(spot.id, pos.x, pos.y)
   }
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
-    if (!dragging.current || dragging.current.spotId !== spot.id) return
-    onSpotDragEnd?.(spot.id, dragging.current.lastX, dragging.current.lastY)
-    dragging.current = null
+  const handleSpotPointerUp = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
+    if (!spotDragging.current || spotDragging.current.spotId !== spot.id) return
+    onSpotDragEnd?.(spot.id, spotDragging.current.lastX, spotDragging.current.lastY)
+    spotDragging.current = null
   }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  const bgPos = `calc(50% + ${livePan.x}px) calc(50% + ${livePan.y}px)`
 
   return (
     <div
       ref={containerRef}
-      onPointerDown={handleCanvasPointerDown}
+      onPointerDown={handleContainerPointerDown}
+      onPointerMove={handleContainerPointerMove}
+      onPointerUp={handleContainerPointerUp}
       style={{
         position: 'relative', width: '100%', paddingBottom: '56.25%',
         background: bgUrl ? undefined : '#F0F4F8',
         backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
-        backgroundSize: 'cover', backgroundPosition: 'center',
+        backgroundSize: bgUrl ? 'cover' : undefined,
+        backgroundPosition: bgUrl ? bgPos : undefined,
         borderRadius: 12, overflow: 'hidden', border: '1px solid #E1E8F0',
         cursor: mode === 'setup' ? 'crosshair' : 'default',
         userSelect: 'none',
       }}
     >
+      {/* Empty-state hints */}
       {spots.length === 0 && mode === 'view' && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8,
-        }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
           <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No spots configured yet.</p>
           <p style={{ fontSize: 12, color: '#CBD5E0', margin: 0 }}>Ask an admin to set up the lot layout.</p>
         </div>
       )}
       {spots.length === 0 && mode === 'setup' && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>Click anywhere to add a spot</p>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>Click anywhere to add a spot · Drag to pan image</p>
         </div>
       )}
 
@@ -124,8 +166,8 @@ export default function LotGrid({
               ? handleSpotPointerDown(e, spot)
               : (e.stopPropagation(), onSpotClick?.(spot))
             }
-            onPointerMove={e => handlePointerMove(e, spot)}
-            onPointerUp={e => handlePointerUp(e, spot)}
+            onPointerMove={e => handleSpotPointerMove(e, spot)}
+            onPointerUp={e => handleSpotPointerUp(e, spot)}
             style={{
               position: 'absolute',
               left: `${spot.x_position}%`,

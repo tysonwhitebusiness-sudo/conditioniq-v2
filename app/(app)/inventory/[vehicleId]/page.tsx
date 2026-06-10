@@ -172,7 +172,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [appStep, setAppStep] = useState<AppStep>('view')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
 
-  // ── Fetch vehicle
+  // ── Fetch inspections by VIN (no heavy JSONB photo columns)
+  const fetchInspections = useCallback(async (vin: string) => {
+    if (!companyId || !vin) return
+    setLoadingInspections(true)
+    const { data, error } = await createClient()
+      .from('vehicle_inspections')
+      .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id, inspector:user_profiles!inspector_id(full_name)')
+      .eq('company_id', companyId)
+      .eq('vin', vin)
+      .order('created_at', { ascending: false })
+    if (error) console.error('[detail] inspections:', error)
+    setInspections(data ?? [])
+    setLoadingInspections(false)
+  }, [companyId])
+
+  // ── Fetch vehicle (then fetch inspections by VIN)
   const fetchVehicle = useCallback(async () => {
     if (!companyId || !params.vehicleId) return
     setLoadingVehicle(true)
@@ -185,25 +200,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setVehicle(data ?? null)
     setRawNotes(data?.notes ?? null)
     setLoadingVehicle(false)
-  }, [companyId, params.vehicleId])
-
-  // ── Fetch inspections (no heavy JSONB photo columns)
-  const fetchInspections = useCallback(async () => {
-    if (!companyId || !params.vehicleId) return
-    setLoadingInspections(true)
-    const { data, error } = await createClient()
-      .from('vehicle_inspections')
-      .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id, inspector:user_profiles!inspector_id(full_name)')
-      .eq('company_id', companyId)
-      .eq('vehicle_id', params.vehicleId)
-      .order('created_at', { ascending: false })
-    if (error) console.error('[detail] inspections:', error)
-    setInspections(data ?? [])
-    setLoadingInspections(false)
-  }, [companyId, params.vehicleId])
+    if (data?.vin) fetchInspections(data.vin)
+  }, [companyId, params.vehicleId, fetchInspections])
 
   useEffect(() => { fetchVehicle() }, [fetchVehicle])
-  useEffect(() => { fetchInspections() }, [fetchInspections])
 
   // ── Lazy load photos
   const loadPhotos = async () => {
@@ -274,8 +274,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setAppStep('view')
     setCurrentInspectionId(null)
     await fetchVehicle()
-    await fetchInspections()
-  }, [effectiveCompany?.id, vehicle?.vin, fetchVehicle, fetchInspections])
+  }, [effectiveCompany?.id, vehicle?.vin, fetchVehicle])
 
   // ── PDF download for a single inspection
   const downloadPDF = async (inspId: string) => {

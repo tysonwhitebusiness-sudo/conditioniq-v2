@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, Send, User, LayoutGrid } from 'lucide-react'
+import { Home, Car, Plus, Send, LayoutGrid } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -20,7 +20,6 @@ const BASE_LEFT_TABS = [
 ]
 const BASE_RIGHT_TABS = [
   { id: 'dispatch', icon: Send, label: 'Dispatch', route: '/storage/dispatch' },
-  { id: 'account',  icon: User, label: 'Account',  route: '/profile' },
 ]
 
 export default function BottomNav({ onStartPress }: BottomNavProps) {

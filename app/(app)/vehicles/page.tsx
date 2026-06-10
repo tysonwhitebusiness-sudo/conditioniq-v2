@@ -569,7 +569,7 @@ export default function VehiclesPage() {
       .from('vehicle_inspections')
       .select('id, created_at, completed_at, inspection_type, vehicle_score, status')
       .eq('company_id', companyId)
-      .eq('vehicle_id', v.id)
+      .eq('vin', v.vin)
       .eq('status', 'completed')
       .order('created_at', { ascending: true })
     setReportsList(data ?? [])

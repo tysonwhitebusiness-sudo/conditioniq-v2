@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { getCompanyMembers, addCompanyMember, updateCompanyMemberRole, removeCompanyMember } from '@/lib/role-actions'
-import { UserPlus, Loader2, Shield, Wrench, Trash2 } from 'lucide-react'
+import { getCompanyMembers, updateCompanyMemberRole, removeCompanyMember } from '@/lib/role-actions'
+import { Mail, Loader2, Shield, Wrench, Trash2 } from 'lucide-react'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -22,10 +22,6 @@ export default function MembersPage() {
 
   const [members, setMembers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
-  const [email, setEmail] = useState('')
-  const [newRole, setNewRole] = useState<'admin' | 'inspector'>('inspector')
-  const [addError, setAddError] = useState('')
   const [updating, setUpdating] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -36,19 +32,6 @@ export default function MembersPage() {
   }, [companyId])
 
   useEffect(() => { load() }, [load])
-
-  const handleAdd = async () => {
-    if (!email.trim() || !user) return
-    setAdding(true); setAddError('')
-    const result = await addCompanyMember(companyId, email.trim().toLowerCase(), newRole, user.id)
-    if (result?.error) {
-      setAddError(result.error)
-    } else {
-      setEmail('')
-      await load()
-    }
-    setAdding(false)
-  }
 
   const handleRoleChange = async (memberId: string, role: 'admin' | 'inspector') => {
     setUpdating(memberId)
@@ -65,6 +48,9 @@ export default function MembersPage() {
     finally { setUpdating(null) }
   }
 
+  const companyName = effectiveCompany?.name ?? 'my account'
+  const mailtoHref = `mailto:support@conditioniq.com?subject=${encodeURIComponent(`Add Team Member – ${companyName}`)}&body=${encodeURIComponent(`Hi CIQ team,\n\nPlease add the following person to my account (${companyName}):\n\nName: \nEmail: \nRole: Inspector / Admin\n\nThanks`)}`
+
   return (
     <>
       {!isDesktop && <MobilePageHeader />}
@@ -76,37 +62,27 @@ export default function MembersPage() {
           <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>{effectiveCompany?.name} · {members.length} member{members.length !== 1 ? 's' : ''}</p>
         </div>
 
-        {/* Add member */}
+        {/* Add member — via CIQ team */}
         {canManage && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: '16px 20px', marginBottom: 20 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Add Member</p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                placeholder="Email address"
-                type="email"
-                style={{ flex: 1, minWidth: 200, height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA' }}
-              />
-              <select
-                value={newRole}
-                onChange={e => setNewRole(e.target.value as 'admin' | 'inspector')}
-                style={{ height: 42, padding: '0 10px', border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 14, background: '#F5F8FA', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
-              >
-                <option value="inspector">Inspector</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button
-                onClick={handleAdd}
-                disabled={!email.trim() || adding}
-                style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: email.trim() ? '#F4A62A' : '#E1E8F0', color: email.trim() ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 14, cursor: email.trim() ? 'pointer' : 'default', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
-                {adding ? <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <UserPlus size={15} />}
-                Add
-              </button>
+          <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 16, padding: '18px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 4px' }}>Need to add a team member?</p>
+              <p style={{ fontSize: 13, color: '#64748B', margin: 0 }}>
+                Email the Condition IQ team and we'll get them set up on your account — usually within one business day.
+              </p>
             </div>
-            {addError && <p style={{ fontSize: 13, color: '#EF4444', margin: '8px 0 0' }}>{addError}</p>}
-            <p style={{ fontSize: 12, color: '#94A3B8', margin: '8px 0 0' }}>They must already have a Condition IQ account.</p>
+            <a
+              href={mailtoHref}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                height: 42, padding: '0 20px', borderRadius: 10,
+                background: '#F4A62A', border: 'none', color: '#0D1B2A',
+                fontWeight: 700, fontSize: 14, cursor: 'pointer',
+                fontFamily: 'inherit', textDecoration: 'none', flexShrink: 0,
+              }}
+            >
+              <Mail size={15} /> Email CIQ Team
+            </a>
           </div>
         )}
 
@@ -134,7 +110,10 @@ export default function MembersPage() {
                   </span>
                 </div>
                 <div style={{ flex: 1, minWidth: 120 }}>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{u?.full_name ?? '—'}{isSelf && <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 6 }}>(you)</span>}</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>
+                    {u?.full_name ?? '—'}
+                    {isSelf && <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 6 }}>(you)</span>}
+                  </p>
                   <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{u?.email ?? '—'}</p>
                 </div>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: cfg.bg, color: cfg.color, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>

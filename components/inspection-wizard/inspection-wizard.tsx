@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Car, X } from 'lucide-react'
 import { updateInspectionOfflineAware } from '@/lib/offline-sync'
 import { completeInspection } from '@/lib/usage-actions'
+import { useAuth } from '@/contexts/auth-context'
 import { buildCustodyRecord, captureGPS } from '@/lib/chain-of-custody'
 import { insertAuditEntry } from '@/lib/audit-trail'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
@@ -22,14 +23,14 @@ type StepId = 'vehicle-info' | 'bol' | 'keys' | 'function' | 'documentation' | '
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'vehicle-info', label: 'Vehicle Info' },
-  { id: 'bol', label: 'BOL' },
-  { id: 'keys', label: 'Keys' },
-  { id: 'function', label: 'Function' },
-  { id: 'documentation', label: 'Docs' },
+  { id: 'bol', label: 'Bill of Lading' },
+  { id: 'keys', label: 'Keys & FOBs' },
+  { id: 'function', label: 'Vehicle Function' },
+  { id: 'documentation', label: 'Documentation' },
   { id: 'exterior', label: 'Exterior' },
   { id: 'interior', label: 'Interior' },
   { id: 'engine', label: 'Engine' },
-  { id: 'review', label: 'Review' },
+  { id: 'review', label: 'Review & Submit' },
 ]
 
 interface Props {
@@ -37,11 +38,14 @@ interface Props {
   initialData?: Record<string, any>
   inspectorId?: string
   onComplete: (inspectionData: Record<string, any>) => void
+  onCancel?: () => void
   initialStep?: StepId
   isRemote?: boolean
+  onStepChange?: (stepNum: number) => void
 }
 
-export default function InspectionWizard({ inspectionId, initialData, inspectorId, onComplete, initialStep }: Props) {
+export default function InspectionWizard({ inspectionId, initialData, inspectorId, onComplete, onCancel, initialStep, onStepChange }: Props) {
+  const { effectiveCompany } = useAuth()
   const [currentStep, setCurrentStep] = useState<StepId>(initialStep ?? 'vehicle-info')
   const [data, setData] = useState<Record<string, Record<string, any>>>({
     vehicleInfo: initialData?.vehicleInfo ?? initialData ?? {},
@@ -55,6 +59,8 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
   })
   const [startedAt] = useState(Date.now())
   const [gpsStart, setGpsStart] = useState<any>(null)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [showVinCard, setShowVinCard] = useState(false)
 
   useEffect(() => {
     captureGPS().then(gps => { if (gps) setGpsStart(gps) })
@@ -62,8 +68,16 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
 
   const stepIndex = STEPS.findIndex(s => s.id === currentStep)
 
+  useEffect(() => {
+    onStepChange?.(stepIndex + 1)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex])
+
   const saveStep = useCallback(async (stepKey: string, stepData: Record<string, any>) => {
-    const updates: Record<string, any> = { [stepKey]: stepData }
+    const updates: Record<string, any> = {
+      [stepKey]: stepData,
+      last_active_at: new Date().toISOString(),
+    }
     if (stepKey === 'vehicleInfo') {
       Object.assign(updates, {
         vin: stepData.vin,
@@ -73,6 +87,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
         asset_id: stepData.assetId,
         odometer: stepData.odometer,
         location: stepData.location,
+        inspection_type: stepData.inspectionType ?? 'standard',
       })
     }
     await updateInspectionOfflineAware(inspectionId, updates)
@@ -93,6 +108,10 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     const idx = STEPS.findIndex(s => s.id === currentStep)
     if (idx > 0) setCurrentStep(STEPS[idx - 1].id)
   }, [currentStep])
+
+  const goToStep = useCallback((stepId: StepId) => {
+    setCurrentStep(stepId)
+  }, [])
 
   const handleComplete = useCallback(async (signature: string) => {
     const allData = {
@@ -141,6 +160,18 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     const { generateInspectionPDF } = await import('@/lib/pdf-generator')
     await generateInspectionPDF({ ...allData, inspectionId, timestamp: new Date().toISOString(), gpsStart }, scoreResult, signature)
 
+    // Silently sync to storage inventory — never blocks completion
+    if (effectiveCompany?.id) {
+      const { upsertVehicleToInventory } = await import('@/lib/storage-actions')
+      upsertVehicleToInventory(
+        inspectionId,
+        effectiveCompany.id,
+        allData,
+        scoreResult,
+        allData.vehicleInfo?.inspectionType ?? 'standard'
+      ).catch(err => console.error('[storage] upsert failed:', err))
+    }
+
     onComplete({ ...allData, inspectionId, signature, scoreResult })
   }, [data, inspectionId, inspectorId, gpsStart, onComplete])
 
@@ -155,32 +186,63 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     engine_data: data.engine_data,
   })
 
+  const vin = data.vehicleInfo?.vin
+  const vinDisplay = vin ? `${data.vehicleInfo?.year ?? ''} ${data.vehicleInfo?.make ?? ''} ${data.vehicleInfo?.model ?? ''}`.trim() || vin : '—'
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* Progress Header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-100">
-        <div className="px-4 py-3 flex items-center gap-3">
-          {stepIndex > 0 && (
-            <button onClick={goBack} className="p-1 -ml-1">
-              <ChevronLeft size={24} className="text-gray-600" />
-            </button>
-          )}
-          <div className="flex-1">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Step {stepIndex + 1} of {STEPS.length}</span>
-              <span>{STEPS[stepIndex]?.label}</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-1.5">
-              <div
-                className="bg-[#1e3a5f] h-1.5 rounded-full transition-all"
-                style={{ width: `${((stepIndex + 1) / STEPS.length) * 100}%` }}
-              />
-            </div>
+    <div style={{ minHeight: '100vh', background: '#F0F4F8' }}>
+      {/* Sticky header — 60px + 4px progress bar */}
+      <div className="wizard-header" style={{ position: 'sticky', top: 0, zIndex: 20, background: '#0D1B2A' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
+          {/* Back / Cancel */}
+          <button
+            onClick={() => stepIndex === 0 ? setShowCancelDialog(true) : goBack()}
+            style={{
+              width: 44, height: 44, borderRadius: 10,
+              background: 'rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            <ChevronLeft size={22} color="white" />
+          </button>
+
+          {/* Center */}
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', margin: 0, lineHeight: 1.2 }}>
+              {STEPS[stepIndex]?.label}
+            </p>
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: 0, marginTop: 2 }}>
+              Step {stepIndex + 1} of {STEPS.length}
+            </p>
           </div>
+
+          {/* VIN Card trigger */}
+          <button
+            onClick={() => setShowVinCard(true)}
+            style={{
+              width: 44, height: 44, borderRadius: 10,
+              background: 'rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            <Car size={20} color="white" />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ height: 4, background: 'rgba(255,255,255,0.1)' }}>
+          <div style={{
+            height: 4,
+            width: `${((stepIndex + 1) / STEPS.length) * 100}%`,
+            background: '#00B4D8',
+            transition: 'width 300ms ease',
+          }} />
         </div>
       </div>
 
-      <div className="px-4 pt-4">
+      <div className="wizard-content" style={{ maxWidth: 600, margin: '0 auto' }}>
         {currentStep === 'vehicle-info' && (
           <StepVehicleInfo
             data={data.vehicleInfo}
@@ -249,9 +311,57 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             inspectionData={buildAllData()}
             onComplete={handleComplete}
             onBack={goBack}
+            onGoToStep={goToStep}
           />
         )}
       </div>
+
+      {/* Cancel dialog */}
+      {showCancelDialog && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(13,27,42,0.7)' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 340 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px' }}>Cancel Inspection?</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', margin: '0 0 24px' }}>
+              Your progress has been saved. You can resume this inspection from the Queue.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowCancelDialog(false)}
+                style={{ flex: 1, height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFFFFF', color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
+              >
+                Keep Going
+              </button>
+              <button
+                onClick={() => { setShowCancelDialog(false); onCancel?.() }}
+                style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#EF4444', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIN card */}
+      {showVinCard && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 24px 24px', background: 'rgba(13,27,42,0.5)' }}
+          onClick={() => setShowVinCard(false)}
+        >
+          <div style={{ background: '#FFFFFF', borderRadius: 16, padding: 20, width: '100%', maxWidth: 400 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Vehicle</p>
+              <button onClick={() => setShowVinCard(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4 }}>
+                <X size={18} color="#94A3B8" />
+              </button>
+            </div>
+            <p style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: '0 0 6px' }}>{vinDisplay}</p>
+            {vin && <p style={{ fontSize: 13, color: '#94A3B8', fontFamily: 'monospace', margin: 0 }}>{vin}</p>}
+            {!vin && <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>VIN not entered yet</p>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

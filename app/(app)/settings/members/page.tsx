@@ -1,0 +1,170 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@/contexts/auth-context'
+import { getCompanyMembers, addCompanyMember, updateCompanyMemberRole, removeCompanyMember } from '@/lib/role-actions'
+import { UserPlus, Loader2, Shield, Wrench, Trash2 } from 'lucide-react'
+import MobilePageHeader from '@/components/layout/mobile-page-header'
+import BottomNav from '@/components/ui/bottom-nav'
+import { useMediaQuery } from '@/hooks/use-media-query'
+
+const ROLE_CONFIG = {
+  admin:     { label: 'Admin',     bg: '#FEF3C7', color: '#92400E', icon: Shield },
+  inspector: { label: 'Inspector', bg: '#E0F7FC', color: '#0097B2', icon: Wrench },
+}
+
+export default function MembersPage() {
+  const { effectiveCompany, user, companyRole, platformRole } = useAuth()
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const companyId = effectiveCompany?.id ?? ''
+
+  const canManage = platformRole === 'super_admin' || companyRole === 'admin'
+
+  const [members, setMembers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [email, setEmail] = useState('')
+  const [newRole, setNewRole] = useState<'admin' | 'inspector'>('inspector')
+  const [addError, setAddError] = useState('')
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!companyId) return
+    setLoading(true)
+    try { setMembers(await getCompanyMembers(companyId)) }
+    finally { setLoading(false) }
+  }, [companyId])
+
+  useEffect(() => { load() }, [load])
+
+  const handleAdd = async () => {
+    if (!email.trim() || !user) return
+    setAdding(true); setAddError('')
+    try {
+      await addCompanyMember(companyId, email.trim().toLowerCase(), newRole, user.id)
+      setEmail('')
+      await load()
+    } catch (e: any) {
+      setAddError(e.message)
+    } finally { setAdding(false) }
+  }
+
+  const handleRoleChange = async (memberId: string, role: 'admin' | 'inspector') => {
+    setUpdating(memberId)
+    try { await updateCompanyMemberRole(memberId, role); await load() }
+    catch (e: any) { alert(e.message) }
+    finally { setUpdating(null) }
+  }
+
+  const handleRemove = async (memberId: string) => {
+    if (!confirm('Remove this member?')) return
+    setUpdating(memberId)
+    try { await removeCompanyMember(memberId); await load() }
+    catch (e: any) { alert(e.message) }
+    finally { setUpdating(null) }
+  }
+
+  return (
+    <>
+      {!isDesktop && <MobilePageHeader />}
+      <div style={{ padding: isDesktop ? '28px 32px' : '16px', paddingBottom: isDesktop ? 40 : 'calc(80px + env(safe-area-inset-bottom))', maxWidth: 800, margin: '0 auto' }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 800, color: '#0D1B2A', margin: '0 0 4px' }}>Team Members</h1>
+          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>{effectiveCompany?.name} · {members.length} member{members.length !== 1 ? 's' : ''}</p>
+        </div>
+
+        {/* Add member */}
+        {canManage && (
+          <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: '16px 20px', marginBottom: 20 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Add Member</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                placeholder="Email address"
+                type="email"
+                style={{ flex: 1, minWidth: 200, height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA' }}
+              />
+              <select
+                value={newRole}
+                onChange={e => setNewRole(e.target.value as 'admin' | 'inspector')}
+                style={{ height: 42, padding: '0 10px', border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 14, background: '#F5F8FA', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="inspector">Inspector</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                onClick={handleAdd}
+                disabled={!email.trim() || adding}
+                style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: email.trim() ? '#F4A62A' : '#E1E8F0', color: email.trim() ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 14, cursor: email.trim() ? 'pointer' : 'default', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                {adding ? <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <UserPlus size={15} />}
+                Add
+              </button>
+            </div>
+            {addError && <p style={{ fontSize: 13, color: '#EF4444', margin: '8px 0 0' }}>{addError}</p>}
+            <p style={{ fontSize: 12, color: '#94A3B8', margin: '8px 0 0' }}>They must already have a Condition IQ account.</p>
+          </div>
+        )}
+
+        {/* Members list */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden' }}>
+          {loading ? (
+            <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+              <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : members.length === 0 ? (
+            <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+              <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No members yet.</p>
+            </div>
+          ) : members.map((m, i) => {
+            const role = (m.role ?? 'inspector') as 'admin' | 'inspector'
+            const cfg = ROLE_CONFIG[role]
+            const isUpdating = updating === m.id
+            const u = m.user as any
+            const isSelf = u?.id === user?.id || m.user_id === user?.id
+            return (
+              <div key={m.id} style={{ padding: '14px 20px', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 18, background: role === 'admin' ? '#FEF3C7' : '#E0F7FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: role === 'admin' ? '#92400E' : '#0097B2' }}>
+                    {(u?.full_name?.[0] ?? u?.email?.[0] ?? '?').toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{u?.full_name ?? '—'}{isSelf && <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 6 }}>(you)</span>}</p>
+                  <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{u?.email ?? '—'}</p>
+                </div>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: cfg.bg, color: cfg.color, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>
+                  <cfg.icon size={11} />{cfg.label}
+                </span>
+                {canManage && !isSelf && (
+                  isUpdating ? (
+                    <Loader2 size={16} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <select
+                        value={role}
+                        onChange={e => handleRoleChange(m.id, e.target.value as 'admin' | 'inspector')}
+                        style={{ height: 32, padding: '0 8px', border: '1px solid #E1E8F0', borderRadius: 8, fontSize: 12, background: '#FFF', fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }}>
+                        <option value="inspector">Inspector</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <button
+                        onClick={() => handleRemove(m.id)}
+                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <Trash2 size={13} color="#EF4444" />
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <BottomNav />
+      </div>
+    </>
+  )
+}

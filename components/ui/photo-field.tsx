@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Camera, X } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 const CameraCapture = dynamic(() => import('./camera-capture'), { ssr: false })
@@ -17,29 +17,43 @@ export default function PhotoField({ label, value, onChange, required }: PhotoFi
   const [showCamera, setShowCamera] = useState(false)
 
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-gray-700">
-        {label}{required && <span className="text-red-500 ml-1">*</span>}
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>
+        {label}{required && <span style={{ color: '#EF4444', marginLeft: 4 }}>*</span>}
       </label>
 
       {value ? (
-        <div className="relative rounded-xl overflow-hidden border border-gray-200" style={{ height: 160 }}>
-          <img src={value} alt={label} className="w-full h-full object-cover" />
+        <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden' }}>
+          <img src={value} alt={label} style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
           <button
-            onClick={() => onChange('')}
-            className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
+            onClick={() => setShowCamera(true)}
+            style={{
+              position: 'absolute', bottom: 8, right: 8,
+              background: '#F4A62A', color: '#0D1B2A',
+              fontSize: 11, fontWeight: 700,
+              borderRadius: 20, padding: '4px 10px',
+              border: 'none', cursor: 'pointer',
+            }}
           >
-            <X size={14} />
+            Retake
           </button>
         </div>
       ) : (
         <button
           type="button"
           onClick={() => setShowCamera(true)}
-          className="w-full h-32 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+          style={{
+            width: '100%', minHeight: 140,
+            background: '#FFFFFF',
+            border: '2px dashed #CBD5E1',
+            borderRadius: 14,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 8,
+            cursor: 'pointer',
+          }}
         >
-          <Camera size={24} />
-          <span className="text-sm">Tap to capture</span>
+          <Camera size={28} style={{ color: '#94A3B8' }} />
+          <span style={{ fontSize: 13, color: '#94A3B8' }}>Tap to capture</span>
         </button>
       )}
 

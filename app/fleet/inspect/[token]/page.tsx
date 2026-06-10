@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getFMCRequestByToken, trackFMCLinkOpened, initiateFMCInspection, completeFMCInspection, checkUsageState, type UsageState } from '@/lib/usage-actions'
+import { XCircle, Clock, CheckCircle, PartyPopper } from 'lucide-react'
 import { createFakeAuthContext, AuthContext } from '@/contexts/auth-context'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
@@ -105,7 +106,7 @@ export default function FMCInspectPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">🚫</div>
+          <XCircle size={48} className="mx-auto mb-4 text-red-400" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Link</h1>
           <p className="text-gray-500 text-sm">This dispatch link is not valid. Contact your fleet manager.</p>
         </div>
@@ -117,7 +118,7 @@ export default function FMCInspectPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">⏰</div>
+          <Clock size={48} className="mx-auto mb-4 text-gray-400" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Link Expired</h1>
           <p className="text-gray-500 text-sm">This dispatch link has expired. Request a new one from your fleet manager.</p>
         </div>
@@ -129,7 +130,7 @@ export default function FMCInspectPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">✅</div>
+          <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Already Completed</h1>
           <p className="text-gray-500 text-sm">This vehicle inspection has already been completed.</p>
         </div>
@@ -141,7 +142,7 @@ export default function FMCInspectPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">🎉</div>
+          <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Inspection Complete</h1>
           <p className="text-gray-500 text-sm">The vehicle condition report has been submitted to your fleet manager.</p>
         </div>

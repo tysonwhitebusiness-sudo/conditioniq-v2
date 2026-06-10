@@ -1,7 +1,8 @@
 'use client'
 
-import { Minus, Plus } from 'lucide-react'
+import { Key, Minus, Plus } from 'lucide-react'
 import PhotoField from '@/components/ui/photo-field'
+import StepOpener from './step-opener'
 
 interface Props {
   data: Record<string, any>
@@ -12,21 +13,38 @@ interface Props {
 
 function Counter({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-      <span className="font-medium text-gray-800">{label}</span>
-      <div className="flex items-center gap-4">
+    <div style={{
+      background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 12, padding: '16px 20px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    }}>
+      <span style={{ fontSize: 15, fontWeight: 500, color: '#0D1B2A' }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <button
+          type="button"
           onClick={() => onChange(Math.max(0, value - 1))}
-          className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300"
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            background: '#FFFFFF', border: '1.5px solid #E1E8F0',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
         >
-          <Minus size={18} />
+          <Minus size={18} color="#4A5568" />
         </button>
-        <span className="text-2xl font-bold text-gray-900 w-8 text-center">{value}</span>
+        <span style={{ fontSize: 32, fontWeight: 700, color: '#0D1B2A', width: 32, textAlign: 'center', lineHeight: 1 }}>
+          {value}
+        </span>
         <button
+          type="button"
           onClick={() => onChange(value + 1)}
-          className="w-10 h-10 rounded-full bg-[#1e3a5f] text-white flex items-center justify-center hover:bg-[#162d4a]"
+          style={{
+            width: 44, height: 44, borderRadius: 22,
+            background: '#FFFFFF', border: '1.5px solid #E1E8F0',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
         >
-          <Plus size={18} />
+          <Plus size={18} color="#00B4D8" />
         </button>
       </div>
     </div>
@@ -35,28 +53,71 @@ function Counter({ label, value, onChange }: { label: string; value: number; onC
 
 export default function StepKeys({ data, onChange, onNext, onBack }: Props) {
   return (
-    <div className="space-y-5 pb-24">
-      <Counter
-        label="Mechanical Keys"
-        value={data.mechanicalKeys ?? 0}
-        onChange={v => onChange({ ...data, mechanicalKeys: v })}
-      />
-      <Counter
-        label="Key FOBs"
-        value={data.keyFobs ?? 0}
-        onChange={v => onChange({ ...data, keyFobs: v })}
-      />
-      <PhotoField
-        label="Keys Photo"
-        value={data.keysPhoto}
-        onChange={url => onChange({ ...data, keysPhoto: url })}
+    <div style={{ paddingBottom: 140 }}>
+      <StepOpener
+        icon={<Key size={36} style={{ color: '#00B4D8' }} />}
+        title="Keys & FOBs"
+        subtitle="Count and document all keys and key fobs"
+        instructionTitle="Key Count"
+        instructionText="Count all mechanical keys and key fobs present with the vehicle."
+        complete={true}
+        remainingText=""
       />
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 flex gap-3">
-        <button onClick={onBack} className="flex-1 py-4 rounded-2xl border border-gray-200 text-gray-700 font-semibold">Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-2xl bg-[#1e3a5f] text-white font-semibold">
-          Continue
-        </button>
+      <div style={{ padding: '0 24px' }}>
+        <div style={{ marginBottom: 16 }}>
+          <Counter
+            label="Mechanical Keys"
+            value={data.mechanicalKeys ?? 0}
+            onChange={v => onChange({ ...data, mechanicalKeys: v })}
+          />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <Counter
+            label="Key FOBs"
+            value={data.keyFobs ?? 0}
+            onChange={v => onChange({ ...data, keyFobs: v })}
+          />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <PhotoField
+            label="Keys Photo"
+            value={data.keysPhoto}
+            onChange={url => onChange({ ...data, keysPhoto: url })}
+          />
+        </div>
+      </div>
+
+      {/* Fixed bottom bar */}
+      <div className="wizard-bottom-bar" style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        background: '#FFFFFF', borderTop: '1px solid #E1E8F0',
+        padding: '12px 20px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+      }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onBack}
+            style={{
+              width: '38%', height: 52, borderRadius: 12,
+              background: '#FFFFFF', border: '1.5px solid #E1E8F0',
+              color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+            }}
+          >
+            ← Back
+          </button>
+          <button
+            onClick={onNext}
+            style={{
+              flex: 1, height: 52, borderRadius: 12, border: 'none',
+              fontWeight: 700, fontSize: 15, cursor: 'pointer',
+              background: '#F4A62A', color: '#0D1B2A',
+              boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+            }}
+          >
+            Continue to Functions →
+          </button>
+        </div>
       </div>
     </div>
   )

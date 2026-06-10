@@ -2,14 +2,15 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { isOwner } from '@/lib/auth'
 import type { User } from '@supabase/supabase-js'
+import type { PlatformRole, CompanyRole } from '@/lib/roles'
 
 interface UserProfile {
   id: string
   full_name: string | null
   email: string | null
   role: string
+  platform_role: PlatformRole
   company_id: string | null
   employee_id: string | null
   location_assignments: string[] | null
@@ -35,7 +36,9 @@ interface AuthContextValue {
   impersonatedCompany: Company | null
   setImpersonatedCompany: (c: Company | null) => void
   effectiveCompany: Company | null
-  isOwnerUser: boolean
+  platformRole: PlatformRole
+  companyRole: CompanyRole | null
+  isOwnerUser: boolean  // kept for backward compat — true when platformRole === 'super_admin'
   loading: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -48,6 +51,8 @@ export const AuthContext = createContext<AuthContextValue>({
   impersonatedCompany: null,
   setImpersonatedCompany: () => {},
   effectiveCompany: null,
+  platformRole: 'user',
+  companyRole: null,
   isOwnerUser: false,
   loading: true,
   signOut: async () => {},
@@ -59,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
+  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(null)
   const [impersonatedCompany, setImpersonatedCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -72,14 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(profile ?? null)
 
     if (profile?.company_id) {
-      const { data: comp } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', profile.company_id)
-        .single()
-      setCompany(comp ?? null)
+      const [compRes, memberRes] = await Promise.all([
+        supabase.from('companies').select('*').eq('id', profile.company_id).single(),
+        supabase.from('company_members').select('role').eq('user_id', u.id).eq('company_id', profile.company_id).single(),
+      ])
+      setCompany(compRes.data ?? null)
+      setCompanyRole((memberRes.data?.role as CompanyRole) ?? null)
     } else {
       setCompany(null)
+      setCompanyRole(null)
     }
   }, [supabase])
 
@@ -100,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUserProfile(null)
         setCompany(null)
+        setCompanyRole(null)
         setImpersonatedCompany(null)
         setLoading(false)
       }
@@ -117,6 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, loadProfile])
 
   const effectiveCompany = impersonatedCompany ?? company
+  const platformRole: PlatformRole = (userProfile?.platform_role as PlatformRole) ?? 'user'
+  const isOwnerUser = platformRole === 'super_admin'
 
   return (
     <AuthContext.Provider value={{
@@ -126,7 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       impersonatedCompany,
       setImpersonatedCompany,
       effectiveCompany,
-      isOwnerUser: isOwner(user),
+      platformRole,
+      companyRole,
+      isOwnerUser,
       loading,
       signOut,
       refreshProfile,
@@ -147,39 +159,26 @@ export function createFakeAuthContext(opts?: {
   const { inspectorName, companyId, ...overrides } = opts ?? {}
 
   const fakeCompany: Company | null = companyId ? {
-    id: companyId,
-    name: 'Remote',
-    slug: null,
-    subscription_tier: 'starter',
-    reports_used: 0,
-    reports_included: 30,
+    id: companyId, name: 'Remote', slug: null,
+    subscription_tier: 'starter', reports_used: 0, reports_included: 30,
     billing_cycle_start: new Date().toISOString(),
-    stripe_customer_id: null,
-    account_type: 'standard',
+    stripe_customer_id: null, account_type: 'standard',
   } : null
 
   const fakeProfile: UserProfile | null = inspectorName ? {
-    id: 'remote-inspector',
-    full_name: inspectorName,
-    email: null,
-    role: 'inspector',
-    company_id: companyId ?? null,
-    employee_id: null,
-    location_assignments: null,
-    default_location: null,
+    id: 'remote-inspector', full_name: inspectorName, email: null,
+    role: 'inspector', platform_role: 'user',
+    company_id: companyId ?? null, employee_id: null,
+    location_assignments: null, default_location: null,
   } : null
 
   return {
-    user: null,
-    userProfile: fakeProfile,
-    company: fakeCompany,
-    impersonatedCompany: null,
-    setImpersonatedCompany: () => {},
+    user: null, userProfile: fakeProfile, company: fakeCompany,
+    impersonatedCompany: null, setImpersonatedCompany: () => {},
     effectiveCompany: fakeCompany,
-    isOwnerUser: false,
-    loading: false,
-    signOut: async () => {},
-    refreshProfile: async () => {},
+    platformRole: 'user', companyRole: null,
+    isOwnerUser: false, loading: false,
+    signOut: async () => {}, refreshProfile: async () => {},
     ...overrides,
   }
 }

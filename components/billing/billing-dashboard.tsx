@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getPlan, calcEstimatedMonthly, calcOverageCost } from '@/lib/pricing'
 import { checkUsageState, createInspectionRequest } from '@/lib/usage-actions'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, Download, ExternalLink, CreditCard, ArrowUp } from 'lucide-react'
+import { TrendingUp, Download, ExternalLink, CreditCard, ArrowUp, X, Check } from 'lucide-react'
 import type { UsageState } from '@/lib/usage-actions'
 
 export default function BillingDashboard() {
@@ -202,7 +202,7 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
       <div className="bg-white rounded-t-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold">Upgrade Plan</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="space-y-3">
           {plans.map(p => (
@@ -215,7 +215,7 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
                 <span className="font-bold text-[#1e3a5f]">{p.price > 0 ? `$${p.price}/mo` : 'Custom'}</span>
               </div>
               <ul className="space-y-1 mb-3">
-                {p.features.map(f => <li key={f} className="text-xs text-gray-500 flex gap-2"><span className="text-green-500">✓</span>{f}</li>)}
+                {p.features.map(f => <li key={f} className="text-xs text-gray-500 flex gap-2 items-start"><Check size={12} className="text-green-500 flex-shrink-0 mt-0.5" />{f}</li>)}
               </ul>
               {p.key !== currentPlan && (
                 <button

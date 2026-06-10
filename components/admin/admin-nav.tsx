@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart2, Users, MessageSquare, ChevronLeft } from 'lucide-react'
+import { BarChart2, Users, MessageSquare, ChevronLeft, ShieldCheck } from 'lucide-react'
 
 const NAV_ITEMS = [
   { href: '/admin/overview', label: 'Overview', icon: BarChart2 },
   { href: '/admin/customers', label: 'Customers', icon: Users },
+  { href: '/admin/users', label: 'Users & Roles', icon: ShieldCheck },
   { href: '/admin/crm', label: 'CRM', icon: MessageSquare },
 ]
 

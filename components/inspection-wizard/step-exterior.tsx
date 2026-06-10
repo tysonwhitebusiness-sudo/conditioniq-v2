@@ -1,19 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { Eye, Camera } from 'lucide-react'
 import PhotoField from '@/components/ui/photo-field'
 import DamageEntry from './damage-entry'
 import VoiceInput from '@/components/ui/voice-input'
-import { Camera, Plus, Trash2 } from 'lucide-react'
-import dynamic from 'next/dynamic'
+import StepOpener from './step-opener'
 
-const CameraCapture = dynamic(() => import('@/components/ui/camera-capture'), { ssr: false })
+const EXT_PHOTOS = ['exteriorFrontPhoto', 'exteriorRearPhoto', 'exteriorDriverPhoto', 'exteriorPassengerPhoto'] as const
+const EXT_LABELS = ['Front', 'Rear', 'Driver Side', 'Passenger Side']
 
-const COND_OPTIONS = { overallCondition: ['good', 'fair', 'poor'], paintCondition: ['good', 'faded', 'scratched', 'dented', 'peeling'], glassCondition: ['good', 'chipped', 'cracked', 'shattered'] }
 const TIRE_POSITIONS = ['tireFrontLeft', 'tireFrontRight', 'tireRearLeft', 'tireRearRight'] as const
 const TIRE_LABELS: Record<string, string> = { tireFrontLeft: 'FL', tireFrontRight: 'FR', tireRearLeft: 'RL', tireRearRight: 'RR' }
-const EXT_PHOTOS = ['exteriorFrontPhoto', 'exteriorRearPhoto', 'exteriorDriverPhoto', 'exteriorPassengerPhoto']
-const EXT_PHOTO_LABELS = ['Front', 'Rear', 'Driver Side', 'Passenger Side']
+
+const COND_FIELDS = [
+  { key: 'overallCondition', label: 'Overall Condition', opts: ['Good', 'Fair', 'Poor'] },
+  { key: 'paintCondition', label: 'Paint Condition', opts: ['Good', 'Faded', 'Scratched', 'Dented', 'Peeling'] },
+  { key: 'glassCondition', label: 'Glass Condition', opts: ['Good', 'Chipped', 'Cracked', 'Shattered'] },
+]
 
 interface Props {
   data: Record<string, any>
@@ -22,168 +25,222 @@ interface Props {
   onBack: () => void
 }
 
-export default function StepExterior({ data, onChange, onNext, onBack }: Props) {
-  const [showSequence, setShowSequence] = useState(false)
-  const [extraPhotos, setExtraPhotos] = useState<string[]>(data.extraPhotos ?? [])
+function ConditionPill({ label, selected, onSelect }: { label: string; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        padding: '8px 14px', borderRadius: 20, fontSize: 13, fontWeight: selected ? 600 : 400,
+        border: 'none', cursor: 'pointer',
+        background: selected ? '#F4A62A' : '#F0F4F8',
+        color: selected ? '#0D1B2A' : '#4A5568',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
 
+function TirePill({ label, selected, onSelect }: { label: string; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        padding: '5px 10px', borderRadius: 16, fontSize: 12, fontWeight: selected ? 600 : 400,
+        border: 'none', cursor: 'pointer',
+        background: selected ? '#FEF3C7' : '#F0F4F8',
+        color: selected ? '#92400E' : '#4A5568',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+export default function StepExterior({ data, onChange, onNext, onBack }: Props) {
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
   const setTire = (pos: string, key: string, val: any) =>
     onChange({ ...data, [pos]: { ...(data[pos] ?? {}), [key]: val } })
 
-  const handleSequenceCapture = (index: number, url: string) => {
-    set(EXT_PHOTOS[index], url)
-  }
-
-  const addExtraPhoto = (url: string) => {
-    const updated = [...extraPhotos, url]
-    setExtraPhotos(updated)
-    set('extraPhotos', updated)
-  }
-
-  const removeExtraPhoto = (i: number) => {
-    const updated = extraPhotos.filter((_, idx) => idx !== i)
-    setExtraPhotos(updated)
-    set('extraPhotos', updated)
-  }
+  const photosCount = EXT_PHOTOS.filter(k => data[k]).length
+  const canAdvance = photosCount >= 1
 
   return (
-    <div className="space-y-6 pb-24">
-      {/* Sequence capture button */}
-      <button
-        type="button"
-        onClick={() => setShowSequence(true)}
-        className="w-full flex items-center justify-center gap-2 py-4 bg-[#1e3a5f] text-white rounded-2xl font-medium"
-      >
-        <Camera size={20} /> Capture All 4 Exterior Photos
-      </button>
-
-      {showSequence && (
-        <CameraCapture
-          onCapture={() => {}}
-          onClose={() => setShowSequence(false)}
-          photoSequence={EXT_PHOTO_LABELS}
-          currentSequenceIndex={0}
-          onSequenceCapture={handleSequenceCapture}
-        />
-      )}
-
-      {/* Individual photo fields */}
-      <div className="grid grid-cols-2 gap-3">
-        {EXT_PHOTOS.map((key, i) => (
-          <PhotoField key={key} label={EXT_PHOTO_LABELS[i]} value={data[key]} onChange={url => set(key, url)} />
-        ))}
-      </div>
-
-      {/* Condition fields */}
-      {Object.entries(COND_OPTIONS).map(([key, opts]) => (
-        <div key={key}>
-          <label className="block text-sm font-medium text-gray-700 mb-2 capitalize">
-            {key.replace(/([A-Z])/g, ' $1').trim()}
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {opts.map(opt => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => set(key, opt)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all capitalize ${data[key] === opt ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {data.glassCondition && data.glassCondition !== 'good' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Which pane?</label>
-          <input
-            value={data.glassDamageLocation ?? ''}
-            onChange={e => set('glassDamageLocation', e.target.value)}
-            placeholder="e.g. Windshield, Driver window..."
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm"
-          />
-        </div>
-      )}
-
-      {/* Tires */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Tires</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {TIRE_POSITIONS.map(pos => {
-            const tire = data[pos] ?? {}
-            return (
-              <div key={pos} className="border border-gray-200 rounded-xl p-3 space-y-2">
-                <span className="text-xs font-bold text-gray-500">{TIRE_LABELS[pos]}</span>
-                <div>
-                  <label className="text-xs text-gray-400">Tread (32nds)</label>
-                  <input
-                    type="number"
-                    value={tire.treadDepth ?? ''}
-                    onChange={e => setTire(pos, 'treadDepth', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm mt-1"
-                    min="0" max="32"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                  <input type="checkbox" checked={tire.flat ?? false} onChange={e => setTire(pos, 'flat', e.target.checked)} />
-                  Flat
-                </label>
-                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                  <input type="checkbox" checked={tire.unevenWear ?? false} onChange={e => setTire(pos, 'unevenWear', e.target.checked)} />
-                  Uneven Wear
-                </label>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Damage */}
-      <DamageEntry
-        damages={data.damages ?? []}
-        onChange={damages => set('damages', damages)}
-        locationType="exterior"
+    <div style={{ paddingBottom: 140 }}>
+      <StepOpener
+        icon={<Eye size={36} style={{ color: '#00B4D8' }} />}
+        title="Exterior Inspection"
+        subtitle="Document all four sides and exterior condition"
+        instructionTitle="Photo Guide"
+        instructionText="Capture all 4 exterior angles. Note any paint, glass, or tire issues below."
+        complete={canAdvance}
+        remainingText={canAdvance ? '' : 'At least 1 exterior photo required'}
       />
 
-      {/* Extra photos */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Extra Photos</h3>
-        {extraPhotos.map((url, i) => (
-          <div key={i} className="relative mb-3">
-            <img src={url} alt="" className="w-full h-32 object-cover rounded-xl" />
-            <button
-              onClick={() => removeExtraPhoto(i)}
-              className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
-            >
-              <Trash2 size={14} />
-            </button>
+      <div style={{ padding: '0 24px' }}>
+        {/* Capture All 4 CTA */}
+        <button
+          type="button"
+          onClick={() => {}}
+          style={{
+            width: '100%', height: 48, borderRadius: 12, border: 'none',
+            background: '#F4A62A', color: '#0D1B2A',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            marginBottom: 16, boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+          }}
+        >
+          <Camera size={18} /> Capture All 4 Photos →
+        </button>
+
+        {/* 2×2 photo grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          {EXT_PHOTOS.map((key, i) => (
+            <PhotoField key={key} label={EXT_LABELS[i]} value={data[key]} onChange={url => set(key, url)} />
+          ))}
+        </div>
+
+        {/* Condition pills */}
+        {COND_FIELDS.map(({ key, label, opts }) => (
+          <div key={key} style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 }}>
+              {label}
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {opts.map(opt => (
+                <ConditionPill
+                  key={opt}
+                  label={opt}
+                  selected={data[key] === opt.toLowerCase()}
+                  onSelect={() => set(key, opt.toLowerCase())}
+                />
+              ))}
+            </div>
           </div>
         ))}
-        <PhotoField label="Add Extra Photo" value={null} onChange={addExtraPhoto} />
-      </div>
 
-      {/* Notes */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Exterior Notes</label>
-        <div className="relative">
-          <textarea
-            value={data.exteriorNotes ?? ''}
-            onChange={e => set('exteriorNotes', e.target.value)}
-            rows={3}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Additional exterior observations..."
+        {data.glassCondition && data.glassCondition !== 'good' && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Which pane?
+            </label>
+            <input
+              value={data.glassDamageLocation ?? ''}
+              onChange={e => set('glassDamageLocation', e.target.value)}
+              className="step-input"
+              placeholder="e.g. Windshield, Driver window..."
+            />
+          </div>
+        )}
+
+        {/* Tires */}
+        <div style={{ marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', marginBottom: 12 }}>Tires</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {TIRE_POSITIONS.map(pos => {
+              const tire = data[pos] ?? {}
+              return (
+                <div key={pos} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 12, padding: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0D1B2A', display: 'block', marginBottom: 8 }}>
+                    {TIRE_LABELS[pos]}
+                  </span>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Tread (32nds)</label>
+                    <input
+                      type="number"
+                      value={tire.treadDepth ?? ''}
+                      onChange={e => setTire(pos, 'treadDepth', e.target.value)}
+                      className="step-input"
+                      style={{ height: 36, fontSize: 13 }}
+                      min={0} max={32}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <TirePill
+                      label="Flat"
+                      selected={!!tire.flat}
+                      onSelect={() => setTire(pos, 'flat', !tire.flat)}
+                    />
+                    <TirePill
+                      label="Uneven"
+                      selected={!!tire.unevenWear}
+                      onSelect={() => setTire(pos, 'unevenWear', !tire.unevenWear)}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Damage */}
+        <div style={{ marginBottom: 20 }}>
+          <DamageEntry
+            damages={data.damages ?? []}
+            onChange={damages => set('damages', damages)}
+            locationType="exterior"
           />
-          <div className="absolute top-3 right-3">
-            <VoiceInput onTranscript={t => set('exteriorNotes', (data.exteriorNotes ?? '') + ' ' + t)} />
+        </div>
+
+        {/* Exterior notes */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>
+            Exterior Notes
+          </label>
+          <div style={{ position: 'relative' }}>
+            <textarea
+              value={data.exteriorNotes ?? ''}
+              onChange={e => set('exteriorNotes', e.target.value)}
+              className="step-textarea"
+              placeholder="Additional exterior observations..."
+              style={{ paddingRight: 44 }}
+            />
+            <div style={{ position: 'absolute', top: 10, right: 10 }}>
+              <VoiceInput onTranscript={t => set('exteriorNotes', (data.exteriorNotes ?? '') + ' ' + t)} />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 flex gap-3">
-        <button onClick={onBack} className="flex-1 py-4 rounded-2xl border border-gray-200 text-gray-700 font-semibold">Back</button>
-        <button onClick={onNext} className="flex-1 py-4 rounded-2xl bg-[#1e3a5f] text-white font-semibold">Continue</button>
+      {/* Fixed bottom bar */}
+      <div className="wizard-bottom-bar" style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        background: '#FFFFFF', borderTop: '1px solid #E1E8F0',
+        padding: '12px 20px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+      }}>
+        {!canAdvance && (
+          <p style={{ fontSize: 12, color: '#F59E0B', textAlign: 'center', marginBottom: 8 }}>
+            At least 1 exterior photo required
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onBack}
+            style={{
+              width: '38%', height: 52, borderRadius: 12,
+              background: '#FFFFFF', border: '1.5px solid #E1E8F0',
+              color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+            }}
+          >
+            ← Back
+          </button>
+          <button
+            onClick={onNext}
+            disabled={!canAdvance}
+            style={{
+              flex: 1, height: 52, borderRadius: 12, border: 'none',
+              fontWeight: 700, fontSize: 15, cursor: canAdvance ? 'pointer' : 'not-allowed',
+              background: canAdvance ? '#F4A62A' : '#E1E8F0',
+              color: canAdvance ? '#0D1B2A' : '#94A3B8',
+              boxShadow: canAdvance ? '0 4px 12px rgba(244,166,42,0.3)' : 'none',
+            }}
+          >
+            Continue to Interior →
+          </button>
+        </div>
       </div>
     </div>
   )

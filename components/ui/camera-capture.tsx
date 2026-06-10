@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useState, useCallback } from 'react'
-import { Camera, X, RotateCcw, Check } from 'lucide-react'
+import { useRef, useState, useCallback, useEffect } from 'react'
+import { X, RotateCcw, Check, Upload, Camera } from 'lucide-react'
 
 interface CameraCaptureProps {
   onCapture: (dataUrl: string) => void
@@ -15,7 +15,6 @@ interface CameraCaptureProps {
 export default function CameraCapture({
   onCapture,
   onClose,
-  liveScan,
   photoSequence,
   currentSequenceIndex = 0,
   onSequenceCapture,
@@ -23,18 +22,29 @@ export default function CameraCapture({
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
   const [streaming, setStreaming] = useState(false)
   const [captured, setCaptured] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [seqIdx, setSeqIdx] = useState(currentSequenceIndex)
 
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setStreaming(false)
+  }, [])
+
   const startCamera = useCallback(async () => {
+    setError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      })
       streamRef.current = stream
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        videoRef.current.play()
+        await videoRef.current.play()
         setStreaming(true)
       }
     } catch {
@@ -42,11 +52,11 @@ export default function CameraCapture({
     }
   }, [])
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    streamRef.current = null
-    setStreaming(false)
-  }, [])
+  // Auto-start on mount
+  useEffect(() => {
+    startCamera()
+    return () => stopCamera()
+  }, [startCamera, stopCamera])
 
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return
@@ -55,12 +65,17 @@ export default function CameraCapture({
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
     setCaptured(dataUrl)
     stopCamera()
   }, [stopCamera])
 
-  const acceptPhoto = useCallback(() => {
+  const retake = useCallback(() => {
+    setCaptured(null)
+    startCamera()
+  }, [startCamera])
+
+  const accept = useCallback(() => {
     if (!captured) return
     if (photoSequence && onSequenceCapture) {
       onSequenceCapture(seqIdx, captured)
@@ -89,62 +104,185 @@ export default function CameraCapture({
     reader.readAsDataURL(file)
   }, [onCapture, onClose])
 
+  const handleClose = () => { stopCamera(); onClose() }
+
+  const label = photoSequence ? photoSequence[seqIdx] : undefined
+  const progress = photoSequence ? `${seqIdx + 1} / ${photoSequence.length}` : undefined
+
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex items-center justify-between p-4 bg-black/80">
-        <button onClick={() => { stopCamera(); onClose() }} className="text-white p-2">
-          <X size={24} />
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: '#000000', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '16px 20px',
+        paddingTop: 'max(16px, env(safe-area-inset-top))',
+        background: 'rgba(0,0,0,0.6)',
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+      }}>
+        <button
+          onClick={handleClose}
+          style={{
+            width: 40, height: 40, borderRadius: 20,
+            background: 'rgba(255,255,255,0.15)', border: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <X size={20} color="#FFFFFF" />
         </button>
-        {photoSequence && (
-          <span className="text-white text-sm">
-            {photoSequence[seqIdx]} ({seqIdx + 1}/{photoSequence.length})
-          </span>
-        )}
-        <div className="w-10" />
+
+        <div style={{ textAlign: 'center' }}>
+          {label && <p style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 600, margin: 0 }}>{label}</p>}
+          {progress && <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, margin: 0 }}>{progress}</p>}
+        </div>
+
+        <div style={{ width: 40 }} />
       </div>
 
+      {/* Error state */}
       {error ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-4">
-          <p className="text-white text-center">{error}</p>
-          <label className="bg-blue-600 text-white px-6 py-3 rounded-lg cursor-pointer">
-            Upload Photo Instead
-            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32,
+        }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 36,
+            background: 'rgba(239,68,68,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Camera size={32} color="#EF4444" />
+          </div>
+          <p style={{ color: '#FFFFFF', fontSize: 15, textAlign: 'center', lineHeight: 1.5 }}>{error}</p>
+          <label style={{
+            background: '#00B4D8', color: '#FFFFFF',
+            padding: '14px 28px', borderRadius: 12,
+            fontWeight: 600, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <Upload size={18} /> Upload Photo
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,image/heic,image/heif"
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+            />
           </label>
-          <button onClick={onClose} className="text-gray-400">Cancel</button>
-        </div>
-      ) : captured ? (
-        <div className="flex-1 relative">
-          <img src={captured} alt="Preview" className="w-full h-full object-contain" />
-          <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-6">
-            <button
-              onClick={() => { setCaptured(null); startCamera() }}
-              className="bg-gray-700 text-white p-4 rounded-full"
-            >
-              <RotateCcw size={24} />
-            </button>
-            <button onClick={acceptPhoto} className="bg-green-600 text-white p-4 rounded-full">
-              <Check size={24} />
-            </button>
-          </div>
-        </div>
-      ) : streaming ? (
-        <div className="flex-1 relative">
-          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-          <canvas ref={canvasRef} className="hidden" />
-          <div className="absolute bottom-8 left-0 right-0 flex justify-center">
-            <button onClick={capturePhoto} className="w-16 h-16 rounded-full bg-white border-4 border-gray-300" />
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6">
-          <Camera size={48} className="text-white" />
-          <button onClick={startCamera} className="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg">
-            Open Camera
+          <button
+            onClick={handleClose}
+            style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer' }}
+          >
+            Cancel
           </button>
-          <label className="text-gray-300 cursor-pointer underline text-sm">
-            Or upload a photo
-            <input type="file" accept="image/*,image/heic,image/heif" className="hidden" onChange={handleFileUpload} />
-          </label>
+        </div>
+
+      /* Preview state */
+      ) : captured ? (
+        <div style={{ flex: 1, position: 'relative' }}>
+          <img
+            src={captured}
+            alt="Preview"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+          {/* Bottom action bar */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            padding: '20px 32px',
+            paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+            display: 'flex', justifyContent: 'center', gap: 24,
+          }}>
+            <button
+              onClick={retake}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                width: 56, height: 56, borderRadius: 28,
+                background: '#F4A62A',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <RotateCcw size={24} color="#0D1B2A" />
+              </div>
+              <span style={{ color: '#F4A62A', fontSize: 12, fontWeight: 600 }}>Retake</span>
+            </button>
+            <button
+              onClick={accept}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                width: 56, height: 56, borderRadius: 28,
+                background: '#10B981',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Check size={24} color="#FFFFFF" />
+              </div>
+              <span style={{ color: '#10B981', fontSize: 12, fontWeight: 600 }}>Use Photo</span>
+            </button>
+          </div>
+        </div>
+
+      /* Live viewfinder */
+      ) : (
+        <div style={{ flex: 1, position: 'relative' }}>
+          <video
+            ref={videoRef}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            playsInline
+            muted
+          />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+          {/* Shutter + upload row */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
+            padding: '20px 40px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
+          }}>
+            {/* Upload option */}
+            <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 22,
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Upload size={20} color="#FFFFFF" />
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>Upload</span>
+              <input
+                type="file"
+                accept="image/*,image/heic,image/heif"
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+              />
+            </label>
+
+            {/* Shutter button */}
+            <button
+              onClick={capturePhoto}
+              disabled={!streaming}
+              style={{
+                width: 72, height: 72, borderRadius: 36,
+                background: '#FFFFFF',
+                border: '4px solid rgba(255,255,255,0.4)',
+                boxShadow: '0 0 0 3px rgba(255,255,255,0.2)',
+                cursor: streaming ? 'pointer' : 'default',
+                opacity: streaming ? 1 : 0.5,
+              }}
+            />
+
+            {/* Spacer to balance layout */}
+            <div style={{ width: 44 }} />
+          </div>
         </div>
       )}
     </div>

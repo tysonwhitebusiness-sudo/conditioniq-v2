@@ -1,0 +1,125 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { getAllUsers, updatePlatformRole } from '@/lib/role-actions'
+import { ShieldCheck, User, Loader2, Search } from 'lucide-react'
+
+const ROLE_CONFIG = {
+  super_admin: { label: 'Super Admin', bg: '#FEF3C7', color: '#92400E', icon: ShieldCheck },
+  user:        { label: 'User',        bg: '#F0F4F8', color: '#4A5568', icon: User },
+}
+
+export default function AdminUsersPage() {
+  const [users, setUsers] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setUsers(await getAllUsers()) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleRoleChange = async (userId: string, newRole: 'super_admin' | 'user') => {
+    setUpdating(userId)
+    try {
+      await updatePlatformRole(userId, newRole)
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, platform_role: newRole } : u))
+    } catch (e: any) {
+      alert('Failed: ' + e.message)
+    } finally { setUpdating(null) }
+  }
+
+  const filtered = users.filter(u => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return (u.full_name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.companies?.name?.toLowerCase().includes(q))
+  })
+
+  const superAdminCount = users.filter(u => u.platform_role === 'super_admin').length
+
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#F8FAFC', margin: '0 0 4px' }}>Users & Roles</h1>
+        <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>
+          Manage platform access. {superAdminCount} super admin{superAdminCount !== 1 ? 's' : ''} — {users.length} total users.
+        </p>
+      </div>
+
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 20 }}>
+        <Search size={15} color="#475569" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email, or company…"
+          style={{ width: '100%', height: 42, background: '#1E293B', border: '1px solid #334155', borderRadius: 10, padding: '0 12px 0 36px', fontSize: 14, color: '#F1F5F9', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+        />
+      </div>
+
+      {/* Table */}
+      <div style={{ background: '#1E293B', border: '1px solid #334155', borderRadius: 14, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: '#0F172A' }}>
+              {['Name', 'Email', 'Company', 'Platform Role', ''].map(h => (
+                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} style={{ padding: 48, textAlign: 'center' }}>
+                <Loader2 size={20} color="#475569" style={{ animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+              </td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 14 }}>No users found</td></tr>
+            ) : filtered.map(u => {
+              const role = (u.platform_role ?? 'user') as 'super_admin' | 'user'
+              const cfg = ROLE_CONFIG[role]
+              const isUpdating = updating === u.id
+              return (
+                <tr key={u.id} style={{ borderTop: '1px solid #1E293B' }}>
+                  <td style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 16, background: role === 'super_admin' ? '#F4A62A' : '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: role === 'super_admin' ? '#0D1B2A' : '#94A3B8', flexShrink: 0 }}>
+                        {(u.full_name?.[0] ?? u.email?.[0] ?? '?').toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: 600, color: '#F1F5F9' }}>{u.full_name ?? '—'}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 16px', color: '#94A3B8' }}>{u.email ?? '—'}</td>
+                  <td style={{ padding: '14px 16px', color: '#64748B' }}>{u.companies?.name ?? '—'}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: cfg.bg, color: cfg.color, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>
+                      <cfg.icon size={11} />{cfg.label}
+                    </span>
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    {isUpdating ? (
+                      <Loader2 size={16} color="#475569" style={{ animation: 'spin 0.8s linear infinite' }} />
+                    ) : (
+                      <select
+                        value={role}
+                        onChange={e => handleRoleChange(u.id, e.target.value as 'super_admin' | 'user')}
+                        style={{ height: 32, padding: '0 8px', borderRadius: 8, border: '1px solid #334155', background: '#0F172A', color: '#94A3B8', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+                      >
+                        <option value="user">User</option>
+                        <option value="super_admin">Super Admin</option>
+                      </select>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
+}

@@ -46,15 +46,18 @@ export async function initiateInspection({
   companyId,
   inspectorId,
   initialData,
+  deviceId,
 }: {
   companyId: string
   inspectorId: string
   initialData?: Record<string, any>
+  deviceId?: string
 }): Promise<{ inspectionId: string; isOverage: boolean }> {
   const supabase = createClient()
 
   const usageState = await checkUsageState(companyId)
   const isOverage = usageState.isOverage
+  const now = new Date().toISOString()
 
   const { data: inspection, error } = await supabase
     .from('vehicle_inspections')
@@ -63,8 +66,10 @@ export async function initiateInspection({
       inspector_id: inspectorId,
       status: 'in_progress',
       usage_status: 'initiated',
-      initiated_at: new Date().toISOString(),
+      initiated_at: now,
+      last_active_at: now,
       is_overage: isOverage,
+      device_id: deviceId ?? null,
       ...(initialData ?? {}),
     })
     .select('id')
@@ -76,6 +81,22 @@ export async function initiateInspection({
     .from('companies')
     .update({ reports_used: (usageState.used ?? 0) + 1 })
     .eq('id', companyId)
+
+  // Sync to storage — never blocks the inspection flow
+  if (initialData?.vin) {
+    const vinKey = initialData.vin.trim()
+    const { data: existingVeh } = await supabase
+      .from('storage_vehicles')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('vin', vinKey)
+      .maybeSingle()
+    if (existingVeh) {
+      supabase.from('storage_vehicles').update({ lifecycle_status: 'in_progress', status: 'pending_inspection', updated_at: new Date().toISOString() }).eq('id', existingVeh.id).then(() => {})
+    } else {
+      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'in_progress', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).then(() => {})
+    }
+  }
 
   return { inspectionId: inspection.id, isOverage }
 }
@@ -200,6 +221,68 @@ export async function completeFMCInspection({
       latest_report_id: inspectionId,
     })
   }
+}
+
+export async function initiateInspectionRequest({
+  requestId,
+  companyId,
+  vin,
+}: {
+  requestId: string
+  companyId: string
+  vin?: string
+}): Promise<{ inspectionId: string }> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const usageState = await checkUsageState(companyId)
+
+  const { data: inspection, error } = await supabase
+    .from('vehicle_inspections')
+    .insert({
+      company_id: companyId,
+      status: 'in_progress',
+      usage_status: 'initiated',
+      initiated_at: new Date().toISOString(),
+      is_overage: usageState.isOverage,
+      ...(vin ? { vin } : {}),
+    })
+    .select('id')
+    .single()
+
+  if (error || !inspection) throw new Error(error?.message ?? 'Failed to create inspection')
+
+  const vinKey = vin?.trim() || null
+
+  await Promise.all([
+    supabase
+      .from('companies')
+      .update({ reports_used: usageState.used + 1 })
+      .eq('id', companyId),
+    supabase
+      .from('inspection_requests')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', requestId),
+  ])
+
+  // Immediately add to storage inventory — status pending_inspection, no score yet
+  if (vinKey) {
+    const now = new Date().toISOString()
+    const { data: existing } = await supabase
+      .from('storage_vehicles')
+      .select('id, status')
+      .eq('company_id', companyId)
+      .eq('vin', vinKey)
+      .maybeSingle()
+    if (existing) {
+      if (existing.status === 'active') {
+        await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existing.id)
+      }
+    } else {
+      await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).catch(() => {})
+    }
+  }
+
+  return { inspectionId: inspection.id }
 }
 
 export async function getMonthlyUsageCount(companyId: string): Promise<number> {

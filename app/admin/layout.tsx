@@ -3,21 +3,20 @@
 import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { isOwner } from '@/lib/auth'
 import AdminNav from '@/components/admin/admin-nav'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, platformRole, loading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     if (!loading) {
       if (!user) router.replace('/login')
-      else if (!isOwner(user)) router.replace('/')
+      else if (platformRole !== 'super_admin') router.replace('/')
     }
-  }, [user, loading, router])
+  }, [user, platformRole, loading, router])
 
-  if (loading || !user || !isOwner(user)) return null
+  if (loading || !user || platformRole !== 'super_admin') return null
 
   return (
     <div className="min-h-screen bg-[#0f172a]">

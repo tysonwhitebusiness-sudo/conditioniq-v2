@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { createFakeAuthContext, AuthContext } from '@/contexts/auth-context'
+import { Link2, Clock, CheckCircle, XCircle } from 'lucide-react'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 
 type RequestStatus = 'loading' | 'invalid' | 'expired' | 'used' | 'ready'
@@ -94,7 +95,7 @@ export default function RemoteInspectionPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">🔗</div>
+          <XCircle size={48} className="mx-auto mb-4 text-red-400" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Link</h1>
           <p className="text-gray-500 text-sm">This inspection link is not valid. Please contact the company that sent it.</p>
         </div>
@@ -106,7 +107,7 @@ export default function RemoteInspectionPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">⏰</div>
+          <Clock size={48} className="mx-auto mb-4 text-gray-400" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Link Expired</h1>
           <p className="text-gray-500 text-sm">This inspection link has expired (24-hour limit). Please request a new link from the company.</p>
         </div>
@@ -118,7 +119,7 @@ export default function RemoteInspectionPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <div className="text-4xl mb-4">✅</div>
+          <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Already Completed</h1>
           <p className="text-gray-500 text-sm">This inspection link has already been used. Each link is single-use only.</p>
         </div>

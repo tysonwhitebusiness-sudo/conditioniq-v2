@@ -1,0 +1,299 @@
+'use client'
+
+import { useRef, useState, useCallback, useEffect } from 'react'
+import { X, Upload } from 'lucide-react'
+
+export interface CameraSlot {
+  key: string
+  label: string
+}
+
+interface InspectionCameraProps {
+  slots: CameraSlot[]
+  values: Record<string, string | null | undefined>
+  startKey?: string
+  onCapture: (key: string, dataUrl: string) => void
+  onClose: () => void
+}
+
+export default function InspectionCamera({
+  slots,
+  values,
+  startKey,
+  onCapture,
+  onClose,
+}: InspectionCameraProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [streaming, setStreaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [currentKey, setCurrentKey] = useState<string>(() => {
+    if (startKey) return startKey
+    return slots.find(s => !values[s.key])?.key ?? slots[0]?.key ?? ''
+  })
+
+  const currentSlot = slots.find(s => s.key === currentKey) ?? slots[0]
+  const currentIdx = slots.findIndex(s => s.key === currentKey)
+  const showProgress = slots.length > 1
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setStreaming(false)
+  }, [])
+
+  const startCamera = useCallback(async () => {
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+        setStreaming(true)
+      }
+    } catch {
+      setError('Camera access denied. Use the Upload button to add a photo instead.')
+    }
+  }, [])
+
+  useEffect(() => {
+    startCamera()
+    return () => stopCamera()
+  }, [startCamera, stopCamera])
+
+  const advanceOrClose = useCallback(
+    (justCapturedKey: string, updatedValues: Record<string, string | null | undefined>) => {
+      if (slots.length === 1) {
+        stopCamera()
+        onClose()
+        return
+      }
+      const startIdx = slots.findIndex(s => s.key === justCapturedKey)
+      const searchOrder = [...slots.slice(startIdx + 1), ...slots.slice(0, startIdx)]
+      const next = searchOrder.find(s => !updatedValues[s.key])
+      if (next) {
+        setCurrentKey(next.key)
+      } else {
+        stopCamera()
+        onClose()
+      }
+    },
+    [slots, stopCamera, onClose],
+  )
+
+  const capturePhoto = useCallback(() => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || !streaming) return
+
+    // Guide dimensions (must match CSS)
+    const W = video.clientWidth || window.innerWidth
+    const H = video.clientHeight || window.innerHeight
+    const guideW = W * 0.85
+    const guideH = H * 0.60
+    const guideLeft = (W - guideW) / 2
+    const guideTop = H / 2 - guideH / 2 - H * 0.05
+
+    // objectFit: cover math
+    const vW = video.videoWidth
+    const vH = video.videoHeight
+    const scale = Math.max(W / vW, H / vH)
+    const offsetX = (W - vW * scale) / 2
+    const offsetY = (H - vH * scale) / 2
+
+    const srcX = Math.max(0, (guideLeft - offsetX) / scale)
+    const srcY = Math.max(0, (guideTop - offsetY) / scale)
+    const srcW = Math.min(vW - srcX, guideW / scale)
+    const srcH = Math.min(vH - srcY, guideH / scale)
+
+    canvas.width = Math.round(srcW)
+    canvas.height = Math.round(srcH)
+    canvas.getContext('2d')?.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+
+    onCapture(currentKey, dataUrl)
+    advanceOrClose(currentKey, { ...values, [currentKey]: dataUrl })
+  }, [streaming, currentKey, values, onCapture, advanceOrClose])
+
+  const handleFileUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const dataUrl = ev.target?.result as string
+        onCapture(currentKey, dataUrl)
+        advanceOrClose(currentKey, { ...values, [currentKey]: dataUrl })
+      }
+      reader.readAsDataURL(file)
+    },
+    [currentKey, values, onCapture, advanceOrClose],
+  )
+
+  const handleClose = useCallback(() => { stopCamera(); onClose() }, [stopCamera, onClose])
+
+  // Guide dimensions for CSS (computed with vw/vh via CSS calc)
+  const GUIDE_W_PCT = 85
+  const GUIDE_H_PCT = 60
+  const OFFSET_UP_PCT = 5
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#000' }}>
+      {/* Live video */}
+      <video
+        ref={videoRef}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        playsInline
+        muted
+      />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {error ? (
+        /* ── Error state ─────────────────────────────────────────────────────── */
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32, background: '#000',
+        }}>
+          <div style={{ width: 64, height: 64, borderRadius: 32, background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Upload size={28} color="#EF4444" />
+          </div>
+          <p style={{ color: '#FFF', fontSize: 15, textAlign: 'center', lineHeight: 1.6, maxWidth: 280 }}>{error}</p>
+          <label style={{ background: '#00B4D8', color: '#FFF', padding: '14px 28px', borderRadius: 12, fontWeight: 600, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Upload size={18} /> Upload Photo
+            <input ref={fileInputRef} type="file" accept="image/*,image/heic,image/heif" style={{ display: 'none' }} onChange={handleFileUpload} />
+          </label>
+          <button onClick={handleClose} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* ── Semi-transparent overlay (4 surrounding panels) ──────────────── */}
+          {/* Top */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0,
+            height: `calc(50% - ${GUIDE_H_PCT / 2}vh - ${OFFSET_UP_PCT}vh)`,
+            background: 'rgba(0,0,0,0.55)', pointerEvents: 'none',
+          }} />
+          {/* Bottom */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            top: `calc(50% + ${GUIDE_H_PCT / 2}vh - ${OFFSET_UP_PCT}vh)`,
+            background: 'rgba(0,0,0,0.55)', pointerEvents: 'none',
+          }} />
+          {/* Left */}
+          <div style={{
+            position: 'absolute',
+            top: `calc(50% - ${GUIDE_H_PCT / 2}vh - ${OFFSET_UP_PCT}vh)`,
+            bottom: `calc(50% - ${GUIDE_H_PCT / 2}vh + ${OFFSET_UP_PCT}vh)`,
+            left: 0, width: `calc(50% - ${GUIDE_W_PCT / 2}vw)`,
+            background: 'rgba(0,0,0,0.55)', pointerEvents: 'none',
+          }} />
+          {/* Right */}
+          <div style={{
+            position: 'absolute',
+            top: `calc(50% - ${GUIDE_H_PCT / 2}vh - ${OFFSET_UP_PCT}vh)`,
+            bottom: `calc(50% - ${GUIDE_H_PCT / 2}vh + ${OFFSET_UP_PCT}vh)`,
+            right: 0, width: `calc(50% - ${GUIDE_W_PCT / 2}vw)`,
+            background: 'rgba(0,0,0,0.55)', pointerEvents: 'none',
+          }} />
+
+          {/* ── Guide rectangle ───────────────────────────────────────────────── */}
+          <div style={{
+            position: 'absolute',
+            left: `${(100 - GUIDE_W_PCT) / 2}vw`,
+            top: `calc(50% - ${GUIDE_H_PCT / 2}vh - ${OFFSET_UP_PCT}vh)`,
+            width: `${GUIDE_W_PCT}vw`,
+            height: `${GUIDE_H_PCT}vh`,
+            pointerEvents: 'none',
+          }}>
+            {/* Corner markers — L-shaped, 24px arms, 3px thick */}
+            {([
+              { top: 0,    left: 0,    borderTop: '3px solid #FFF', borderLeft: '3px solid #FFF' },
+              { top: 0,    right: 0,   borderTop: '3px solid #FFF', borderRight: '3px solid #FFF' },
+              { bottom: 0, left: 0,    borderBottom: '3px solid #FFF', borderLeft: '3px solid #FFF' },
+              { bottom: 0, right: 0,   borderBottom: '3px solid #FFF', borderRight: '3px solid #FFF' },
+            ] as React.CSSProperties[]).map((style, i) => (
+              <div key={i} style={{ position: 'absolute', width: 24, height: 24, ...style }} />
+            ))}
+
+            {/* Label above guide */}
+            <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, paddingBottom: 12, textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#FFF', textShadow: '0 1px 6px rgba(0,0,0,0.9)' }}>
+                {currentSlot?.label}
+              </p>
+              {showProgress && (
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.6)', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                  {currentIdx + 1} of {slots.length}
+                </p>
+              )}
+            </div>
+
+            {/* Instruction below guide */}
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, paddingTop: 10, textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.65)', textShadow: '0 1px 4px rgba(0,0,0,0.8)', letterSpacing: '0.01em' }}>
+                Position vehicle within frame
+              </p>
+            </div>
+          </div>
+
+          {/* ── X button top left ─────────────────────────────────────────────── */}
+          <button
+            onClick={handleClose}
+            style={{
+              position: 'absolute',
+              top: 'max(20px, env(safe-area-inset-top))',
+              left: 20, zIndex: 10,
+              width: 40, height: 40, borderRadius: 20,
+              background: 'rgba(0,0,0,0.5)', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={20} color="#FFF" />
+          </button>
+
+          {/* ── Bottom row: upload + shutter ──────────────────────────────────── */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            paddingBottom: 'max(40px, env(safe-area-inset-bottom))',
+            padding: '20px 40px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            {/* Upload fallback */}
+            <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Upload size={20} color="#FFF" />
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>Upload</span>
+              <input type="file" accept="image/*,image/heic,image/heif" style={{ display: 'none' }} onChange={handleFileUpload} />
+            </label>
+
+            {/* Shutter */}
+            <button
+              onClick={capturePhoto}
+              disabled={!streaming}
+              style={{
+                width: 76, height: 76, borderRadius: 38,
+                background: '#FFF',
+                border: '5px solid rgba(255,255,255,0.35)',
+                boxShadow: '0 0 0 3px rgba(255,255,255,0.15)',
+                cursor: streaming ? 'pointer' : 'default',
+                opacity: streaming ? 1 : 0.5,
+                padding: 0, flexShrink: 0,
+              }}
+            />
+
+            {/* Spacer */}
+            <div style={{ width: 44 }} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

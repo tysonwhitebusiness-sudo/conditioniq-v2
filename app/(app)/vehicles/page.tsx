@@ -17,7 +17,7 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'queued' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
+type LifecycleStatus = 'pending_arrival' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
 type AppStep = 'browse' | 'inspecting'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -29,13 +29,13 @@ function effectiveStatus(v: any): LifecycleStatus {
     case 'releasing': return 'releasing'
     case 'inspected': return 'on_lot'
     case 'pending_inspection': return 'in_progress'
-    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'queued'
-    default: return 'queued'
+    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
+    default: return 'pending_arrival'
   }
 }
 
 const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  queued:      { label: 'QUEUED',      bg: '#F0F4F8', color: '#4A5568' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8', color: '#4A5568' },
   in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E', pulse: true },
   on_lot:      { label: 'ON LOT',      bg: '#E0F7FC', color: '#0097B2' },
   releasing:   { label: 'RELEASING',   bg: '#FEF3C7', color: '#92400E' },
@@ -44,8 +44,12 @@ const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: st
 }
 
 const STATUS_BORDER: Record<LifecycleStatus, string> = {
-  queued: '#94A3B8', in_progress: '#F59E0B', on_lot: '#00B4D8',
+  pending_arrival: '#94A3B8', in_progress: '#F59E0B', on_lot: '#00B4D8',
   releasing: '#F59E0B', released: '#10B981', one_off: '#94A3B8',
+}
+
+const STATUS_SORT: Record<string, number> = {
+  pending_arrival: 0, on_lot: 1, in_progress: 1, one_off: 2, released: 3, releasing: 4,
 }
 
 const INSP_BADGE: Record<string, { label: string; bg: string; color: string }> = {
@@ -206,7 +210,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
         locationId: locationId || undefined,
         arrivedAt: arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
         notes,
-        lifecycleStatus: 'queued',
+        lifecycleStatus: 'pending_arrival',
       })
       if (andDispatch) onAddAndDispatch(cleanVin)
       else onAdded()
@@ -432,7 +436,7 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
 const TABS = [
   { id: 'all',         label: 'All' },
   { id: 'on_lot',      label: 'On Lot' },
-  { id: 'queued',      label: 'Queue' },
+  { id: 'pending_arrival', label: 'Pending Arrival' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'released',    label: 'Released' },
   { id: 'one_off',     label: 'One-Off' },
@@ -464,6 +468,11 @@ export default function VehiclesPage() {
   const [showAddVehicle, setShowAddVehicle] = useState(false)
   const [showCSV, setShowCSV] = useState(false)
   const [dispatchSheet, setDispatchSheet] = useState<{ open: boolean; vin?: string; year?: string; make?: string; model?: string }>({ open: false })
+
+  // Reports popover
+  const [reportsVehicle, setReportsVehicle] = useState<any | null>(null)
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsList, setReportsList] = useState<any[]>([])
 
   const loadVehicles = useCallback(async () => {
     if (!companyId) return
@@ -507,17 +516,23 @@ export default function VehiclesPage() {
     return true
   })
 
+  const sorted = [...filtered].sort((a, b) => {
+    const pa = STATUS_SORT[a._status] ?? 5
+    const pb = STATUS_SORT[b._status] ?? 5
+    return pa - pb
+  })
+
   const counts: Record<string, number> = {
     all: allTagged.length,
     on_lot: allTagged.filter(v => v._status === 'on_lot').length,
-    queued: allTagged.filter(v => v._status === 'queued').length,
+    pending_arrival: allTagged.filter(v => v._status === 'pending_arrival').length,
     in_progress: allTagged.filter(v => v._status === 'in_progress').length,
     released: allTagged.filter(v => v._status === 'released').length,
     one_off: allTagged.filter(v => v._status === 'one_off').length,
   }
 
-  const statsOnLot = allTagged.filter(v => ['queued', 'in_progress', 'on_lot', 'releasing'].includes(v._status)).length
-  const statsUninspected = allTagged.filter(v => ['queued', 'in_progress', 'on_lot', 'releasing'].includes(v._status) && !v.latest_inspection_id).length
+  const statsOnLot = allTagged.filter(v => ['pending_arrival', 'in_progress', 'on_lot', 'releasing'].includes(v._status)).length
+  const statsUninspected = allTagged.filter(v => ['pending_arrival', 'in_progress', 'on_lot', 'releasing'].includes(v._status) && !v.latest_inspection_id).length
   const statsReleasedMonth = allTagged.filter(v => v._status === 'released' && v.released_at >= monthStart).length
   const existingVins = new Set(vehicles.map(v => v.vin?.toUpperCase() ?? ''))
 
@@ -545,6 +560,21 @@ export default function VehiclesPage() {
     setAppStep('browse')
     loadVehicles()
   }, [effectiveCompany?.id, loadVehicles])
+
+  const handleOpenReports = async (v: any) => {
+    setReportsVehicle(v)
+    setReportsLoading(true)
+    setReportsList([])
+    const { data } = await createClient()
+      .from('vehicle_inspections')
+      .select('id, created_at, completed_at, inspection_type, vehicle_score, status')
+      .eq('company_id', companyId)
+      .eq('vehicle_id', v.id)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: true })
+    setReportsList(data ?? [])
+    setReportsLoading(false)
+  }
 
   const exportCSV = () => {
     const hdrs = ['VIN', 'Year', 'Make', 'Model', 'Status', 'Days on Lot', 'Location', 'Check-In Score', 'Check-Out Score']
@@ -671,15 +701,15 @@ export default function VehiclesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E1E8F0' }}>
-                {['Vehicle', 'Status', 'Days', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
+                {['Vehicle', 'Status', 'Days', 'Released', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
-              {!loading && filtered.length === 0 && <tr><td colSpan={7} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
-              {!loading && filtered.map(v => {
+              {loading && <tr><td colSpan={8} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
+              {!loading && sorted.length === 0 && <tr><td colSpan={8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
+              {!loading && sorted.map(v => {
                 const sc = STATUS_CFG[v._status]
                 const days = daysOnLot(v.arrived_at, v.released_at, v._status)
                 const isExp = expandedId === v.id
@@ -706,6 +736,14 @@ export default function VehiclesPage() {
                       <td style={{ padding: '13px 14px', fontSize: 13 }}>
                         {days !== null ? <span style={{ color: daysColor(days), fontWeight: 600 }}>{days}d</span> : <span style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
+                      {/* Released Date */}
+                      <td style={{ padding: '13px 14px', fontSize: 13 }}>
+                        {(v.released_date || v.released_at) ? (
+                          <span style={{ color: '#10B981', fontWeight: 600 }}>
+                            {new Date(v.released_date ?? v.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                      </td>
                       {/* Check-In */}
                       <td style={{ padding: '13px 14px' }}>
                         <ScoreBadge score={null} inspectionId={v.checkin_inspection_id ?? undefined} />
@@ -728,14 +766,14 @@ export default function VehiclesPage() {
                       {/* Actions */}
                       <td style={{ padding: '13px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                          {v._status === 'queued' && <>
+                          {v._status === 'pending_arrival' && <>
                             <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
                             <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>
                           </>}
                           {v._status === 'in_progress' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
                           {v._status === 'on_lot' && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
                           {v._status === 'releasing' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                          {(v._status === 'released' || v._status === 'one_off') && <button onClick={() => setExpandedId(v.id)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View Reports</button>}
+                          {(v._status === 'released' || v._status === 'one_off') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                           <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                           {/* Kebab */}
                           <div style={{ position: 'relative' }}>
@@ -758,7 +796,7 @@ export default function VehiclesPage() {
                     </tr>
                     {isExp && (
                       <tr>
-                        <td colSpan={7} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
+                        <td colSpan={8} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
                           <ExpandedRow vehicle={v} companyId={companyId} />
                         </td>
                       </tr>
@@ -772,8 +810,8 @@ export default function VehiclesPage() {
           // Mobile cards
           <div>
             {loading && <div style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></div>}
-            {!loading && filtered.length === 0 && <p style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>No vehicles found</p>}
-            {!loading && filtered.map(v => {
+            {!loading && sorted.length === 0 && <p style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>No vehicles found</p>}
+            {!loading && sorted.map(v => {
               const sc = STATUS_CFG[v._status]
               const days = daysOnLot(v.arrived_at, v.released_at, v._status)
               const isExp = expandedId === v.id
@@ -793,9 +831,10 @@ export default function VehiclesPage() {
                       {days !== null && <span style={{ fontSize: 12, color: daysColor(days), fontWeight: 600 }}>{days}d on lot</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                      {v._status === 'queued' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
-                      {(v._status === 'queued' || v._status === 'on_lot') && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
+                      {v._status === 'pending_arrival' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
+                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
                       {(v._status === 'in_progress' || v._status === 'releasing') && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
+                      {(v._status === 'released' || v._status === 'one_off') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                       <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                     </div>
                   </div>
@@ -815,6 +854,61 @@ export default function VehiclesPage() {
       )}
       {showCSV && <CSVImportModal companyId={companyId} existingVins={existingVins} onClose={() => setShowCSV(false)} onImported={loadVehicles} />}
       {openKebab && <div onClick={() => setOpenKebab(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
+
+      {/* Reports Modal */}
+      {reportsVehicle && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
+          <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #E1E8F0' }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Reports</h3>
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                  {[reportsVehicle.year, reportsVehicle.make, reportsVehicle.model].filter(Boolean).join(' ') || reportsVehicle.vin}
+                </p>
+              </div>
+              <button onClick={() => setReportsVehicle(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+                <X size={18} color="#94A3B8" />
+              </button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {reportsLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+                </div>
+              ) : reportsList.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0', margin: 0 }}>No completed reports found.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {reportsList.map((r, i) => {
+                    const label = r.inspection_type === 'check_in' ? 'Check-In Report'
+                      : r.inspection_type === 'check_out' ? 'Check-Out Report'
+                      : i === 0 ? 'Check-In Report' : 'Check-Out Report'
+                    const dateStr = new Date(r.completed_at ?? r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    return (
+                      <div key={r.id} style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 2px' }}>{label}</p>
+                          <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{dateStr}</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            onClick={() => window.open(`/reports/${r.id}`, '_blank')}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >View</button>
+                          <button
+                            onClick={() => { const a = document.createElement('a'); a.href = `/reports/${r.id}`; a.download = `report-${String(r.id).slice(0,6)}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a) }}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >Download</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <SendLinkSheet
         isOpen={dispatchSheet.open}
         onClose={() => setDispatchSheet({ open: false })}

@@ -25,6 +25,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/crm': 'CRM',
   '/admin/users': 'Users & Roles',
   '/settings/members': 'Team Members',
+  '/lot': 'Lot Map',
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

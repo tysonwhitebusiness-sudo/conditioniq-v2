@@ -13,47 +13,63 @@ export async function getAdminStats() {
     supabase.from('vehicle_inspections').select('id, vin, company_id, created_at, companies(name)').order('created_at', { ascending: false }).limit(20),
   ])
 
-  const companiesData = companies.data ?? []
+  const companiesData = (companies.data ?? []) as Record<string, unknown>[]
   let mrr = 0
   let trialCount = 0
-
-  companiesData.forEach((c: any) => {
-    const plan = getPlan(c.subscription_tier)
+  companiesData.forEach(c => {
+    const plan = getPlan(c.subscription_tier as string)
     mrr += plan.monthlyCost
     if (c.subscription_tier === 'demo') trialCount++
   })
 
-  const reportsByCompany: Record<string, number> = {}
-  ;(reports.data ?? []).forEach((r: any) => {
-    reportsByCompany[r.company_id] = (reportsByCompany[r.company_id] ?? 0) + 1
-  })
-
   const topCustomers = companiesData
-    .map((c: any) => ({
-      ...c,
-      reportsThisMonth: reportsByCompany[c.id] ?? 0,
-      accountAgeDays: Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000),
-    }))
-    .sort((a: any, b: any) => b.reportsThisMonth - a.reportsThisMonth)
+    .map(c => ({ ...c, accountAgeDays: Math.floor((Date.now() - new Date(c.created_at as string).getTime()) / 86400000) }))
+    .sort((a, b) => (b.reports_used as number) - (a.reports_used as number))
     .slice(0, 10)
 
   return {
     mrr,
     activeCustomers: companiesData.length,
-    reportsThisMonth: reports.count ?? (reports.data ?? []).length,
-    avgReportsPerCustomer: companiesData.length > 0 ? Math.round((reports.data ?? []).length / companiesData.length) : 0,
+    reportsThisMonth: (reports.data ?? []).length,
     trialAccounts: trialCount,
     topCustomers,
     recentActivity: recentActivity.data ?? [],
   }
 }
 
+export async function getMRRByMonth() {
+  const supabase = createClient()
+  const { data: companies } = await supabase.from('companies').select('id, subscription_tier, created_at')
+  const months = []
+  for (let i = 11; i >= 0; i--) {
+    const date = new Date()
+    date.setDate(1)
+    date.setMonth(date.getMonth() - i)
+    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59)
+    const mrr = (companies ?? []).reduce((sum: number, c: Record<string, unknown>) => {
+      if (new Date(c.created_at as string) <= monthEnd) return sum + getPlan(c.subscription_tier as string).monthlyCost
+      return sum
+    }, 0)
+    months.push({ month: date.toLocaleDateString('en-US', { month: 'short' }), mrr })
+  }
+  return months
+}
+
+export async function getRecentCustomerActivity(limit = 10) {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('companies')
+    .select('id, name, subscription_tier, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return (data ?? []).map((c: Record<string, unknown>) => ({
+    id: c.id, company_name: c.name, event: 'signup', description: 'New customer signup', plan: c.subscription_tier, timestamp: c.created_at,
+  }))
+}
+
 export async function getAllCompanies() {
   const supabase = createClient()
-  const { data, error } = await supabase
-    .from('companies')
-    .select('*, user_profiles(id, full_name, email, role)')
-    .order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
@@ -66,25 +82,20 @@ export async function updateCompanyBilling(
   await supabase.from('companies').update(updates).eq('id', companyId)
 }
 
-export async function getCompanyInspections(companyId: string, limit = 20) {
+export async function getCompanyInspections(companyId: string, limit = 10) {
   const supabase = createClient()
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('vehicle_inspections')
-    .select('id, vin, make, model, year, created_at, status, vehicle_score, user_profiles(full_name)')
+    .select('id, vin, make, model, year, created_at, status, usage_status, vehicle_score, inspector:user_profiles!inspector_id(full_name)')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(limit)
-  if (error) throw error
   return data ?? []
 }
 
 export async function getCompanyNotes(companyId: string) {
   const supabase = createClient()
-  const { data } = await supabase
-    .from('company_notes')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
+  const { data } = await supabase.from('company_notes').select('*').eq('company_id', companyId).order('created_at', { ascending: false })
   return data ?? []
 }
 
@@ -93,40 +104,12 @@ export async function addCompanyNote(companyId: string, note: string) {
   await supabase.from('company_notes').insert({ company_id: companyId, note })
 }
 
-export async function getSystemBroadcasts() {
-  const supabase = createClient()
-  const { data } = await supabase.from('system_broadcasts').select('*').eq('is_active', true).order('created_at', { ascending: false })
-  return data ?? []
-}
-
-export async function createSystemBroadcast(message: string) {
-  const supabase = createClient()
-  await supabase.from('system_broadcasts').insert({ message, is_active: true })
-}
-
-export async function deactivateBroadcast(id: string) {
-  const supabase = createClient()
-  await supabase.from('system_broadcasts').update({ is_active: false }).eq('id', id)
-}
-
 export async function getOverageTracker() {
   const supabase = createClient()
-  const { data, error } = await supabase
-    .from('companies')
-    .select('id, name, subscription_tier, reports_used, reports_included')
-    .gt('reports_used', 0)
-
-  if (error) throw error
-
-  return (data ?? []).map((c: any) => {
-    const plan = getPlan(c.subscription_tier)
-    const overage = Math.max(0, c.reports_used - c.reports_included)
-    return {
-      ...c,
-      planName: plan.name,
-      limit: c.reports_included,
-      overageCount: overage,
-      overageRevenue: overage * plan.additionalReportCost,
-    }
-  }).filter((c: any) => c.overageCount > 0)
+  const { data } = await supabase.from('companies').select('id, name, subscription_tier, reports_used, reports_included').gt('reports_used', 0)
+  return (data ?? []).map((c: Record<string, unknown>) => {
+    const plan = getPlan(c.subscription_tier as string)
+    const overage = Math.max(0, (c.reports_used as number) - (c.reports_included as number))
+    return { ...c, planName: plan.name, overageCount: overage, overageRevenue: overage * plan.additionalReportCost }
+  }).filter((c: Record<string, unknown>) => (c.overageCount as number) > 0)
 }

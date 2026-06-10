@@ -18,6 +18,7 @@ export interface StorageVehicle {
   latest_score: number | null
   arrived_at: string
   released_at: string | null
+  released_date: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -86,8 +87,6 @@ export async function upsertVehicleToInventory(
         updates.arrived_at = now
       } else if (inspectionType === 'check_out') {
         updates.checkout_inspection_id = inspectionId
-        updates.status = 'released'
-        updates.released_at = now
       }
     }
     await supabase.from('storage_vehicles').update(updates).eq('id', existing.id)
@@ -110,8 +109,6 @@ export async function upsertVehicleToInventory(
         insert.status = 'inspected'
       } else if (inspectionType === 'check_out') {
         insert.checkout_inspection_id = inspectionId
-        insert.status = 'released'
-        insert.released_at = now
       }
     }
     await supabase.from('storage_vehicles').insert(insert)
@@ -510,13 +507,13 @@ export async function updateVehicleLifecycleStatus(
 
   if (inspectionType === 'check_in') {
     updates.checkin_inspection_id = inspectionId
-    updates.lifecycle_status = 'on_lot'
     updates.status = 'inspected'
+    // Only promote to on_lot if vehicle is still pending_arrival (don't overwrite a richer status)
+    if (!vehicle.lifecycle_status || vehicle.lifecycle_status === 'queued' || vehicle.lifecycle_status === 'pending_arrival') {
+      updates.lifecycle_status = 'on_lot'
+    }
   } else if (inspectionType === 'check_out') {
     updates.checkout_inspection_id = inspectionId
-    updates.lifecycle_status = 'released'
-    updates.status = 'released'
-    updates.released_at = new Date().toISOString()
     if (vehicle.checkin_inspection_id && score !== null) {
       const { data: checkin } = await supabase
         .from('vehicle_inspections')
@@ -529,7 +526,7 @@ export async function updateVehicleLifecycleStatus(
     }
   } else {
     const cur = vehicle.lifecycle_status
-    if (!cur || ['queued', 'in_progress'].includes(cur)) {
+    if (!cur || ['queued', 'pending_arrival', 'in_progress'].includes(cur)) {
       updates.lifecycle_status = 'one_off'
     }
   }
@@ -582,7 +579,7 @@ export async function addVehicleToSystem(
       location_id: data.locationId || null,
       arrived_at: data.arrivedAt ?? new Date().toISOString(),
       notes: data.notes || null,
-      lifecycle_status: data.lifecycleStatus ?? 'queued',
+      lifecycle_status: data.lifecycleStatus ?? 'pending_arrival',
       status: 'active',
       latest_inspection_id: data.inspectionId || null,
     })
@@ -604,4 +601,24 @@ export async function getVehiclesNeedingAttention(companyId: string) {
     .lt('arrived_at', sevenDaysAgo)
     .order('arrived_at')
   return data ?? []
+}
+
+export async function releaseVehicle(vehicleId: string): Promise<void> {
+  const supabase = createClient()
+  const now = new Date()
+  await supabase.from('storage_vehicles').update({
+    lifecycle_status: 'released',
+    status: 'released',
+    released_at: now.toISOString(),
+    released_date: now.toISOString().split('T')[0],
+    updated_at: now.toISOString(),
+  }).eq('id', vehicleId)
+}
+
+export async function markVehicleOnLot(vehicleId: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('storage_vehicles').update({
+    lifecycle_status: 'on_lot',
+    updated_at: new Date().toISOString(),
+  }).eq('id', vehicleId)
 }

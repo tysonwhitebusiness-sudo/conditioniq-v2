@@ -5,18 +5,18 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { updateVehicleLifecycleStatus } from '@/lib/storage-actions'
+import { updateVehicleLifecycleStatus, releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import {
   ArrowLeft, Play, Send, ExternalLink, Download,
-  Camera, Loader2, X,
+  Camera, Loader2, X, CheckCircle, LogOut,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'queued' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
+type LifecycleStatus = 'pending_arrival' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
 type AppStep = 'view' | 'inspecting'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -28,13 +28,13 @@ function effectiveStatus(v: any): LifecycleStatus {
     case 'releasing': return 'releasing'
     case 'inspected': return 'on_lot'
     case 'pending_inspection': return 'in_progress'
-    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'queued'
-    default: return 'queued'
+    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
+    default: return 'pending_arrival'
   }
 }
 
 const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  queued:      { label: 'QUEUED',      bg: '#F0F4F8', color: '#4A5568' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8', color: '#4A5568' },
   in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E', pulse: true },
   on_lot:      { label: 'ON LOT',      bg: '#E0F7FC', color: '#0097B2' },
   releasing:   { label: 'RELEASING',   bg: '#FEF3C7', color: '#92400E' },
@@ -164,6 +164,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [newNote, setNewNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
 
+  // Status action state
+  const [confirmRelease, setConfirmRelease] = useState(false)
+  const [actionSaving, setActionSaving] = useState(false)
+
   // Wizard
   const [appStep, setAppStep] = useState<AppStep>('view')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
@@ -184,22 +188,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   }, [companyId, params.vehicleId])
 
   // ── Fetch inspections (no heavy JSONB photo columns)
-  const fetchInspections = useCallback(async (vin: string) => {
-    if (!companyId || !vin) return
+  const fetchInspections = useCallback(async () => {
+    if (!companyId || !params.vehicleId) return
     setLoadingInspections(true)
     const { data, error } = await createClient()
       .from('vehicle_inspections')
       .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id, inspector:user_profiles!inspector_id(full_name)')
       .eq('company_id', companyId)
-      .eq('vin', vin)
+      .eq('vehicle_id', params.vehicleId)
       .order('created_at', { ascending: false })
     if (error) console.error('[detail] inspections:', error)
     setInspections(data ?? [])
     setLoadingInspections(false)
-  }, [companyId])
+  }, [companyId, params.vehicleId])
 
   useEffect(() => { fetchVehicle() }, [fetchVehicle])
-  useEffect(() => { if (vehicle?.vin) fetchInspections(vehicle.vin) }, [vehicle?.vin, fetchInspections])
+  useEffect(() => { fetchInspections() }, [fetchInspections])
 
   // ── Lazy load photos
   const loadPhotos = async () => {
@@ -246,6 +250,23 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     } catch (e: any) { alert('Failed to start: ' + e.message) }
   }
 
+  const handleMarkOnLot = async () => {
+    if (!vehicle) return
+    setActionSaving(true)
+    await markVehicleOnLot(vehicle.id)
+    await fetchVehicle()
+    setActionSaving(false)
+  }
+
+  const handleRelease = async () => {
+    if (!vehicle) return
+    setActionSaving(true)
+    await releaseVehicle(vehicle.id)
+    setConfirmRelease(false)
+    await fetchVehicle()
+    setActionSaving(false)
+  }
+
   const handleWizardComplete = useCallback(async (data: any) => {
     if (effectiveCompany?.id && vehicle?.vin) {
       updateVehicleLifecycleStatus(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
@@ -253,7 +274,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setAppStep('view')
     setCurrentInspectionId(null)
     await fetchVehicle()
-    if (vehicle?.vin) await fetchInspections(vehicle.vin)
+    await fetchInspections()
   }, [effectiveCompany?.id, vehicle?.vin, fetchVehicle, fetchInspections])
 
   // ── PDF download for a single inspection
@@ -310,8 +331,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const vehicleTitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unknown Vehicle'
   const parsedNotes = parseNotes(rawNotes)
 
-  const canStart = ['queued', 'on_lot', 'in_progress', 'releasing'].includes(status)
-  const canDispatch = ['queued', 'on_lot', 'in_progress'].includes(status)
+  const canStart = ['pending_arrival', 'on_lot', 'in_progress', 'releasing'].includes(status)
+  const canDispatch = ['pending_arrival', 'on_lot', 'in_progress'].includes(status)
   const isResume = status === 'in_progress' || status === 'releasing'
 
   return (
@@ -390,25 +411,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               </p>
             )}
           </div>
-        ) : status === 'released' ? (
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Released</p>
-            <p style={{ fontSize: 14, fontWeight: 600, color: '#10B981', margin: 0 }}>
-              {vehicle.released_at
-                ? new Date(vehicle.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-                : '—'}
-            </p>
-          </div>
         ) : (
           <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Reports</p>
-            <span style={{ fontSize: 22, fontWeight: 800, color: '#FFFFFF' }}>{inspections.length}</span>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Released Date</p>
+            {(vehicle.released_date || vehicle.released_at) ? (
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#10B981', margin: 0 }}>
+                {new Date(vehicle.released_date ?? vehicle.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            ) : (
+              <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.25)' }}>—</span>
+            )}
           </div>
         )}
       </div>
 
       {/* ── Action buttons ──────────────────────────────────────────────────── */}
-      {(canStart || canDispatch) && (
+      {(canStart || canDispatch || status === 'pending_arrival' || status === 'on_lot' || status === 'in_progress') && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           {canStart && (
             <button onClick={handleStart}
@@ -422,6 +440,18 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               <Send size={15} />Dispatch
             </button>
           )}
+          {status === 'pending_arrival' && (
+            <button onClick={handleMarkOnLot} disabled={actionSaving}
+              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
+              <CheckCircle size={15} />Mark as On Lot
+            </button>
+          )}
+          {(status === 'on_lot' || status === 'in_progress') && (
+            <button onClick={() => setConfirmRelease(true)} disabled={actionSaving}
+              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
+              <LogOut size={15} />Release Vehicle
+            </button>
+          )}
         </div>
       )}
 
@@ -432,38 +462,42 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
           </div>
         ) : inspections.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, textAlign: 'center', padding: '16px 0', fontStyle: 'italic' }}>
-            No inspections recorded for this vehicle.
-          </p>
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1"/></svg>
+            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No inspections recorded yet.</p>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {inspections.map(insp => {
               const ss = scoreStyle(insp.vehicle_score)
-              const isComplete = insp.status === 'completed'
-              const dt = new Date(insp.created_at)
-              const dateStr = dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-              const timeStr = dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              const rawDate = insp.completed_at ?? insp.created_at
+              const dateStr = new Date(rawDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
               const inspector = (insp.inspector as any)?.full_name ?? 'Unknown'
-              const typeLabel = insp.inspection_type === 'check_in' ? 'Check-In'
-                : insp.inspection_type === 'check_out' ? 'Check-Out'
-                : 'Inspection'
-              const typeBg = insp.inspection_type === 'check_in' ? '#D1FAE5'
-                : insp.inspection_type === 'check_out' ? '#FEF3C7' : '#DBEAFE'
-              const typeColor = insp.inspection_type === 'check_in' ? '#065F46'
-                : insp.inspection_type === 'check_out' ? '#92400E' : '#1E40AF'
+              const shortId = String(insp.id).slice(0, 6).toUpperCase()
+              const usageStatus: string = insp.usage_status ?? insp.status ?? 'queued'
+              const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+                queued:           { label: 'Queued',          bg: '#F0F4F8', color: '#94A3B8' },
+                pending_arrival:  { label: 'Pending Arrival', bg: '#F0F4F8', color: '#94A3B8' },
+                on_lot:      { label: 'On Lot',      bg: '#E0F7FC', color: '#00B4D8' },
+                in_progress: { label: 'In Progress', bg: '#EDE9FE', color: '#8B5CF6' },
+                one_off:     { label: 'One-Off',     bg: '#FFF0E8', color: '#F97316' },
+                released:    { label: 'Released',    bg: '#D1FAE5', color: '#10B981' },
+              }
+              const badge = STATUS_BADGE[usageStatus] ?? STATUS_BADGE.queued
+              const isComplete = insp.status === 'completed'
 
               return (
                 <div key={insp.id}
                   style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 12, padding: '12px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    {/* Type */}
-                    <span style={{ background: typeBg, color: typeColor, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      {typeLabel}
+                    {/* Report ID */}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0D1B2A', minWidth: 110, flexShrink: 0 }}>
+                      Report #{shortId}
                     </span>
 
                     {/* Date + inspector */}
-                    <div style={{ flex: 1, minWidth: 120 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{dateStr} · {timeStr}</p>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{dateStr}</p>
                       <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>
                     </div>
 
@@ -473,19 +507,15 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                         {insp.vehicle_score}
                       </span>
                     ) : (
-                      <span style={{ fontSize: 12, color: '#CBD5E1' }}>No score</span>
+                      <span style={{ fontSize: 12, color: '#CBD5E1' }}>—</span>
                     )}
 
-                    {/* Status chip */}
-                    <span style={{
-                      background: isComplete ? '#D1FAE5' : '#FEF3C7',
-                      color: isComplete ? '#065F46' : '#92400E',
-                      borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                    }}>
-                      {isComplete ? 'Completed' : 'In Progress'}
+                    {/* Status badge */}
+                    <span style={{ background: badge.bg, color: badge.color, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {badge.label}
                     </span>
 
-                    {/* View / PDF */}
+                    {/* View / Download */}
                     {isComplete && (
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
@@ -496,7 +526,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                         <button
                           onClick={() => downloadPDF(insp.id)}
                           style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          PDF <Download size={11} />
+                          <Download size={11} /> PDF
                         </button>
                       </div>
                     )}
@@ -594,6 +624,32 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
       {/* Lightbox */}
       {lightbox && <Lightbox url={lightbox.url} label={lightbox.label} onClose={() => setLightbox(null)} />}
+
+      {/* Release confirmation modal */}
+      {confirmRelease && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setConfirmRelease(false)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <div style={{ width: 52, height: 52, borderRadius: 26, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <LogOut size={24} color="#10B981" />
+            </div>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', textAlign: 'center', margin: '0 0 8px' }}>Release Vehicle?</h2>
+            <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', lineHeight: 1.6, margin: '0 0 24px' }}>
+              Are you sure you want to release this vehicle? This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmRelease(false)}
+                style={{ flex: 1, height: 46, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+              <button onClick={handleRelease} disabled={actionSaving}
+                style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: actionSaving ? 0.7 : 1 }}>
+                {actionSaving ? 'Releasing…' : 'Yes, Release'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNav />
     </div>

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Camera } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
-const CameraCapture = dynamic(() => import('./camera-capture'), { ssr: false })
+const InspectionCamera = dynamic(() => import('./inspection-camera'), { ssr: false })
 
 interface PhotoFieldProps {
   label: string
@@ -58,8 +58,11 @@ export default function PhotoField({ label, value, onChange, required }: PhotoFi
       )}
 
       {showCamera && (
-        <CameraCapture
-          onCapture={url => { onChange(url); setShowCamera(false) }}
+        <InspectionCamera
+          slots={[{ key: 'slot', label }]}
+          values={{ slot: value ?? null }}
+          startKey="slot"
+          onCapture={(_, url) => onChange(url)}
           onClose={() => setShowCamera(false)}
         />
       )}

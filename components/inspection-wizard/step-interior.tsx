@@ -1,13 +1,17 @@
 'use client'
 
-import { Car } from 'lucide-react'
-import PhotoField from '@/components/ui/photo-field'
+import { useState } from 'react'
+import { Car, Camera } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import DamageEntry from './damage-entry'
 import VoiceInput from '@/components/ui/voice-input'
 import StepOpener from './step-opener'
 
+const InspectionCamera = dynamic(() => import('@/components/ui/inspection-camera'), { ssr: false })
+
 const INT_PHOTOS = ['interiorDriverDoorPhoto', 'interiorRearDriverDoorPhoto', 'interiorTrunkPhoto', 'interiorRearPassengerDoorPhoto', 'interiorPassengerDoorPhoto', 'dashboardPhoto'] as const
 const INT_PHOTO_LABELS = ['Driver Door', 'Rear Driver Door', 'Trunk', 'Rear Passenger Door', 'Passenger Door', 'Dashboard']
+const INT_SLOTS = INT_PHOTOS.map((key, i) => ({ key, label: INT_PHOTO_LABELS[i] }))
 
 const CONDITIONS: Record<string, string[]> = {
   overallCondition: ['good', 'fair', 'poor'],
@@ -77,10 +81,56 @@ function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: 
   )
 }
 
+function PhotoSlotCard({ label, value, onTap }: { label: string; value?: string | null; onTap: () => void }) {
+  return (
+    <div>
+      <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: '0 0 5px' }}>{label}</p>
+      {value ? (
+        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+          <img src={value} alt={label} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+          <button
+            onClick={onTap}
+            style={{
+              position: 'absolute', bottom: 6, right: 6,
+              background: '#F4A62A', color: '#0D1B2A',
+              fontSize: 10, fontWeight: 700,
+              borderRadius: 20, padding: '3px 9px',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            Retake
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onTap}
+          style={{
+            width: '100%', height: 120,
+            background: '#FFFFFF', border: '2px dashed #CBD5E1', borderRadius: 12,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+            cursor: 'pointer',
+          }}
+        >
+          <Camera size={22} style={{ color: '#94A3B8' }} />
+          <span style={{ fontSize: 12, color: '#94A3B8' }}>Tap to capture</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 } as const
 
 export default function StepInterior({ data, onChange, onNext, onBack }: Props) {
+  const [cameraStartKey, setCameraStartKey] = useState<string | null>(null)
+
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
+
+  const openCaptureAll = () => {
+    const firstUnfilled = INT_PHOTOS.find(k => !data[k])
+    setCameraStartKey(firstUnfilled ?? INT_PHOTOS[0])
+  }
 
   return (
     <div style={{ paddingBottom: 140 }}>
@@ -95,10 +145,30 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
       />
 
       <div style={{ padding: '0 24px' }}>
+        {/* Capture All CTA */}
+        <button
+          type="button"
+          onClick={openCaptureAll}
+          style={{
+            width: '100%', height: 48, borderRadius: 12, border: 'none',
+            background: '#F4A62A', color: '#0D1B2A',
+            fontWeight: 700, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            marginBottom: 16, boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+          }}
+        >
+          <Camera size={18} /> Capture All 6 Photos →
+        </button>
+
         {/* 2×3 photo grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
           {INT_PHOTOS.map((key, i) => (
-            <PhotoField key={key} label={INT_PHOTO_LABELS[i]} value={data[key]} onChange={url => set(key, url)} />
+            <PhotoSlotCard
+              key={key}
+              label={INT_PHOTO_LABELS[i]}
+              value={data[key]}
+              onTap={() => setCameraStartKey(key)}
+            />
           ))}
         </div>
 
@@ -113,12 +183,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
             )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {opts.map(opt => (
-                <CondPill
-                  key={opt}
-                  label={opt}
-                  selected={data[key] === opt}
-                  onSelect={() => set(key, opt)}
-                />
+                <CondPill key={opt} label={opt} selected={data[key] === opt} onSelect={() => set(key, opt)} />
               ))}
             </div>
           </div>
@@ -127,10 +192,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
         {/* Odor */}
         <div style={{ marginBottom: 16 }}>
           <label style={label13}>Odor Present</label>
-          <YesNo
-            value={data.interiorOdor}
-            onChange={v => set('interiorOdor', v)}
-          />
+          <YesNo value={data.interiorOdor} onChange={v => set('interiorOdor', v)} />
         </div>
 
         {data.interiorOdor === true && (
@@ -138,12 +200,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
             <label style={label13}>Odor Type</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {ODOR_TYPES.map(t => (
-                <CondPill
-                  key={t}
-                  label={t}
-                  selected={data.odorType === t}
-                  onSelect={() => set('odorType', t)}
-                />
+                <CondPill key={t} label={t} selected={data.odorType === t} onSelect={() => set('odorType', t)} />
               ))}
             </div>
           </div>
@@ -151,11 +208,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
 
         {/* Damage entries */}
         <div style={{ marginBottom: 20 }}>
-          <DamageEntry
-            damages={data.damages ?? []}
-            onChange={damages => set('damages', damages)}
-            locationType="interior"
-          />
+          <DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="interior" />
         </div>
 
         {/* Interior notes */}
@@ -177,6 +230,17 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
           </div>
         </div>
       </div>
+
+      {/* Step-level camera — handles all 6 interior slots with auto-advance */}
+      {cameraStartKey && (
+        <InspectionCamera
+          slots={INT_SLOTS}
+          values={data}
+          startKey={cameraStartKey}
+          onCapture={(key, url) => onChange({ ...data, [key]: url })}
+          onClose={() => setCameraStartKey(null)}
+        />
+      )}
 
       {/* Fixed bottom bar */}
       <div className="wizard-bottom-bar" style={{

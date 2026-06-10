@@ -5,8 +5,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid,
 } from 'lucide-react'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
 export type NavTab = 'home' | 'queue' | 'history' | 'account'
 
@@ -47,6 +48,7 @@ export default function DesktopSidebar({
   }, [isInspecting])
 
   const isFMC = effectiveCompany?.account_type === 'fmc'
+  const lotMapEnabled = useFeatureFlag('lot_map')
   const reportsUsed = effectiveCompany?.reports_used ?? 0
   const reportsTotal = effectiveCompany?.reports_included ?? 10
   const usagePct = Math.min(100, reportsTotal > 0 ? (reportsUsed / reportsTotal) * 100 : 0)
@@ -73,6 +75,7 @@ export default function DesktopSidebar({
     { id: 'vehicles', label: 'Vehicles', icon: <Car size={18} />, type: 'route', route: '/vehicles' },
     { id: 'dispatch', label: 'Dispatch', icon: <Send size={18} />, type: 'route', route: '/storage/dispatch' },
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
+    ...(lotMapEnabled ? [{ id: 'lot', label: 'Lot', icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' }] : []),
   ]
 
   const storageItems: NavItem[] = []

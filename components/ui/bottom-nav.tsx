@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, Send, User } from 'lucide-react'
+import { Home, Car, Plus, Send, User, LayoutGrid } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
 // NavTab kept for backward-compat imports
 export type NavTab = 'home' | 'vehicles' | 'dispatch' | 'account'
@@ -13,11 +14,11 @@ interface BottomNavProps {
   onStartPress?: () => void
 }
 
-const LEFT_TABS = [
+const BASE_LEFT_TABS = [
   { id: 'home',     icon: Home, label: 'Home',     route: '/' },
   { id: 'vehicles', icon: Car,  label: 'Vehicles', route: '/vehicles' },
 ]
-const RIGHT_TABS = [
+const BASE_RIGHT_TABS = [
   { id: 'dispatch', icon: Send, label: 'Dispatch', route: '/storage/dispatch' },
   { id: 'account',  icon: User, label: 'Account',  route: '/profile' },
 ]
@@ -27,8 +28,14 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [showStartSheet, setShowStartSheet] = useState(false)
+  const lotMapEnabled = useFeatureFlag('lot_map')
 
   if (isDesktop) return null
+
+  const LEFT_TABS = BASE_LEFT_TABS
+  const RIGHT_TABS = lotMapEnabled
+    ? [{ id: 'lot', icon: LayoutGrid, label: 'Lot', route: '/lot' }, ...BASE_RIGHT_TABS]
+    : BASE_RIGHT_TABS
 
   const isActive = (route: string) =>
     route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/')

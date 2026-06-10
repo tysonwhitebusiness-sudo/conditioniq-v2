@@ -6,7 +6,8 @@ interface StatusBadgeProps {
 }
 
 const CONFIGS: Record<string, { label: string; bg: string; text: string }> = {
-  queued:      { label: 'Queued',      bg: '#F0F4F8', text: '#4A5568' },
+  queued:           { label: 'Queued',          bg: '#F0F4F8', text: '#4A5568' },
+  pending_arrival:  { label: 'Pending Arrival', bg: '#F0F4F8', text: '#4A5568' },
   in_progress: { label: 'In Progress', bg: '#FEF3C7', text: '#92400E' },
   completed:   { label: 'Completed',   bg: '#D1FAE5', text: '#065F46' },
   failed:      { label: 'Failed',      bg: '#FEE2E2', text: '#991B1B' },

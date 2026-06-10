@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { Eye, Camera } from 'lucide-react'
-import PhotoField from '@/components/ui/photo-field'
+import dynamic from 'next/dynamic'
 import DamageEntry from './damage-entry'
 import VoiceInput from '@/components/ui/voice-input'
 import StepOpener from './step-opener'
+
+const InspectionCamera = dynamic(() => import('@/components/ui/inspection-camera'), { ssr: false })
 
 const EXT_PHOTOS = ['exteriorFrontPhoto', 'exteriorRearPhoto', 'exteriorDriverPhoto', 'exteriorPassengerPhoto'] as const
 const EXT_LABELS = ['Front', 'Rear', 'Driver Side', 'Passenger Side']
@@ -17,6 +20,8 @@ const COND_FIELDS = [
   { key: 'paintCondition', label: 'Paint Condition', opts: ['Good', 'Faded', 'Scratched', 'Dented', 'Peeling'] },
   { key: 'glassCondition', label: 'Glass Condition', opts: ['Good', 'Chipped', 'Cracked', 'Shattered'] },
 ]
+
+const EXT_SLOTS = EXT_PHOTOS.map((key, i) => ({ key, label: EXT_LABELS[i] }))
 
 interface Props {
   data: Record<string, any>
@@ -59,13 +64,59 @@ function TirePill({ label, selected, onSelect }: { label: string; selected: bool
   )
 }
 
+function PhotoSlotCard({ label, value, onTap }: { label: string; value?: string | null; onTap: () => void }) {
+  return (
+    <div>
+      <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: '0 0 5px' }}>{label}</p>
+      {value ? (
+        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+          <img src={value} alt={label} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+          <button
+            onClick={onTap}
+            style={{
+              position: 'absolute', bottom: 6, right: 6,
+              background: '#F4A62A', color: '#0D1B2A',
+              fontSize: 10, fontWeight: 700,
+              borderRadius: 20, padding: '3px 9px',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            Retake
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onTap}
+          style={{
+            width: '100%', height: 120,
+            background: '#FFFFFF', border: '2px dashed #CBD5E1', borderRadius: 12,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+            cursor: 'pointer',
+          }}
+        >
+          <Camera size={22} style={{ color: '#94A3B8' }} />
+          <span style={{ fontSize: 12, color: '#94A3B8' }}>Tap to capture</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function StepExterior({ data, onChange, onNext, onBack }: Props) {
+  const [cameraStartKey, setCameraStartKey] = useState<string | null>(null)
+
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
   const setTire = (pos: string, key: string, val: any) =>
     onChange({ ...data, [pos]: { ...(data[pos] ?? {}), [key]: val } })
 
   const photosCount = EXT_PHOTOS.filter(k => data[k]).length
   const canAdvance = photosCount >= 1
+
+  const openCaptureAll = () => {
+    const firstUnfilled = EXT_PHOTOS.find(k => !data[k])
+    setCameraStartKey(firstUnfilled ?? EXT_PHOTOS[0])
+  }
 
   return (
     <div style={{ paddingBottom: 140 }}>
@@ -83,7 +134,7 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
         {/* Capture All 4 CTA */}
         <button
           type="button"
-          onClick={() => {}}
+          onClick={openCaptureAll}
           style={{
             width: '100%', height: 48, borderRadius: 12, border: 'none',
             background: '#F4A62A', color: '#0D1B2A',
@@ -98,7 +149,12 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
         {/* 2×2 photo grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
           {EXT_PHOTOS.map((key, i) => (
-            <PhotoField key={key} label={EXT_LABELS[i]} value={data[key]} onChange={url => set(key, url)} />
+            <PhotoSlotCard
+              key={key}
+              label={EXT_LABELS[i]}
+              value={data[key]}
+              onTap={() => setCameraStartKey(key)}
+            />
           ))}
         </div>
 
@@ -158,16 +214,8 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
                     />
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <TirePill
-                      label="Flat"
-                      selected={!!tire.flat}
-                      onSelect={() => setTire(pos, 'flat', !tire.flat)}
-                    />
-                    <TirePill
-                      label="Uneven"
-                      selected={!!tire.unevenWear}
-                      onSelect={() => setTire(pos, 'unevenWear', !tire.unevenWear)}
-                    />
+                    <TirePill label="Flat" selected={!!tire.flat} onSelect={() => setTire(pos, 'flat', !tire.flat)} />
+                    <TirePill label="Uneven" selected={!!tire.unevenWear} onSelect={() => setTire(pos, 'unevenWear', !tire.unevenWear)} />
                   </div>
                 </div>
               )
@@ -177,11 +225,7 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
 
         {/* Damage */}
         <div style={{ marginBottom: 20 }}>
-          <DamageEntry
-            damages={data.damages ?? []}
-            onChange={damages => set('damages', damages)}
-            locationType="exterior"
-          />
+          <DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="exterior" />
         </div>
 
         {/* Exterior notes */}
@@ -203,6 +247,17 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
           </div>
         </div>
       </div>
+
+      {/* Step-level camera — handles all 4 exterior slots with auto-advance */}
+      {cameraStartKey && (
+        <InspectionCamera
+          slots={EXT_SLOTS}
+          values={data}
+          startKey={cameraStartKey}
+          onCapture={(key, url) => onChange({ ...data, [key]: url })}
+          onClose={() => setCameraStartKey(null)}
+        />
+      )}
 
       {/* Fixed bottom bar */}
       <div className="wizard-bottom-bar" style={{

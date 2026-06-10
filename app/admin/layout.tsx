@@ -3,7 +3,8 @@
 import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import AdminNav from '@/components/admin/admin-nav'
+import AdminSidebar from '@/components/admin/admin-sidebar'
+import AdminTopBar from '@/components/admin/admin-topbar'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, platformRole, loading } = useAuth()
@@ -19,9 +20,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading || !user || platformRole !== 'super_admin') return null
 
   return (
-    <div className="min-h-screen bg-[#0f172a]">
-      <AdminNav />
-      {children}
+    <div style={{ minHeight: '100vh', background: '#F0F4F8' }}>
+      <AdminSidebar />
+      <AdminTopBar />
+      <main style={{ marginLeft: 256, paddingTop: 64 }}>
+        {children}
+      </main>
     </div>
   )
 }

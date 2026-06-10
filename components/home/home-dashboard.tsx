@@ -16,7 +16,7 @@ interface Props {
   onGoToQueue?: () => void
 }
 
-type VehicleStatus = 'queued' | 'on_lot' | 'released'
+type VehicleStatus = 'pending_arrival' | 'on_lot' | 'released'
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null) {
   if (!arrivedAt) return null
@@ -26,7 +26,7 @@ function daysOnLot(arrivedAt: string, releasedAt: string | null) {
 
 function effectiveStatus(v: any): VehicleStatus | null {
   const s = v.lifecycle_status || v.status
-  if (s === 'queued' || s === 'pending_inspection') return 'queued'
+  if (s === 'queued' || s === 'pending_arrival' || s === 'pending_inspection') return 'pending_arrival'
   if (s === 'on_lot' || s === 'inspected' || s === 'in_progress' || s === 'releasing') return 'on_lot'
   if (s === 'released') return 'released'
   return null
@@ -133,7 +133,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
       let q = 0, o = 0, r = 0
       for (const v of all) {
         const s = effectiveStatus(v)
-        if (s === 'queued') q++
+        if (s === 'pending_arrival') q++
         else if (s === 'on_lot') o++
         else if (s === 'released') r++
       }
@@ -170,7 +170,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
   }
 
   const STAT_COLORS: Record<VehicleStatus, string> = {
-    queued: '#4A5568',
+    pending_arrival: '#4A5568',
     on_lot: '#00B4D8',
     released: '#10B981',
   }
@@ -231,10 +231,10 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
           <div style={{ display: 'flex', gap: 10 }}>
             <StatCard
               value={queuedCount}
-              label="Queued"
-              selected={selectedStatus === 'queued'}
-              accent={STAT_COLORS.queued}
-              onClick={() => handleSelectStatus('queued')}
+              label="Pending Arrival"
+              selected={selectedStatus === 'pending_arrival'}
+              accent={STAT_COLORS.pending_arrival}
+              onClick={() => handleSelectStatus('pending_arrival')}
               loading={statsLoading}
             />
             <StatCard
@@ -293,7 +293,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: 0 }}>
-                {selectedStatus === 'queued' ? 'Queued Vehicles' : selectedStatus === 'on_lot' ? 'Vehicles On Lot' : 'Released Vehicles'}
+                {selectedStatus === 'pending_arrival' ? 'Pending Arrival Vehicles' : selectedStatus === 'on_lot' ? 'Vehicles On Lot' : 'Released Vehicles'}
               </p>
               {!vehiclesLoading && (
                 <span style={{ fontSize: 11, fontWeight: 700, background: '#F0F4F8', color: '#4A5568', padding: '1px 7px', borderRadius: 8 }}>
@@ -318,7 +318,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
               <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: '40px 20px', textAlign: 'center' }}>
                 <Car size={36} color="#E1E8F0" style={{ margin: '0 auto 10px', display: 'block' }} />
                 <p style={{ fontSize: 14, fontWeight: 600, color: '#94A3B8', margin: 0 }}>
-                  No {selectedStatus === 'queued' ? 'queued' : selectedStatus === 'on_lot' ? 'on-lot' : 'released'} vehicles
+                  No {selectedStatus === 'pending_arrival' ? 'pending arrival' : selectedStatus === 'on_lot' ? 'on-lot' : 'released'} vehicles
                 </p>
               </div>
             ) : (

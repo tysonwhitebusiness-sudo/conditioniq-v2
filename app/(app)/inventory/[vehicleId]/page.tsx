@@ -180,7 +180,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
       .order('created_at', { ascending: false })
     if (knownIds?.length) {
-      q = q.in('id', knownIds)
+      q = q.in('id', knownIds).eq('company_id', companyId)
     } else if (companyId && vin) {
       q = q.eq('company_id', companyId).eq('vin', vin)
     } else {

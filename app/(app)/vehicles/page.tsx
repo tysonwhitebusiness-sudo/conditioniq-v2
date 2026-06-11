@@ -14,6 +14,7 @@ import {
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
+import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,13 +104,7 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
     setLoading(true)
     const ids = [...new Set([vehicle.checkin_inspection_id, vehicle.checkout_inspection_id, ...(vehicle.inspection_ids ?? [])].filter(Boolean))]
     if (!ids.length) { setHistory([]); setLoading(false); return }
-    createClient()
-      .from('vehicle_inspections')
-      .select('id, created_at, completed_at, status, vin')
-      .in('id', ids)
-      .eq('company_id', companyId)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => { setHistory(data ?? []); setLoading(false) })
+    fetchInspectionsByIds(ids).then(data => { setHistory(data); setLoading(false) })
   }, [vehicle.id])
 
   const saveNote = async () => {
@@ -569,13 +564,8 @@ export default function VehiclesPage() {
     setReportsList([])
     const ids = [...new Set([v.checkin_inspection_id, v.checkout_inspection_id, ...(v.inspection_ids ?? [])].filter(Boolean))]
     if (!ids.length) { setReportsList([]); setReportsLoading(false); return }
-    const { data } = await createClient()
-      .from('vehicle_inspections')
-      .select('id, created_at, completed_at, inspection_type, vehicle_score, status')
-      .in('id', ids)
-      .eq('company_id', companyId)
-      .order('created_at', { ascending: true })
-    setReportsList(data ?? [])
+    const data = await fetchInspectionsByIds(ids)
+    setReportsList(data)
     setReportsLoading(false)
   }
 

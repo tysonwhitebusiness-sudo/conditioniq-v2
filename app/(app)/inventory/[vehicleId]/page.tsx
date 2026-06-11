@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { updateVehicleLifecycleStatus, releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -172,29 +173,14 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [appStep, setAppStep] = useState<AppStep>('view')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
 
-  // ── Fetch inspections — by known IDs if available, else fall back to VIN
+  // ── Fetch inspections via server action (bypasses RLS, handles company_id mismatches)
   const fetchInspections = useCallback(async (vin: string, knownIds?: string[]) => {
     setLoadingInspections(true)
-    let q = createClient()
-      .from('vehicle_inspections')
-      .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
-      .order('created_at', { ascending: false })
-    if (knownIds?.length) {
-      q = q.in('id', knownIds).eq('company_id', companyId)
-    } else if (companyId && vin) {
-      q = q.eq('company_id', companyId).eq('vin', vin)
-    } else {
-      setInspections([]); setLoadingInspections(false); return
-    }
-    const { data, error } = await q
-    if (error) console.error('[detail] inspections:', error)
-    const rows = data ?? []
+    const rows = knownIds?.length
+      ? await fetchInspectionsByIds(knownIds)
+      : await fetchInspectionsByVin(companyId, vin)
     const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
-    let nameMap: Record<string, string> = {}
-    if (inspectorIds.length) {
-      const { data: profiles } = await createClient().from('user_profiles').select('id, full_name').in('id', inspectorIds)
-      for (const p of profiles ?? []) nameMap[p.id] = p.full_name ?? 'Unknown'
-    }
+    const nameMap = await fetchInspectorNames(inspectorIds)
     setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
     setLoadingInspections(false)
   }, [companyId])

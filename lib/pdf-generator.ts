@@ -18,27 +18,29 @@ export async function generateInspectionPDF(
   const date = new Date().toISOString().slice(0, 10)
   const downloadName = `ConditionIQ_${vin}_${date}.pdf`
 
-  // Upload to Supabase storage so the URL can be saved and retrieved later
   if (inspectionId) {
     try {
-      const { createClient } = await import('./supabase/client')
-      const supabase = createClient()
       const path = `${inspectionId}.pdf`
-      const { error: uploadError } = await supabase.storage
-        .from('inspection-reports')
-        .upload(path, blob, { contentType: 'application/pdf', upsert: true })
 
-      if (!uploadError) {
-        // Open the PDF immediately using a short-lived signed URL
-        const { data: signed } = await supabase.storage
+      // Get a pre-authorized upload URL from the server (admin client, bypasses storage RLS)
+      const { createSignedUploadUrlAction, getReportSignedUrlAction } = await import('./inspection-server-actions')
+      const uploadAuth = await createSignedUploadUrlAction(path)
+
+      if (uploadAuth) {
+        const { createClient } = await import('./supabase/client')
+        const supabase = createClient()
+        const { error: uploadError } = await supabase.storage
           .from('inspection-reports')
-          .createSignedUrl(path, 3600)
-        if (signed?.signedUrl) window.open(signed.signedUrl, '_blank')
-        // Return the storage path — not a public URL.
-        // Callers generate a signed URL on demand so the bucket stays private.
-        return path
+          .uploadToSignedUrl(path, uploadAuth.token, blob, { contentType: 'application/pdf' })
+
+        if (!uploadError) {
+          // Open the PDF immediately via a fresh signed view URL
+          const viewUrl = await getReportSignedUrlAction(path)
+          if (viewUrl) window.open(viewUrl, '_blank')
+          return path
+        }
+        console.error('[pdf] uploadToSignedUrl error:', uploadError)
       }
-      console.error('[pdf] upload error:', uploadError)
     } catch (e) {
       console.error('[pdf] storage upload failed:', e)
     }

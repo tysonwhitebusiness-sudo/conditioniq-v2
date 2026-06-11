@@ -72,6 +72,15 @@ export async function updateVehicleLifecycleStatusAction(
   if (error) console.error('[lifecycle] update', error)
 }
 
+export async function createSignedUploadUrlAction(path: string): Promise<{ token: string; signedUrl: string } | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.storage
+    .from('inspection-reports')
+    .createSignedUploadUrl(path)
+  if (error) { console.error('[signedUpload]', error); return null }
+  return { token: data.token, signedUrl: data.signedUrl }
+}
+
 export async function getReportSignedUrlAction(storagePath: string): Promise<string | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage

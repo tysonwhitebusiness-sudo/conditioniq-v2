@@ -484,7 +484,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 released:    { label: 'Released',    bg: '#D1FAE5', color: '#10B981' },
               }
               const badge = STATUS_BADGE[usageStatus] ?? STATUS_BADGE.queued
-              const isComplete = insp.status === 'completed'
+              const reportUrl: string | null = (insp as any).report_url ?? null
+              const hasReport = !!(reportUrl || insp.status === 'completed')
 
               return (
                 <div key={insp.id}
@@ -501,30 +502,21 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                       <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>
                     </div>
 
-                    {/* Score */}
-                    {ss ? (
-                      <span style={{ background: ss.bg, color: ss.color, borderRadius: 8, padding: '4px 10px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {insp.vehicle_score}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: '#CBD5E1' }}>—</span>
-                    )}
-
                     {/* Status badge */}
                     <span style={{ background: badge.bg, color: badge.color, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {badge.label}
                     </span>
 
-                    {/* View / Download */}
-                    {isComplete && (
+                    {/* View / Download — use report_url directly for instant open */}
+                    {hasReport && (
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
-                          onClick={() => window.open(`/reports/${insp.id}`, '_blank')}
+                          onClick={() => reportUrl ? window.open(reportUrl, '_blank') : downloadPDF(insp.id)}
                           style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
                           View <ExternalLink size={11} />
                         </button>
                         <button
-                          onClick={() => downloadPDF(insp.id)}
+                          onClick={() => reportUrl ? window.open(reportUrl, '_blank') : downloadPDF(insp.id)}
                           style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
                           <Download size={11} /> PDF
                         </button>

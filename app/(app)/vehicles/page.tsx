@@ -135,10 +135,12 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
                     <span style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>Inspection</span>
                     <span style={{ fontSize: 12, color: '#4A5568' }}>{new Date(h.created_at).toLocaleDateString()}</span>
                     {h.status === 'in_progress' && <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>IN PROGRESS</span>}
-                    <button onClick={() => window.open(`/reports/${h.id}`, '_blank')}
-                      style={{ marginLeft: 'auto', fontSize: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      View <ExternalLink size={11} />
-                    </button>
+                    {(h.report_url || h.status === 'completed') && (
+                      <button onClick={() => window.open(h.report_url || '#', '_blank')}
+                        style={{ marginLeft: 'auto', fontSize: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: h.report_url ? 'pointer' : 'default', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        View <ExternalLink size={11} />
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -873,26 +875,33 @@ export default function VehiclesPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {reportsList.map((r, i) => {
-                    const label = r.inspection_type === 'check_in' ? 'Check-In Report'
-                      : r.inspection_type === 'check_out' ? 'Check-Out Report'
-                      : i === 0 ? 'Check-In Report' : 'Check-Out Report'
-                    const dateStr = new Date(r.completed_at ?? r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    const usageLbl = r.usage_status === 'checkin' ? 'Check-In'
+                      : r.usage_status === 'checkout' ? 'Check-Out'
+                      : i === 0 ? 'Check-In' : 'Check-Out'
+                    const label = `${usageLbl} Report`
+                    const dateStr = new Date(r.report_generated_at ?? r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                    const pdfUrl: string | null = r.report_url ?? null
                     return (
                       <div key={r.id} style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
                           <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 2px' }}>{label}</p>
                           <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{dateStr}</p>
+                          {r.status === 'in_progress' && <p style={{ fontSize: 11, color: '#F97316', margin: '2px 0 0', fontWeight: 600 }}>In Progress</p>}
                         </div>
-                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          <button
-                            onClick={() => window.open(`/reports/${r.id}`, '_blank')}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
-                          >View</button>
-                          <button
-                            onClick={() => { const a = document.createElement('a'); a.href = `/reports/${r.id}`; a.download = `report-${String(r.id).slice(0,6)}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a) }}
-                            style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                          >Download</button>
-                        </div>
+                        {pdfUrl ? (
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <button
+                              onClick={() => window.open(pdfUrl, '_blank')}
+                              style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >View</button>
+                            <button
+                              onClick={() => { const a = document.createElement('a'); a.href = pdfUrl; a.download = `report-${String(r.id).slice(0,6)}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a) }}
+                              style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >PDF</button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#CBD5E1' }}>No report yet</span>
+                        )}
                       </div>
                     )
                   })}

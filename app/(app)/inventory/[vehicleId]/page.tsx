@@ -178,12 +178,23 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setLoadingInspections(true)
     const { data, error } = await createClient()
       .from('vehicle_inspections')
-      .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id, inspector:user_profiles!inspector_id(full_name)')
+      .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
       .eq('company_id', companyId)
       .eq('vin', vin)
       .order('created_at', { ascending: false })
     if (error) console.error('[detail] inspections:', error)
-    setInspections(data ?? [])
+    const rows = data ?? []
+    // fetch inspector names separately to avoid RLS issues on user_profiles join
+    const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
+    let nameMap: Record<string, string> = {}
+    if (inspectorIds.length) {
+      const { data: profiles } = await createClient()
+        .from('user_profiles')
+        .select('id, full_name')
+        .in('id', inspectorIds)
+      for (const p of profiles ?? []) nameMap[p.id] = p.full_name ?? 'Unknown'
+    }
+    setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
     setLoadingInspections(false)
   }, [companyId])
 

@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { updateVehicleLifecycleStatus, releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames } from '@/lib/inspection-server-actions'
+import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -270,7 +270,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
   const handleWizardComplete = useCallback(async (data: any) => {
     if (effectiveCompany?.id && vehicle?.vin) {
-      updateVehicleLifecycleStatus(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
+      await updateVehicleLifecycleStatusAction(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
     }
     setAppStep('view')
     setCurrentInspectionId(null)

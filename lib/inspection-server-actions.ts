@@ -27,6 +27,51 @@ export async function fetchInspectionsByVin(companyId: string, vin: string) {
   return data ?? []
 }
 
+export async function updateVehicleLifecycleStatusAction(
+  companyId: string,
+  vin: string,
+  inspectionId: string,
+  inspectionType: 'standard' | 'check_in' | 'check_out',
+  score: number | null,
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { data: vehicle } = await supabase
+    .from('storage_vehicles')
+    .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
+    .eq('company_id', companyId)
+    .eq('vin', vin)
+    .maybeSingle()
+  if (!vehicle) return
+
+  const updates: Record<string, any> = {
+    latest_inspection_id: inspectionId,
+    latest_score: score,
+    updated_at: new Date().toISOString(),
+  }
+  const existingIds: string[] = vehicle.inspection_ids ?? []
+  if (!existingIds.includes(inspectionId)) {
+    updates.inspection_ids = [...existingIds, inspectionId]
+  }
+
+  if (inspectionType === 'check_in') {
+    updates.checkin_inspection_id = inspectionId
+    updates.status = 'inspected'
+    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival', 'in_progress'].includes(vehicle.lifecycle_status)) {
+      updates.lifecycle_status = 'on_lot'
+    }
+  } else if (inspectionType === 'check_out') {
+    updates.checkout_inspection_id = inspectionId
+  } else {
+    const cur = vehicle.lifecycle_status
+    if (!cur || ['queued', 'pending_arrival', 'in_progress'].includes(cur)) {
+      updates.lifecycle_status = 'one_off'
+    }
+  }
+
+  const { error } = await supabase.from('storage_vehicles').update(updates).eq('id', vehicle.id)
+  if (error) console.error('[lifecycle] update', error)
+}
+
 export async function fetchInspectorNames(inspectorIds: string[]): Promise<Record<string, string>> {
   if (!inspectorIds.length) return {}
   const supabase = createAdminClient()

@@ -8,9 +8,10 @@ import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink,
 import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import {
-  updateVehicleLifecycleStatus, addVehicleToSystem, getVehicleInspectionHistory,
+  addVehicleToSystem, getVehicleInspectionHistory,
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
+import { updateVehicleLifecycleStatusAction } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -552,9 +553,9 @@ export default function VehiclesPage() {
     } catch (e: any) { alert('Failed to start inspection: ' + e.message) }
   }
 
-  const handleWizardComplete = useCallback((data: any) => {
+  const handleWizardComplete = useCallback(async (data: any) => {
     if (effectiveCompany?.id && data.vehicleInfo?.vin) {
-      updateVehicleLifecycleStatus(effectiveCompany.id, data.vehicleInfo.vin, data.inspectionId, data.vehicleInfo.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
+      await updateVehicleLifecycleStatusAction(effectiveCompany.id, data.vehicleInfo.vin, data.inspectionId, data.vehicleInfo.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
     }
     setAppStep('browse')
     loadVehicles()

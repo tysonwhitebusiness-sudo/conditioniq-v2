@@ -7,7 +7,7 @@ export async function fetchInspectionsByIds(ids: string[]) {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('vehicle_inspections')
-    .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
+    .select('id, created_at, updated_at, status, usage_status, inspector_id, report_url, report_generated, report_generated_at')
     .in('id', ids)
     .order('created_at', { ascending: false })
   if (error) console.error('[inspections] fetchByIds', error)
@@ -19,7 +19,7 @@ export async function fetchInspectionsByVin(companyId: string, vin: string) {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('vehicle_inspections')
-    .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
+    .select('id, created_at, updated_at, status, usage_status, inspector_id, report_url, report_generated, report_generated_at')
     .eq('company_id', companyId)
     .eq('vin', vin)
     .order('created_at', { ascending: false })

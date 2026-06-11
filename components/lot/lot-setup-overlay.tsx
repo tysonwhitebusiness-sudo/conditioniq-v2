@@ -1,13 +1,16 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import { Upload, Check, Trash2, AlertTriangle, X, Minus, Plus, Grid3X3, Settings2 } from 'lucide-react'
+import { Upload, Check, Trash2, AlertTriangle, X, Minus, Plus, Grid3X3, Settings2, Copy } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import {
-  createLotSpot, updateLotSpot, deleteLotSpot,
-  uploadLotBackground, removeLotBackground, generateNextLabel,
-  createLotShape, updateLotShape, deleteLotShape,
+  uploadLotBackground, generateNextLabel,
 } from '@/lib/lot-actions'
+import {
+  createLotSpotAction, updateLotSpotAction, deleteLotSpotAction,
+  createLotShapeAction, updateLotShapeAction, deleteLotShapeAction,
+  removeLotBackgroundAction,
+} from '@/lib/lot-server-actions'
 import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
 import { SPOT_COLOR, EMPTY_COLOR } from './lot-grid'
 
@@ -27,8 +30,8 @@ const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
 ]
 
 const HINT: Record<Tool, string> = {
-  select: 'Click to select · Drag spot/zone to move · Drag canvas to pan',
-  spot:   'Click canvas to place parking spot',
+  select: 'Click to select · Drag spot to move · Drag canvas to pan',
+  spot:   'Click canvas to place spot · Drag to move any spot',
   zone:   'Drag to draw highlighted area',
   border: 'Click to add points · Finish ✓ to close',
   marker: 'Click to place entrance/exit marker',
@@ -76,8 +79,9 @@ export default function LotSetupOverlay({
 
   // pointer capture refs
   const panRef  = useRef<{cxs:number;cys:number;pxs:number;pys:number}|null>(null)
-  const dragRef = useRef<{id:string;lastX:number;lastY:number}|null>(null)
+  const dragRef = useRef<{id:string;lastX:number;lastY:number;moved:boolean}|null>(null)
   const zoneRef = useRef<{sx:number;sy:number}|null>(null)
+  const rotRef  = useRef<{spotId:string;startAngle:number;startRot:number;currentRot:number}|null>(null)
 
   // edit state
   const [eLabel, setELabel]   = useState('')
@@ -154,7 +158,7 @@ export default function LotSetupOverlay({
     const shId = tgt.dataset.shapeId
     const pt = cpt(e.clientX, e.clientY)
 
-    if (tool === 'border') return // handled by SVG click
+    if (tool === 'border') return
 
     if (tool === 'zone') {
       if (!sId && !shId) {
@@ -170,7 +174,8 @@ export default function LotSetupOverlay({
       return
     }
 
-    if (tool === 'spot' && !sId && !shId) {
+    // spot tool: place on empty canvas (not on existing spot, but borders are fine)
+    if (tool === 'spot' && !sId) {
       handlePlaceSpot(pt.x, pt.y)
       return
     }
@@ -235,7 +240,7 @@ export default function LotSetupOverlay({
   // ── actions ────────────────────────────────────────────────────────────────
   const handlePlaceSpot = async (x: number, y: number) => {
     const label = generateNextLabel(spotsRef.current.map(s => s.label))
-    const sp = await createLotSpot(companyId, { label, x_position: x, y_position: y, location_id: locationId })
+    const sp = await createLotSpotAction(companyId, { label, x_position: x, y_position: y, location_id: locationId })
     if (!sp) return
     const full = { ...sp, width: 4, height: 7, rotation: 0, custom_color: null }
     onSpotsChange([...spotsRef.current, full])
@@ -243,7 +248,7 @@ export default function LotSetupOverlay({
   }
 
   const handleCreateZone = async (x: number, y: number, w: number, h: number) => {
-    const sh = await createLotShape(companyId, {
+    const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'zone',
       label: null, color: '#00B4D8', fill_opacity: 0.18, stroke_width: 2,
       config: { x, y, width: w, height: h, rotation: 0 },
@@ -253,7 +258,7 @@ export default function LotSetupOverlay({
   }
 
   const handlePlaceMarker = async (x: number, y: number) => {
-    const sh = await createLotShape(companyId, {
+    const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'marker',
       label: 'Enter', color: '#10B981', fill_opacity: 1, stroke_width: 2,
       config: { x, y, marker_type: 'entrance' },
@@ -264,7 +269,7 @@ export default function LotSetupOverlay({
 
   const finishBorder = async () => {
     if (borderPts.length < 2) { setBorderPts([]); return }
-    const sh = await createLotShape(companyId, {
+    const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'border',
       label: 'Lot Border', color: '#FFFFFF', fill_opacity: 0.05, stroke_width: 2,
       config: { points: borderPts, closed: true },
@@ -276,16 +281,34 @@ export default function LotSetupOverlay({
   const handleSaveSpot = async () => {
     if (!selSpot) return
     const u = { label: eLabel.trim() || 'A1', notes: eNotes.trim() || null, width: eW, height: eH, rotation: eRot, custom_color: eColor }
-    await updateLotSpot(selSpot.id, u)
+    await updateLotSpotAction(selSpot.id, u)
     onSpotsChange(spots.map(s => s.id === selSpot.id ? { ...s, ...u } : s))
   }
 
   const handleDeleteSpot = async () => {
     if (!selSpot) return
     setSaving(true)
-    await deleteLotSpot(selSpot.id)
+    await deleteLotSpotAction(selSpot.id)
     onSpotsChange(spots.filter(s => s.id !== selSpot.id))
     setSelected(null); setConfirmDel(false); setSaving(false)
+  }
+
+  const handleDuplicateSpot = async () => {
+    if (!selSpot) return
+    const offset = 4
+    const sp = await createLotSpotAction(companyId, {
+      label: generateNextLabel(spotsRef.current.map(s => s.label)),
+      x_position: Math.min(95, selSpot.x_position + offset),
+      y_position: Math.min(95, selSpot.y_position + offset),
+      location_id: locationId,
+      width: selSpot.width ?? 4,
+      height: selSpot.height ?? 7,
+      rotation: selSpot.rotation ?? 0,
+      custom_color: selSpot.custom_color,
+    })
+    if (!sp) return
+    onSpotsChange([...spotsRef.current, sp])
+    selectSpot(sp)
   }
 
   const handleSaveShape = async () => {
@@ -296,25 +319,25 @@ export default function LotSetupOverlay({
       const cfg = selShape.config as MarkerConfig
       const mColor = MARKER_COLOR[eMType]
       const updated = { ...base, color: mColor, config: { ...cfg, marker_type: eMType }, label: eLabel || null }
-      await updateLotShape(selShape.id, updated as any)
+      await updateLotShapeAction(selShape.id, updated as any)
       onShapesChange(shapes.map(s => s.id === selShape.id ? { ...s, ...updated } as LotShape : s))
       return
     }
     if (selShape.shape_type === 'zone') {
       const cfg = { ...(selShape.config as ZoneConfig), rotation: eZoneRot }
       const updated = { ...base, config: cfg }
-      await updateLotShape(selShape.id, updated as any)
+      await updateLotShapeAction(selShape.id, updated as any)
       onShapesChange(shapes.map(s => s.id === selShape.id ? { ...s, ...updated } as LotShape : s))
       return
     }
-    await updateLotShape(selShape.id, base as any)
+    await updateLotShapeAction(selShape.id, base as any)
     onShapesChange(shapes.map(s => s.id === selShape.id ? { ...s, ...base } as LotShape : s))
   }
 
   const handleDeleteShape = async () => {
     if (!selShape) return
     setSaving(true)
-    await deleteLotShape(selShape.id)
+    await deleteLotShapeAction(selShape.id)
     onShapesChange(shapes.filter(s => s.id !== selShape.id))
     setSelected(null); setConfirmDel(false); setSaving(false)
   }
@@ -333,26 +356,56 @@ export default function LotSetupOverlay({
   const zoomIn  = () => setZoom(ZOOMS[Math.min(zoomIdx+1, ZOOMS.length-1)])
   const zoomOut = () => setZoom(ZOOMS[Math.max(zoomIdx-1, 0)])
 
-  // spot drag (attached directly to spot divs)
+  // ── spot drag ──────────────────────────────────────────────────────────────
   const startSpotDrag = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
     e.stopPropagation()
     ;(e.currentTarget).setPointerCapture(e.pointerId)
-    dragRef.current = { id: spot.id, lastX: spot.x_position, lastY: spot.y_position }
+    dragRef.current = { id: spot.id, lastX: spot.x_position, lastY: spot.y_position, moved: false }
     selectSpot(spot)
   }
   const moveSpotDrag = (e: React.PointerEvent<HTMLDivElement>, spotId: string) => {
     if (!dragRef.current || dragRef.current.id !== spotId) return
     const pt = cpt(e.clientX, e.clientY)
-    dragRef.current.lastX = pt.x; dragRef.current.lastY = pt.y
+    dragRef.current.lastX = pt.x; dragRef.current.lastY = pt.y; dragRef.current.moved = true
     onSpotsChange(spotsRef.current.map(s => s.id === spotId ? { ...s, x_position: pt.x, y_position: pt.y } : s))
   }
   const endSpotDrag = (_e: React.PointerEvent<HTMLDivElement>, spotId: string) => {
     if (!dragRef.current || dragRef.current.id !== spotId) return
-    updateLotSpot(spotId, { x_position: dragRef.current.lastX, y_position: dragRef.current.lastY })
+    if (dragRef.current.moved) {
+      updateLotSpotAction(spotId, { x_position: dragRef.current.lastX, y_position: dragRef.current.lastY })
+    }
     dragRef.current = null
   }
 
-  // zone drag (move whole zone)
+  // ── rotation handle drag ───────────────────────────────────────────────────
+  const handleRotStart = (e: React.PointerEvent<HTMLDivElement>, sp: LotSpot) => {
+    e.stopPropagation()
+    ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const cx = rect.left + (sp.x_position / 100) * rect.width
+    const cy = rect.top  + (sp.y_position / 100) * rect.height
+    const startAngle = Math.atan2(e.clientX - cx, -(e.clientY - cy)) * (180 / Math.PI)
+    rotRef.current = { spotId: sp.id, startAngle, startRot: sp.rotation ?? 0, currentRot: sp.rotation ?? 0 }
+  }
+  const handleRotMove = (e: React.PointerEvent<HTMLDivElement>, sp: LotSpot) => {
+    if (!rotRef.current || rotRef.current.spotId !== sp.id) return
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const cx = rect.left + (sp.x_position / 100) * rect.width
+    const cy = rect.top  + (sp.y_position / 100) * rect.height
+    const angle = Math.atan2(e.clientX - cx, -(e.clientY - cy)) * (180 / Math.PI)
+    const delta = angle - rotRef.current.startAngle
+    const newRot = Math.round(((rotRef.current.startRot + delta) % 360 + 360) % 360)
+    rotRef.current.currentRot = newRot
+    setERot(newRot)
+    onSpotsChange(spotsRef.current.map(s => s.id === sp.id ? { ...s, rotation: newRot } : s))
+  }
+  const handleRotEnd = (_e: React.PointerEvent<HTMLDivElement>, sp: LotSpot) => {
+    if (!rotRef.current || rotRef.current.spotId !== sp.id) return
+    updateLotSpotAction(sp.id, { rotation: rotRef.current.currentRot })
+    rotRef.current = null
+  }
+
+  // ── zone drag ──────────────────────────────────────────────────────────────
   const zoneDragRef = useRef<{id:string;startPt:{x:number;y:number};origX:number;origY:number}|null>(null)
   const startZoneDrag = (e: React.PointerEvent<SVGRectElement>, sh: LotShape) => {
     e.stopPropagation()
@@ -374,7 +427,7 @@ export default function LotSetupOverlay({
   const endZoneDrag = (_e: React.PointerEvent<SVGRectElement>, sh: LotShape) => {
     if (!zoneDragRef.current || zoneDragRef.current.id !== sh.id) return
     const c = (shapesRef.current.find(s => s.id === sh.id)?.config ?? sh.config) as ZoneConfig
-    updateLotShape(sh.id, { config: c })
+    updateLotShapeAction(sh.id, { config: c })
     zoneDragRef.current = null
   }
 
@@ -393,7 +446,7 @@ export default function LotSetupOverlay({
         {!isMobile && (
           <>
             <TBtn label={bgUploading ? 'Uploading…' : 'BG Image'} icon={<Upload size={12}/>} onClick={() => fileRef.current?.click()} disabled={bgUploading}/>
-            {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackground(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
+            {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackgroundAction(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
             <Sep/>
             <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
             <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
@@ -476,25 +529,27 @@ export default function LotSetupOverlay({
               style={{
                 position:'relative', paddingBottom:'56.25%',
                 background:'#1B2D40',
-                borderRadius:10, overflow:'hidden',
+                borderRadius:10, overflow:'visible',
                 border:'1px solid rgba(255,255,255,0.12)',
                 cursor: tool==='spot'||tool==='zone' ? 'crosshair' : tool==='border' ? 'cell' : tool==='marker' ? 'copy' : 'default',
                 userSelect:'none',
               }}
             >
-              {/* Background image with pan + rotation */}
-              {bgUrl && (
-                <img
-                  src={bgUrl}
-                  alt=""
-                  style={{
-                    position:'absolute', inset:0, width:'100%', height:'100%',
-                    objectFit:'cover', pointerEvents:'none', zIndex:0,
-                    transformOrigin:'center',
-                    transform:`translate(${livePan.x}px, ${livePan.y}px) rotate(${bgRotation}deg)`,
-                  }}
-                />
-              )}
+              {/* clip mask so spots aren't clipped but canvas visually clips */}
+              <div style={{ position:'absolute', inset:0, borderRadius:10, overflow:'hidden', pointerEvents:'none', zIndex:0 }}>
+                {bgUrl && (
+                  <img
+                    src={bgUrl}
+                    alt=""
+                    style={{
+                      position:'absolute', inset:0, width:'100%', height:'100%',
+                      objectFit:'cover', pointerEvents:'none',
+                      transformOrigin:'center',
+                      transform:`translate(${livePan.x}px, ${livePan.y}px) rotate(${bgRotation}deg)`,
+                    }}
+                  />
+                )}
+              </div>
 
               {/* SVG: grid + zones + borders + markers + drawing previews */}
               <svg
@@ -502,7 +557,7 @@ export default function LotSetupOverlay({
                 onMouseMove={handleSvgMouseMove}
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
-                style={{ position:'absolute', inset:0, width:'100%', height:'100%', zIndex:1, overflow:'visible', cursor:'inherit' }}
+                style={{ position:'absolute', inset:0, width:'100%', height:'100%', zIndex:1, overflow:'visible', cursor:'inherit', borderRadius:10 }}
               >
                 {/* Grid */}
                 {showGrid && [5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95].map(v => (
@@ -551,7 +606,6 @@ export default function LotSetupOverlay({
                         ? <polygon points={pts} fill={sh.color} fillOpacity={sh.fill_opacity} stroke={sh.color} strokeWidth={sw} data-shape-id={sh.id} style={{ cursor:'pointer' }} onPointerDown={e => { e.stopPropagation(); selectShape(sh) }}/>
                         : <polyline points={pts} fill="none" stroke={sh.color} strokeWidth={sw} data-shape-id={sh.id} style={{ cursor:'pointer' }} onPointerDown={e => { e.stopPropagation(); selectShape(sh) }}/>
                       }
-                      {/* point handles when selected */}
                       {isSel && c.points.map((p, i) => (
                         <circle key={i} cx={p.x} cy={p.y} r={1.3} fill="#00B4D8" stroke="#FFF" strokeWidth={0.3} style={{ cursor:'grab' }}
                           onPointerDown={e => {
@@ -567,7 +621,7 @@ export default function LotSetupOverlay({
                               const rect = canvasRef.current!.getBoundingClientRect()
                               const nx = ((ev.clientX-rect.left)/rect.width)*100, ny = ((ev.clientY-rect.top)/rect.height)*100
                               const newPts = [...c.points]; newPts[i] = { x: nx, y: ny }
-                              updateLotShape(sh.id, { config:{ ...c, points:newPts } })
+                              updateLotShapeAction(sh.id, { config:{ ...c, points:newPts } })
                               document.removeEventListener('pointermove', onM)
                               document.removeEventListener('pointerup', onU)
                             }
@@ -625,18 +679,17 @@ export default function LotSetupOverlay({
                 )}
               </svg>
 
-              {/* Spots */}
+              {/* Spots — always draggable, show rotation handle when selected */}
               {spots.map(sp => {
                 const status = sp.active_assignment?.vehicle?.lifecycle_status
                 const bg = sp.custom_color ?? (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
                 const isSel = selected?.id === sp.id
                 const w = sp.width ?? 4, h = sp.height ?? 7
-                const isDraggable = tool === 'select'
                 return (
                   <div
                     key={sp.id}
                     data-spot={sp.id}
-                    onPointerDown={e => { if (isDraggable) startSpotDrag(e, sp); else if (tool==='spot') { e.stopPropagation(); selectSpot(sp) } }}
+                    onPointerDown={e => startSpotDrag(e, sp)}
                     onPointerMove={e => moveSpotDrag(e, sp.id)}
                     onPointerUp={e => endSpotDrag(e, sp.id)}
                     style={{
@@ -647,14 +700,42 @@ export default function LotSetupOverlay({
                       border: isSel ? '2px solid #00B4D8' : `1.5px solid ${bg===EMPTY_COLOR?'#CBD5E0':'rgba(0,0,0,0.1)'}`,
                       boxShadow: isSel ? '0 0 0 3px rgba(0,180,216,0.4)' : '0 1px 5px rgba(0,0,0,0.3)',
                       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                      cursor: isDraggable ? 'grab' : 'default',
+                      cursor: 'grab',
                       zIndex: isSel ? 10 : 3, userSelect:'none',
                       transition:'box-shadow 100ms',
+                      overflow: 'visible',
                     }}
                   >
                     <span style={{ fontSize:Math.max(7, w*2.2), fontWeight:800, color: bg===EMPTY_COLOR?'#94A3B8':'#FFF', lineHeight:1, textAlign:'center', pointerEvents:'none' }}>
                       {sp.label}
                     </span>
+
+                    {/* Rotation handle — appears above selected spot */}
+                    {isSel && (
+                      <>
+                        <div style={{ position:'absolute', left:'50%', top:'-20px', width:1, height:20, background:'rgba(0,180,216,0.5)', transform:'translateX(-50%)', pointerEvents:'none' }}/>
+                        <div
+                          onPointerDown={e => handleRotStart(e, sp)}
+                          onPointerMove={e => handleRotMove(e, sp)}
+                          onPointerUp={e => handleRotEnd(e, sp)}
+                          title={`Drag to rotate · ${sp.rotation ?? 0}°`}
+                          style={{
+                            position:'absolute', left:'50%', top:'-38px',
+                            width:22, height:22,
+                            transform:'translateX(-50%)',
+                            background:'#0D1B2A',
+                            border:'2px solid #00B4D8',
+                            borderRadius:'50%',
+                            cursor:'grab',
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                            zIndex:30,
+                            fontSize:13, color:'#00B4D8',
+                            boxShadow:'0 2px 8px rgba(0,0,0,0.5)',
+                            userSelect:'none',
+                          }}
+                        >↻</div>
+                      </>
+                    )}
                   </div>
                 )
               })}
@@ -684,6 +765,7 @@ export default function LotSetupOverlay({
                 saving={saving}
                 onSave={handleSaveSpot}
                 onDelete={handleDeleteSpot}
+                onDuplicate={handleDuplicateSpot}
                 onClose={() => setSelected(null)}
               />
             ) : selShape ? (
@@ -741,7 +823,7 @@ export default function LotSetupOverlay({
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display:'none' }}/>
               <TBtn label={bgUploading ? 'Uploading…' : 'BG Image'} icon={<Upload size={12}/>} onClick={() => fileRef.current?.click()} disabled={bgUploading}/>
-              {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackground(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
+              {bgUrl && <TBtn label="Remove BG" danger onClick={async () => { setBgUploading(true); await removeLotBackgroundAction(companyId, locationId); onBgChange(null); setBgUploading(false) }} disabled={bgUploading}/>}
               <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
               <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
             </div>
@@ -753,7 +835,7 @@ export default function LotSetupOverlay({
             </div>
             {bgUrl && (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Rotate</span>
+                <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Rotate BG</span>
                 <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↺</span></button>
                 <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:28, textAlign:'center' }}>{bgRotation}°</span>
                 <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↻</span></button>
@@ -778,6 +860,7 @@ export default function LotSetupOverlay({
                 saving={saving}
                 onSave={handleSaveSpot}
                 onDelete={handleDeleteSpot}
+                onDuplicate={handleDuplicateSpot}
                 onClose={() => setSelected(null)}
               />
             ) : selShape ? (
@@ -806,7 +889,7 @@ export default function LotSetupOverlay({
 
 // ── Spot properties panel ─────────────────────────────────────────────────────
 
-function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, confirmDel, setConfirmDel, saving, onSave, onDelete, onClose }: any) {
+function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, confirmDel, setConfirmDel, saving, onSave, onDelete, onDuplicate, onClose }: any) {
   const SPOT_COLORS = ['#94A3B8','#00B4D8','#8B5CF6','#F97316','#F4A62A','#10B981','#EF4444','#1B2D40']
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
@@ -826,15 +909,19 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
       </Field>
 
       <Field label={`Width  ${eW.toFixed(1)}%`}>
-        <input type="range" min={1.5} max={16} step={0.5} value={eW} onChange={e=>setEW(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+        <input type="range" min={1.5} max={16} step={0.5} value={eW} onChange={e=>setEW(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
       </Field>
 
       <Field label={`Height  ${eH.toFixed(1)}%`}>
-        <input type="range" min={2} max={18} step={0.5} value={eH} onChange={e=>setEH(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+        <input type="range" min={2} max={18} step={0.5} value={eH} onChange={e=>setEH(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
       </Field>
 
       <Field label={`Rotation  ${eRot}°`}>
-        <input type="range" min={0} max={359} step={1} value={eRot} onChange={e=>setERot(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <input type="range" min={0} max={359} step={1} value={eRot} onChange={e=>setERot(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ flex:1 }}/>
+          <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)', minWidth:30, textAlign:'right' }}>{eRot}°</span>
+        </div>
+        <p style={{ fontSize:10, color:'rgba(255,255,255,0.3)', margin:'4px 0 0', lineHeight:1.4 }}>Or drag the ↻ handle on the spot</p>
       </Field>
 
       <Field label="Color override">
@@ -848,9 +935,14 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
         </div>
       </Field>
 
-      <button onClick={onSave} style={{ height:34, background:'#00B4D8', border:'none', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-        Save Changes
-      </button>
+      <div style={{ display:'flex', gap:8 }}>
+        <button onClick={onSave} style={{ flex:1, height:34, background:'#00B4D8', border:'none', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+          Save Changes
+        </button>
+        <button onClick={onDuplicate} title="Duplicate spot" style={{ width:34, height:34, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'rgba(255,255,255,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Copy size={14}/>
+        </button>
+      </div>
 
       <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
 
@@ -924,10 +1016,10 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
           {isZone && (
             <>
               <Field label={`Fill opacity  ${Math.round(eSOp*100)}%`}>
-                <input type="range" min={0.03} max={0.6} step={0.01} value={eSOp} onChange={e=>setESOp(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+                <input type="range" min={0.03} max={0.6} step={0.01} value={eSOp} onChange={e=>setESOp(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
               </Field>
               <Field label={`Rotation  ${eZoneRot}°`}>
-                <input type="range" min={0} max={359} step={1} value={eZoneRot} onChange={e=>setEZoneRot(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+                <input type="range" min={0} max={359} step={1} value={eZoneRot} onChange={e=>setEZoneRot(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
               </Field>
             </>
           )}
@@ -935,10 +1027,10 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
           {isBorder && (
             <>
               <Field label={`Stroke width  ${eSStroke}px`}>
-                <input type="range" min={1} max={8} step={0.5} value={eSStroke} onChange={e=>setESStroke(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+                <input type="range" min={1} max={8} step={0.5} value={eSStroke} onChange={e=>setESStroke(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
               </Field>
               <Field label={`Fill opacity  ${Math.round(eSFill*100)}%`}>
-                <input type="range" min={0} max={0.4} step={0.01} value={eSFill} onChange={e=>setESFill(Number(e.target.value))} onMouseUp={onSave} style={{ width:'100%' }}/>
+                <input type="range" min={0} max={0.4} step={0.01} value={eSFill} onChange={e=>setESFill(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ width:'100%' }}/>
               </Field>
             </>
           )}
@@ -973,8 +1065,8 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
 
 function EmptyPanel({ tool }: { tool: Tool }) {
   const tips: Record<Tool, { title: string; items: string[] }> = {
-    select: { title: 'Select Tool', items: ['Click any element to select it','Drag spots to reposition','Drag zones to move them','Drag border points to reshape'] },
-    spot:   { title: 'Spot Tool',   items: ['Click canvas to place a spot','Spots auto-label (A1, A2, B1…)','Click a spot to switch to Select','Drag to adjust position'] },
+    select: { title: 'Select Tool', items: ['Click any element to select it','Drag spots to reposition (any tool)','Drag zones to move them','Drag border points to reshape'] },
+    spot:   { title: 'Spot Tool',   items: ['Click canvas to place a spot','Spots auto-label (A1, A2, B1…)','Drag existing spots to move them','↻ handle rotates the selected spot'] },
     zone:   { title: 'Zone Tool',   items: ['Drag to draw a highlighted area','Great for marking rows or sections','Add a label to identify the zone','Choose color to code by type'] },
     border: { title: 'Border Tool', items: ['Click points to trace lot outline','Shows where your lot boundaries are','Click ✓ Finish when done','Drag points to adjust later'] },
     marker: { title: 'Marker Tool', items: ['Click to place entrance/exit icon','Select it to change type & label','Entrance = green, Exit = red','Custom = yellow'] },

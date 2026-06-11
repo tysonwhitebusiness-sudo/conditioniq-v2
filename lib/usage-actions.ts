@@ -234,7 +234,18 @@ export async function initiateInspectionRequest({
 }): Promise<{ inspectionId: string }> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
-  const usageState = await checkUsageState(companyId)
+
+  // Use admin client directly — anonymous inspectors have no session cookie,
+  // so the session-based createClient() can't read the companies table.
+  const { data: company } = await supabase
+    .from('companies')
+    .select('reports_used, reports_included, subscription_tier')
+    .eq('id', companyId)
+    .single()
+  const usageState = {
+    used: company?.reports_used ?? 0,
+    isOverage: company ? (company.reports_used ?? 0) >= (company.reports_included ?? 0) : false,
+  }
 
   const { data: inspection, error } = await supabase
     .from('vehicle_inspections')

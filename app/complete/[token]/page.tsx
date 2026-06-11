@@ -58,11 +58,10 @@ export default function RemoteInspectionPage() {
   async function handleStart() {
     if (!request || !inspectorName.trim()) return
 
-    // Sign in anonymously so the wizard can function
-    const { error } = await supabase.auth.signInAnonymously()
-    if (error) {
-      console.error('Anonymous sign in failed:', error)
-      return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      const { error } = await supabase.auth.signInAnonymously()
+      if (error) { console.error('Anonymous sign in failed:', error); return }
     }
 
     setStarted(true)

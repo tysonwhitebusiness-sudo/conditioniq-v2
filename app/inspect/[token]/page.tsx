@@ -77,8 +77,13 @@ export default function InspectTokenPage() {
     setStatus('starting')
     setStartError('')
     try {
-      const { error: anonErr } = await supabase.auth.signInAnonymously()
-      if (anonErr) throw anonErr
+      // Skip anonymous sign-in if already authenticated (prevents overwriting an admin session
+      // when they open their own inspect link in the same browser to test it)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        const { error: anonErr } = await supabase.auth.signInAnonymously()
+        if (anonErr) throw anonErr
+      }
 
       const { inspectionId: id } = await initiateInspectionRequest({
         requestId: request.id,

@@ -406,12 +406,12 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
   ].filter(p => p.url)
 
   const intPhotos = [
-    { url: img(int_.driverDoorPhoto),       caption: 'Driver Door'         },
-    { url: img(int_.rearDriverDoorPhoto),   caption: 'Rear Driver Door'    },
-    { url: img(int_.trunkPhoto),            caption: 'Trunk / Cargo'       },
-    { url: img(int_.rearPassengerDoorPhoto),caption: 'Rear Passenger Door' },
-    { url: img(int_.passengerDoorPhoto),    caption: 'Passenger Door'      },
-    { url: img(int_.dashboardPhoto),        caption: 'Dashboard'           },
+    { url: img(int_.interiorDriverDoorPhoto),       caption: 'Driver Door'         },
+    { url: img(int_.interiorRearDriverDoorPhoto),   caption: 'Rear Driver Door'    },
+    { url: img(int_.interiorTrunkPhoto),            caption: 'Trunk / Cargo'       },
+    { url: img(int_.interiorRearPassengerDoorPhoto),caption: 'Rear Passenger Door' },
+    { url: img(int_.interiorPassengerDoorPhoto),    caption: 'Passenger Door'      },
+    { url: img(int_.dashboardPhoto),                caption: 'Dashboard'           },
   ].filter(p => p.url)
 
   const hasExtOverflow  = extPhotos.length >= 4

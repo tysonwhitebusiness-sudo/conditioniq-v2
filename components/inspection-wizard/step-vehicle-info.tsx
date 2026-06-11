@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Car, ChevronDown, ChevronUp, Check, Loader2 } from 'lucide-react'
-import { decodeVIN, type VINDecodeResult } from '@/lib/vin-decode'
+import { decodeVINAction, type VINDecodeResult } from '@/lib/vin-actions'
 import PhotoField from '@/components/ui/photo-field'
 import StepOpener from './step-opener'
 import { useAuth } from '@/contexts/auth-context'
@@ -61,15 +61,15 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
     setDecoding(true)
     setDecodeError(null)
     try {
-      const result = await decodeVIN(vinStr)
+      const result = await decodeVINAction(vinStr)
       if (result) {
         setAdvancedInfo(result)
         onChange({ ...data, vin: vinStr, make: result.make, model: result.model, year: result.year, advancedInfo: result })
       } else {
-        setDecodeError('VIN could not be decoded. Please verify.')
+        setDecodeError('Could not decode VIN — enter year/make/model manually or tap Decode.')
       }
     } catch {
-      setDecodeError('Decode failed. Check your connection.')
+      setDecodeError('Decode failed — tap Decode to retry.')
     } finally {
       setDecoding(false)
     }
@@ -136,16 +136,29 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
               {!decoding && isVinComplete && !decodeError && <Check size={16} color="#10B981" />}
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              {decodeError && <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{decodeError}</p>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            <div style={{ flex: 1 }}>
+              {decodeError && (
+                <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{decodeError}</p>
+              )}
               {advancedInfo && !decodeError && (
                 <p style={{ fontSize: 12, color: '#10B981', margin: 0 }}>
-                  {advancedInfo.year} {advancedInfo.make} {advancedInfo.model}
+                  ✓ {advancedInfo.year} {advancedInfo.make} {advancedInfo.model}
                 </p>
               )}
             </div>
-            <span style={{ fontSize: 12, color: '#94A3B8' }}>{vin.length}/17</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {isVinComplete && (
+                <button
+                  type="button"
+                  onClick={() => autoDecode(vin)}
+                  disabled={decoding}
+                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: decoding ? 'default' : 'pointer', fontFamily: 'inherit', opacity: decoding ? 0.6 : 1 }}>
+                  {decoding ? 'Decoding…' : 'Decode'}
+                </button>
+              )}
+              <span style={{ fontSize: 12, color: '#94A3B8' }}>{vin.length}/17</span>
+            </div>
           </div>
         </div>
 

@@ -72,6 +72,15 @@ export async function updateVehicleLifecycleStatusAction(
   if (error) console.error('[lifecycle] update', error)
 }
 
+export async function saveReportUrlAction(inspectionId: string, reportUrl: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('vehicle_inspections')
+    .update({ report_url: reportUrl, report_generated: true, report_generated_at: new Date().toISOString() })
+    .eq('id', inspectionId)
+  if (error) console.error('[saveReportUrl]', error)
+}
+
 export async function fetchInspectorNames(inspectorIds: string[]): Promise<Record<string, string>> {
   if (!inspectorIds.length) return {}
   const supabase = createAdminClient()

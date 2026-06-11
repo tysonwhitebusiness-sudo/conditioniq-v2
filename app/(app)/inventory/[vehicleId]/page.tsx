@@ -176,13 +176,18 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   // ── Fetch inspections via server action (bypasses RLS, handles company_id mismatches)
   const fetchInspections = useCallback(async (vin: string, knownIds?: string[]) => {
     setLoadingInspections(true)
-    const rows = knownIds?.length
-      ? await fetchInspectionsByIds(knownIds)
-      : await fetchInspectionsByVin(companyId, vin)
-    const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
-    const nameMap = await fetchInspectorNames(inspectorIds)
-    setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
-    setLoadingInspections(false)
+    try {
+      const rows = knownIds?.length
+        ? await fetchInspectionsByIds(knownIds)
+        : await fetchInspectionsByVin(companyId, vin)
+      const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
+      const nameMap = await fetchInspectorNames(inspectorIds)
+      setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
+    } catch (e) {
+      console.error('[fetchInspections]', e)
+    } finally {
+      setLoadingInspections(false)
+    }
   }, [companyId])
 
   // ── Fetch vehicle (then fetch inspections by known IDs or VIN)
@@ -468,61 +473,41 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {inspections.map(insp => {
-              const ss = scoreStyle(insp.vehicle_score)
-              const rawDate = insp.completed_at ?? insp.created_at
-              const dateStr = new Date(rawDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
-              const inspector = (insp.inspector as any)?.full_name ?? 'Unknown'
-              const shortId = String(insp.id).slice(0, 6).toUpperCase()
-              const usageStatus: string = insp.usage_status ?? insp.status ?? 'queued'
-              const STATUS_BADGE: Record<string, { label: string; bg: string; color: string }> = {
-                queued:           { label: 'Queued',          bg: '#F0F4F8', color: '#94A3B8' },
-                pending_arrival:  { label: 'Pending Arrival', bg: '#F0F4F8', color: '#94A3B8' },
-                on_lot:      { label: 'On Lot',      bg: '#E0F7FC', color: '#00B4D8' },
-                in_progress: { label: 'In Progress', bg: '#EDE9FE', color: '#8B5CF6' },
-                one_off:     { label: 'One-Off',     bg: '#FFF0E8', color: '#F97316' },
-                released:    { label: 'Released',    bg: '#D1FAE5', color: '#10B981' },
-              }
-              const badge = STATUS_BADGE[usageStatus] ?? STATUS_BADGE.queued
+            {inspections.map((insp, idx) => {
+              const rawDate = insp.report_generated_at ?? insp.created_at
+              const dateStr = rawDate ? new Date(rawDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+              const inspector = (insp.inspector as any)?.full_name ?? null
+              const usage: string = insp.usage_status ?? ''
+              const typeLabel = usage === 'checkin' ? 'Check-In' : usage === 'checkout' ? 'Check-Out' : 'Standard'
+              const typeColor = usage === 'checkin' ? '#0369A1' : usage === 'checkout' ? '#065F46' : '#4A5568'
+              const typeBg   = usage === 'checkin' ? '#DBEAFE' : usage === 'checkout' ? '#D1FAE5' : '#F0F4F8'
               const reportUrl: string | null = (insp as any).report_url ?? null
-              const hasReport = !!(reportUrl || insp.status === 'completed')
+              const inspNum = inspections.length - idx
 
               return (
                 <div key={insp.id}
-                  style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 12, padding: '12px 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    {/* Report ID */}
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0D1B2A', minWidth: 110, flexShrink: 0 }}>
-                      Report #{shortId}
-                    </span>
+                  style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  {/* Type badge */}
+                  <span style={{ background: typeBg, color: typeColor, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {typeLabel}
+                  </span>
 
-                    {/* Date + inspector */}
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{dateStr}</p>
-                      <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>
-                    </div>
-
-                    {/* Status badge */}
-                    <span style={{ background: badge.bg, color: badge.color, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                      {badge.label}
-                    </span>
-
-                    {/* View / Download — use report_url directly for instant open */}
-                    {hasReport && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          onClick={() => reportUrl ? window.open(reportUrl, '_blank') : downloadPDF(insp.id)}
-                          style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          View <ExternalLink size={11} />
-                        </button>
-                        <button
-                          onClick={() => reportUrl ? window.open(reportUrl, '_blank') : downloadPDF(insp.id)}
-                          style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Download size={11} /> PDF
-                        </button>
-                      </div>
-                    )}
+                  {/* Date + inspector */}
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>Report #{inspNum} · {dateStr}</p>
+                    {inspector && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>}
                   </div>
+
+                  {/* View PDF or no-report label */}
+                  {reportUrl ? (
+                    <button
+                      onClick={() => window.open(reportUrl, '_blank')}
+                      style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                      <ExternalLink size={12} /> View PDF
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', flexShrink: 0 }}>No report yet</span>
+                  )}
                 </div>
               )
             })}

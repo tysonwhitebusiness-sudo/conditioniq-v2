@@ -158,7 +158,13 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     }
 
     const { generateInspectionPDF } = await import('@/lib/pdf-generator')
-    await generateInspectionPDF({ ...allData, inspectionId, timestamp: new Date().toISOString(), gpsStart }, scoreResult, signature)
+    const reportUrl = await generateInspectionPDF({ ...allData, inspectionId, timestamp: new Date().toISOString(), gpsStart }, scoreResult, signature)
+
+    // Save report URL so it can be retrieved from history
+    if (reportUrl) {
+      const { saveReportUrlAction } = await import('@/lib/inspection-server-actions')
+      saveReportUrlAction(inspectionId, reportUrl).catch(e => console.error('[saveReport]', e))
+    }
 
     // Silently sync to storage inventory — never blocks completion
     if (effectiveCompany?.id) {

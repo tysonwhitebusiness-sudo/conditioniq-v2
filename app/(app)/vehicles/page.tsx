@@ -11,7 +11,7 @@ import {
   addVehicleToSystem, getVehicleInspectionHistory,
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
-import { updateVehicleLifecycleStatusAction } from '@/lib/inspection-server-actions'
+import { updateVehicleLifecycleStatusAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -136,9 +136,12 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
                     <span style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>Inspection</span>
                     <span style={{ fontSize: 12, color: '#4A5568' }}>{new Date(h.created_at).toLocaleDateString()}</span>
                     {h.status === 'in_progress' && <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>IN PROGRESS</span>}
-                    {(h.report_url || h.status === 'completed') && (
-                      <button onClick={() => window.open(h.report_url || '#', '_blank')}
-                        style={{ marginLeft: 'auto', fontSize: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: h.report_url ? 'pointer' : 'default', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {h.report_url && (
+                      <button onClick={async () => {
+                        const url = h.report_url.startsWith('http') ? h.report_url : await getReportSignedUrlAction(h.report_url)
+                        if (url) window.open(url, '_blank')
+                      }}
+                        style={{ marginLeft: 'auto', fontSize: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
                         View <ExternalLink size={11} />
                       </button>
                     )}
@@ -892,13 +895,12 @@ export default function VehiclesPage() {
                         {pdfUrl ? (
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                             <button
-                              onClick={() => window.open(pdfUrl, '_blank')}
+                              onClick={async () => {
+                                const url = pdfUrl.startsWith('http') ? pdfUrl : await getReportSignedUrlAction(pdfUrl)
+                                if (url) window.open(url, '_blank')
+                              }}
                               style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
-                            >View</button>
-                            <button
-                              onClick={() => { const a = document.createElement('a'); a.href = pdfUrl; a.download = `report-${String(r.id).slice(0,6)}.pdf`; document.body.appendChild(a); a.click(); document.body.removeChild(a) }}
-                              style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                            >PDF</button>
+                            >View PDF</button>
                           </div>
                         ) : (
                           <span style={{ fontSize: 11, color: '#CBD5E1' }}>No report yet</span>

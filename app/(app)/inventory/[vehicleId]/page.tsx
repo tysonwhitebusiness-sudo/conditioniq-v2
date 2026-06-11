@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction } from '@/lib/inspection-server-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -501,7 +501,13 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   {/* View PDF or no-report label */}
                   {reportUrl ? (
                     <button
-                      onClick={() => window.open(reportUrl, '_blank')}
+                      onClick={async () => {
+                        // reportUrl may be a storage path or a legacy full URL
+                        const url = reportUrl.startsWith('http')
+                          ? reportUrl
+                          : await getReportSignedUrlAction(reportUrl)
+                        if (url) window.open(url, '_blank')
+                      }}
                       style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                       <ExternalLink size={12} /> View PDF
                     </button>

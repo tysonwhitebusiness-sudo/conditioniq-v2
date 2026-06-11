@@ -29,12 +29,14 @@ export async function generateInspectionPDF(
         .upload(path, blob, { contentType: 'application/pdf', upsert: true })
 
       if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage
+        // Open the PDF immediately using a short-lived signed URL
+        const { data: signed } = await supabase.storage
           .from('inspection-reports')
-          .getPublicUrl(path)
-        // Open the stored PDF in a new tab
-        window.open(publicUrl, '_blank')
-        return publicUrl
+          .createSignedUrl(path, 3600)
+        if (signed?.signedUrl) window.open(signed.signedUrl, '_blank')
+        // Return the storage path — not a public URL.
+        // Callers generate a signed URL on demand so the bucket stays private.
+        return path
       }
       console.error('[pdf] upload error:', uploadError)
     } catch (e) {

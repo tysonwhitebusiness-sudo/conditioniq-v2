@@ -172,33 +172,34 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [appStep, setAppStep] = useState<AppStep>('view')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
 
-  // ── Fetch inspections by VIN (no heavy JSONB photo columns)
-  const fetchInspections = useCallback(async (vin: string) => {
-    if (!companyId || !vin) return
+  // ── Fetch inspections — by known IDs if available, else fall back to VIN
+  const fetchInspections = useCallback(async (vin: string, knownIds?: string[]) => {
     setLoadingInspections(true)
-    const { data, error } = await createClient()
+    let q = createClient()
       .from('vehicle_inspections')
       .select('id, created_at, completed_at, status, usage_status, vehicle_score, inspection_type, inspector_id')
-      .eq('company_id', companyId)
-      .eq('vin', vin)
       .order('created_at', { ascending: false })
+    if (knownIds?.length) {
+      q = q.in('id', knownIds)
+    } else if (companyId && vin) {
+      q = q.eq('company_id', companyId).eq('vin', vin)
+    } else {
+      setInspections([]); setLoadingInspections(false); return
+    }
+    const { data, error } = await q
     if (error) console.error('[detail] inspections:', error)
     const rows = data ?? []
-    // fetch inspector names separately to avoid RLS issues on user_profiles join
     const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
     let nameMap: Record<string, string> = {}
     if (inspectorIds.length) {
-      const { data: profiles } = await createClient()
-        .from('user_profiles')
-        .select('id, full_name')
-        .in('id', inspectorIds)
+      const { data: profiles } = await createClient().from('user_profiles').select('id, full_name').in('id', inspectorIds)
       for (const p of profiles ?? []) nameMap[p.id] = p.full_name ?? 'Unknown'
     }
     setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
     setLoadingInspections(false)
   }, [companyId])
 
-  // ── Fetch vehicle (then fetch inspections by VIN)
+  // ── Fetch vehicle (then fetch inspections by known IDs or VIN)
   const fetchVehicle = useCallback(async () => {
     if (!companyId || !params.vehicleId) return
     setLoadingVehicle(true)
@@ -211,7 +212,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setVehicle(data ?? null)
     setRawNotes(data?.notes ?? null)
     setLoadingVehicle(false)
-    if (data?.vin) fetchInspections(data.vin)
+    if (data) {
+      const ids = [...new Set([data.checkin_inspection_id, data.checkout_inspection_id, ...(data.inspection_ids ?? [])].filter(Boolean))]
+      fetchInspections(data.vin ?? '', ids.length ? ids : undefined)
+    }
   }, [companyId, params.vehicleId, fetchInspections])
 
   useEffect(() => { fetchVehicle() }, [fetchVehicle])

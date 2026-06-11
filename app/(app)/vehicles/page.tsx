@@ -101,14 +101,15 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
 
   useEffect(() => {
     setLoading(true)
+    const ids = [...new Set([vehicle.checkin_inspection_id, vehicle.checkout_inspection_id, ...(vehicle.inspection_ids ?? [])].filter(Boolean))]
+    if (!ids.length) { setHistory([]); setLoading(false); return }
     createClient()
       .from('vehicle_inspections')
       .select('id, created_at, completed_at, status, vin')
-      .eq('company_id', companyId)
-      .eq('vin', vehicle.vin)
+      .in('id', ids)
       .order('created_at', { ascending: true })
       .then(({ data }) => { setHistory(data ?? []); setLoading(false) })
-  }, [companyId, vehicle.vin])
+  }, [vehicle.id])
 
   const saveNote = async () => {
     if (!note.trim()) return
@@ -565,11 +566,12 @@ export default function VehiclesPage() {
     setReportsVehicle(v)
     setReportsLoading(true)
     setReportsList([])
+    const ids = [...new Set([v.checkin_inspection_id, v.checkout_inspection_id, ...(v.inspection_ids ?? [])].filter(Boolean))]
+    if (!ids.length) { setReportsList([]); setReportsLoading(false); return }
     const { data } = await createClient()
       .from('vehicle_inspections')
       .select('id, created_at, completed_at, inspection_type, vehicle_score, status')
-      .eq('company_id', companyId)
-      .eq('vin', v.vin)
+      .in('id', ids)
       .eq('status', 'completed')
       .order('created_at', { ascending: true })
     setReportsList(data ?? [])

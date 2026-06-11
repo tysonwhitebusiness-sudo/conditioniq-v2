@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { ArrowLeft, LogOut, CreditCard, Users, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ProfilePage() {
@@ -81,6 +81,27 @@ export default function ProfilePage() {
           <p className="text-sm text-gray-500 capitalize mt-0.5">{company.subscription_tier} plan</p>
         </div>
       )}
+
+      <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
+        <Link href="/settings/billing" className="flex items-center justify-between p-4 border-b border-gray-50 no-underline">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center">
+              <CreditCard size={15} className="text-cyan-600" />
+            </div>
+            <span className="text-sm font-medium text-gray-900">Billing & Plan</span>
+          </div>
+          <ChevronRight size={15} className="text-gray-400" />
+        </Link>
+        <Link href="/settings/members" className="flex items-center justify-between p-4 no-underline">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Users size={15} className="text-amber-500" />
+            </div>
+            <span className="text-sm font-medium text-gray-900">Team Members</span>
+          </div>
+          <ChevronRight size={15} className="text-gray-400" />
+        </Link>
+      </div>
 
       <button onClick={handleSignOut} className="w-full flex items-center justify-center gap-2 py-3 text-red-600 border border-red-200 rounded-xl font-medium">
         <LogOut size={18} /> Sign Out

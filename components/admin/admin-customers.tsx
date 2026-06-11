@@ -5,8 +5,10 @@ import { getAllCompanies, updateCompanyBilling, getCompanyInspections, getCompan
 import { getFeatureFlags, upsertFeatureFlag } from '@/lib/feature-flags'
 import type { FeatureFlags, FeatureKey } from '@/lib/feature-flags'
 import { getPlan, getDefaultMemberCap, ADD_ONS, ADD_ON_ELIGIBLE_PLANS, type PlanKey } from '@/lib/pricing'
+import { getPlanChangeRequests, updatePlanChangeRequestStatus, getCompaniesWithPendingRequests } from '@/lib/billing-actions'
+import type { PlanChangeRequest } from '@/lib/billing-actions'
 import { useAuth } from '@/contexts/auth-context'
-import { Search, Ghost, X, Plus, ChevronRight, Lock, LayoutGrid } from 'lucide-react'
+import { Search, Ghost, X, Plus, ChevronRight, Lock, LayoutGrid, MessageSquare } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
   demo:           { bg: '#F0F4F8', color: '#94A3B8' },
@@ -63,27 +65,42 @@ export default function AdminCustomers() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editBilling, setEditBilling] = useState<Record<string, unknown> | null>(null)
+  const [pendingCompanyIds, setPendingCompanyIds] = useState<Set<string>>(new Set())
+  const [planRequests, setPlanRequests] = useState<PlanChangeRequest[]>([])
+  const [loadingRequests, setLoadingRequests] = useState(false)
 
   useEffect(() => {
-    getAllCompanies().then(data => { setCompanies(data as Record<string, unknown>[]); setLoading(false) })
+    Promise.all([
+      getAllCompanies(),
+      getCompaniesWithPendingRequests(),
+    ]).then(([data, pendingIds]) => {
+      setCompanies(data as Record<string, unknown>[])
+      setPendingCompanyIds(new Set(pendingIds))
+      setLoading(false)
+    })
   }, [])
 
   const openCompany = useCallback(async (company: Record<string, unknown>) => {
     setSelected(company)
+    setPlanRequests([])
     setEditBilling({
       reports_used: company.reports_used,
       reports_included: company.reports_included,
       subscription_tier: company.subscription_tier,
       billing_interval: (company.billing_interval as string) ?? 'monthly',
     })
-    const [ins, n, f] = await Promise.all([
+    setLoadingRequests(true)
+    const [ins, n, f, reqs] = await Promise.all([
       getCompanyInspections(company.id as string),
       getCompanyNotes(company.id as string),
       getFeatureFlags(company.id as string),
+      getPlanChangeRequests(company.id as string),
     ])
     setInspections(ins as Record<string, unknown>[])
     setNotes(n as Record<string, unknown>[])
     setFlags(f)
+    setPlanRequests(reqs)
+    setLoadingRequests(false)
   }, [])
 
   const saveBilling = async () => {
@@ -185,6 +202,7 @@ export default function AdminCustomers() {
             const pct = Math.min(100, (used / Math.max(inc, 1)) * 100)
             const barColor = pct >= 100 ? '#EF4444' : pct >= 80 ? '#F4A62A' : '#00B4D8'
             const ageDays = Math.floor((Date.now() - new Date(company.created_at as string).getTime()) / 86400000)
+            const hasPending = pendingCompanyIds.has(company.id as string)
             return (
               <div key={company.id as string}
                 onClick={() => openCompany(company)}
@@ -198,6 +216,11 @@ export default function AdminCustomers() {
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: pc.bg, color: pc.color, flexShrink: 0 }}>{tier.toUpperCase()}</span>
                     {(company.legacy_pricing as boolean) && (
                       <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', flexShrink: 0 }}>LEGACY</span>
+                    )}
+                    {hasPending && (
+                      <span title="Pending plan change request" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>
+                        <MessageSquare size={9} />PLAN REQ
+                      </span>
                     )}
                     <span style={{ fontSize: 12, color: '#94A3B8', flexShrink: 0 }}>{ageDays}d old</span>
                   </div>
@@ -395,6 +418,51 @@ export default function AdminCustomers() {
                   })}
                 </div>
               )}
+
+              {/* Plan Change Requests */}
+              <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>Plan Change Requests</p>
+                {loadingRequests ? (
+                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Loading...</p>
+                ) : planRequests.length === 0 ? (
+                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No requests</p>
+                ) : planRequests.map((req, i) => (
+                  <div key={req.id} style={{ padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A' }}>→ {req.requested_plan}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: req.status === 'pending' ? '#FEF3C7' : req.status === 'reviewed' ? '#E0F7FC' : '#D1FAE5', color: req.status === 'pending' ? '#92400E' : req.status === 'reviewed' ? '#0097B2' : '#065F46' }}>
+                          {req.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <select
+                        value={req.status}
+                        onChange={async e => {
+                          const newStatus = e.target.value as 'pending' | 'reviewed' | 'completed'
+                          await updatePlanChangeRequestStatus(req.id, newStatus)
+                          setPlanRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: newStatus } : r))
+                          if (newStatus !== 'pending') {
+                            setPendingCompanyIds(prev => {
+                              const next = new Set(prev)
+                              if (!planRequests.some(r => r.id !== req.id && r.status === 'pending')) next.delete(selected?.id as string)
+                              return next
+                            })
+                          }
+                        }}
+                        style={{ height: 28, padding: '0 6px', border: '1px solid #E1E8F0', borderRadius: 8, fontSize: 11, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
+                    {req.notes && <p style={{ fontSize: 12, color: '#4A5568', margin: '0 0 4px', lineHeight: 1.5 }}>{req.notes}</p>}
+                    <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>
+                      Requested {new Date(req.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
               {/* Recent Inspections */}
               <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>

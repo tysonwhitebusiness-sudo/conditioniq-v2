@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -197,18 +197,19 @@ export default function DesktopSidebar({
             </>
           )}
 
+          <div style={divider()} />
+          <button onClick={() => !isInspecting && router.push('/settings/billing')} title="Billing" style={collapsedItemStyle(pathname === '/settings/billing')}>
+            <CreditCard size={18} />
+          </button>
           {(isOwnerUser || companyRole === 'admin') && (
-            <>
-              <div style={divider()} />
-              <button onClick={() => !isInspecting && router.push('/settings/members')} title="Team Members" style={collapsedItemStyle(pathname === '/settings/members')}>
-                <Users size={18} />
-              </button>
-              {isOwnerUser && (
-                <button onClick={() => !isInspecting && router.push('/admin/overview')} title="Admin Center" style={collapsedItemStyle(pathname.startsWith('/admin'))}>
-                  <Shield size={18} />
-                </button>
-              )}
-            </>
+            <button onClick={() => !isInspecting && router.push('/settings/members')} title="Team Members" style={collapsedItemStyle(pathname === '/settings/members')}>
+              <Users size={18} />
+            </button>
+          )}
+          {isOwnerUser && (
+            <button onClick={() => !isInspecting && router.push('/admin/overview')} title="Admin Center" style={collapsedItemStyle(pathname.startsWith('/admin'))}>
+              <Shield size={18} />
+            </button>
           )}
         </div>
       ) : (
@@ -236,22 +237,22 @@ export default function DesktopSidebar({
             </>
           )}
 
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '12px 0' }} />
+          <button onClick={() => !isInspecting && router.push('/settings/billing')} style={expandedItemStyle(pathname === '/settings/billing')}>
+            <CreditCard size={18} />
+            <span>Billing</span>
+          </button>
           {(isOwnerUser || companyRole === 'admin') && (
-            <>
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '12px 0' }} />
-              <button onClick={() => !isInspecting && router.push('/settings/members')} style={expandedItemStyle(pathname === '/settings/members')}>
-                <Users size={18} />
-                <span>Team Members</span>
-              </button>
-            </>
+            <button onClick={() => !isInspecting && router.push('/settings/members')} style={expandedItemStyle(pathname === '/settings/members')}>
+              <Users size={18} />
+              <span>Team Members</span>
+            </button>
           )}
           {isOwnerUser && (
-            <>
-              <button onClick={() => !isInspecting && router.push('/admin/overview')} style={expandedItemStyle(pathname.startsWith('/admin'))}>
-                <Shield size={18} />
-                <span>Admin Center</span>
-              </button>
-            </>
+            <button onClick={() => !isInspecting && router.push('/admin/overview')} style={expandedItemStyle(pathname.startsWith('/admin'))}>
+              <Shield size={18} />
+              <span>Admin Center</span>
+            </button>
           )}
         </div>
       )}

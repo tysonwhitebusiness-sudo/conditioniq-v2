@@ -33,15 +33,19 @@ export async function updateVehicleLifecycleStatusAction(
   inspectionId: string,
   inspectionType: 'standard' | 'check_in' | 'check_out',
   score: number | null,
+  vehicleDbId?: string,
 ): Promise<void> {
   const supabase = createAdminClient()
-  const { data: vehicle } = await supabase
+  let query = supabase
     .from('storage_vehicles')
     .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
-    .eq('company_id', companyId)
-    .eq('vin', vin)
-    .maybeSingle()
-  if (!vehicle) return
+  if (vehicleDbId) {
+    query = query.eq('id', vehicleDbId) as typeof query
+  } else {
+    query = query.eq('company_id', companyId).eq('vin', vin) as typeof query
+  }
+  const { data: vehicle } = await (query as any).maybeSingle()
+  if (!vehicle) { console.error('[lifecycle] vehicle not found', { companyId, vin, vehicleDbId }); return }
 
   const updates: Record<string, any> = {
     latest_inspection_id: inspectionId,
@@ -97,6 +101,17 @@ export async function saveReportUrlAction(inspectionId: string, reportUrl: strin
     .update({ report_url: reportUrl, report_generated: true, report_generated_at: new Date().toISOString() })
     .eq('id', inspectionId)
   if (error) console.error('[saveReportUrl]', error)
+}
+
+export async function fetchFullInspectionAction(inspectionId: string): Promise<Record<string, any> | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('vehicle_inspections')
+    .select('*')
+    .eq('id', inspectionId)
+    .single()
+  if (error) { console.error('[fetchFullInspection]', error); return null }
+  return data
 }
 
 export async function fetchInspectorNames(inspectorIds: string[]): Promise<Record<string, string>> {

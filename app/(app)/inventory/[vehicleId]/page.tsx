@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction } from '@/lib/inspection-server-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -275,7 +275,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
   const handleWizardComplete = useCallback(async (data: any) => {
     if (effectiveCompany?.id && vehicle?.vin) {
-      await updateVehicleLifecycleStatusAction(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
+      await updateVehicleLifecycleStatusAction(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null, params.vehicleId).catch(console.error)
     }
     setAppStep('view')
     setCurrentInspectionId(null)
@@ -498,22 +498,25 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                     {inspector && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>}
                   </div>
 
-                  {/* View PDF or no-report label */}
-                  {reportUrl ? (
-                    <button
-                      onClick={async () => {
-                        // reportUrl may be a storage path or a legacy full URL
-                        const url = reportUrl.startsWith('http')
-                          ? reportUrl
-                          : await getReportSignedUrlAction(reportUrl)
-                        if (url) window.open(url, '_blank')
-                      }}
-                      style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                      <ExternalLink size={12} /> View PDF
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', flexShrink: 0 }}>No report yet</span>
-                  )}
+                  {/* View PDF — stored URL if available, generate on the fly otherwise */}
+                  <button
+                    onClick={async () => {
+                      if (reportUrl) {
+                        const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
+                        if (url) { window.open(url, '_blank'); return }
+                      }
+                      // No stored report — generate from saved inspection data
+                      const full = await fetchFullInspectionAction(insp.id)
+                      if (!full) { alert('Inspection data not found'); return }
+                      const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
+                        import('@/lib/vehicle-score'),
+                        import('@/lib/pdf-generator'),
+                      ])
+                      await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
+                    }}
+                    style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: reportUrl ? '#00B4D8' : '#4A5568', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <ExternalLink size={12} /> {reportUrl ? 'View PDF' : 'Generate PDF'}
+                  </button>
                 </div>
               )
             })}

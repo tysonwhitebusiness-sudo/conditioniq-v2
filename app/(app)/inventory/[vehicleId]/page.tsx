@@ -338,7 +338,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setSavingBilling(false)
     setBillingSaved(true)
     setTimeout(() => setBillingSaved(false), 2500)
-    await fetchVehicle()
   }
 
   // ── Generate lot invoice

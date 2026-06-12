@@ -13,7 +13,7 @@ export default function LotBillingSettingsPage() {
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
-    if (!loading && user && !(isOwnerUser || companyRole === 'admin')) router.replace('/')
+    if (!loading && user && companyRole !== null && !(isOwnerUser || companyRole === 'admin')) router.replace('/')
   }, [user, loading, isOwnerUser, companyRole, router])
 
   if (loading || !user) return null

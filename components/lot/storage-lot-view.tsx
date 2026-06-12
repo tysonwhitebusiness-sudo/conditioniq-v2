@@ -18,8 +18,8 @@ interface Props {
 }
 
 export default function StorageLotView({ companyId, locationId }: Props) {
-  const { user, isOwnerUser } = useAuth()
-  const canSetup = isOwnerUser
+  const { user, isOwnerUser, companyRole } = useAuth()
+  const canSetup = isOwnerUser || companyRole === 'admin'
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   const bgPanKey = `lot_bg_pan_${companyId}_${locationId ?? 'main'}`

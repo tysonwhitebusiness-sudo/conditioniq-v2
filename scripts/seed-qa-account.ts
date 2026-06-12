@@ -192,7 +192,7 @@ async function seed() {
       id: userId,
       full_name: 'QA Tester',
       email: QA_EMAIL,
-      role: 'admin',
+      role: 'inspector',      // display-only field; admin access is granted via company_members
       platform_role: 'user',
       company_id: companyId,
     }, { onConflict: 'id' })

@@ -67,11 +67,11 @@ pending_arrival → on_lot → in_progress → released
 
 | | |
 |---|---|
-| **Deployment URL** | [FILL IN] |
+| **Deployment URL** | https://conditioniq-v2.vercel.app/ |
 | **QA account email** | qa-test@conditioniq.app |
-| **QA account password** | [FILL IN — run seed script, password printed to console] |
+| **QA account password** | QAtest1234!|
 | **Supabase project URL** | [FILL IN] |
-| **Admin dashboard** | [FILL IN]/admin/overview |
+| **Admin dashboard** | https://conditioniq-v2.vercel.app/admin/overview |
 
 ## Running the Seed Script
 

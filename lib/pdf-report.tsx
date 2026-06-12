@@ -127,10 +127,10 @@ function DataChip({ label, value }: { label: string; value: string }) {
 function ConditionChip({ label, value }: { label: string; value: string }) {
   const color = conditionColor(value)
   return (
-    <View style={{ backgroundColor: C.white, borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6, paddingTop: 6, paddingBottom: 6, paddingLeft: 10, paddingRight: 10, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    <View style={{ backgroundColor: C.white, borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 10, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, flexShrink: 0, alignSelf: 'center' }} />
-      <View style={{ flexDirection: 'column', gap: 1, justifyContent: 'center' }}>
-        <Text style={{ color: C.gray400, fontSize: 7, fontFamily: 'Helvetica' }}>{label}</Text>
+      <View style={{ flexDirection: 'column', justifyContent: 'center' }}>
+        <Text style={{ color: C.gray400, fontSize: 7, fontFamily: 'Helvetica', marginBottom: 3 }}>{label}</Text>
         <Text style={{ color, fontFamily: 'Helvetica-Bold', fontSize: 10 }}>{value}</Text>
       </View>
     </View>
@@ -169,9 +169,10 @@ function CategoryBar({ label, score, max }: { label: string; score: number; max:
 
 function ResultIndicator({ result }: { result: string }) {
   const map: Record<string, { color: string; label: string }> = {
-    pass: { color: C.green,   label: 'PASS' },
-    fail: { color: C.red,     label: 'FAIL' },
-    nt:   { color: C.gray400, label: 'N/T'  },
+    pass:       { color: C.green,   label: 'PASS' },
+    fail:       { color: C.red,     label: 'FAIL' },
+    nt:         { color: C.gray600, label: 'N/T'  },
+    not_tested: { color: C.gray600, label: 'N/T'  },
   }
   const { color, label } = map[result] ?? map.nt
   return (
@@ -327,34 +328,37 @@ function CertificationSeal() {
 }
 
 // ── Function test groups ───────────────────────────────────────────────────
+// Keys must match what step-function.tsx stores in vehicle_function_data.tests
 const TEST_GROUPS = [
   { title: 'Starting & Drivetrain', items: [
-    { key: 'engineStart', label: 'Engine Start' },
-    { key: 'shiftToDrive', label: 'Shift to Drive' },
-    { key: 'shiftToReverse', label: 'Shift to Reverse' },
+    { key: 'engineStarts', label: 'Engine Start' },
+    { key: 'shiftsToD',    label: 'Shift to Drive' },
+    { key: 'shiftsToR',    label: 'Shift to Reverse' },
     { key: 'parkingBrake', label: 'Parking Brake' },
   ]},
   { title: 'Lights', items: [
-    { key: 'headlights', label: 'Headlights' },
-    { key: 'taillights', label: 'Taillights' },
+    { key: 'headlights',  label: 'Headlights' },
+    { key: 'taillights',  label: 'Taillights' },
     { key: 'turnSignals', label: 'Turn Signals' },
     { key: 'brakeLights', label: 'Brake Lights' },
-    { key: 'hazardLights', label: 'Hazard Lights' },
+    { key: 'hazardLights',label: 'Hazard Lights' },
   ]},
   { title: 'Controls', items: [
-    { key: 'horn', label: 'Horn' },
-    { key: 'wipers', label: 'Wipers' },
+    { key: 'horn',        label: 'Horn' },
+    { key: 'wipers',      label: 'Wipers' },
     { key: 'washerFluid', label: 'Washer Fluid' },
-    { key: 'ac', label: 'A/C' },
-    { key: 'heater', label: 'Heater' },
-    { key: 'radio', label: 'Radio' },
+    { key: 'ac',          label: 'A/C' },
+    { key: 'heater',      label: 'Heater' },
+    { key: 'radio',       label: 'Radio' },
   ]},
   { title: 'Windows & Locks', items: [
     { key: 'powerWindows', label: 'Power Windows' },
-    { key: 'powerLocks', label: 'Power Locks' },
-    { key: 'mirrors', label: 'Mirrors' },
+    { key: 'powerLocks',   label: 'Power Locks' },
+    { key: 'mirrors',      label: 'Mirrors' },
   ]},
 ]
+
+const TOTAL_FUNCTION_TESTS = TEST_GROUPS.reduce((sum, g) => sum + g.items.length, 0)
 
 // ── Main component ─────────────────────────────────────────────────────────
 interface ReportProps {
@@ -388,11 +392,15 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
   const intDamages = int_.damages ?? []
   const tests      = fn.tests ?? {}
 
+  // Count by iterating displayed items so tally always matches what's rendered
   let passCount = 0, failCount = 0, ntCount = 0
-  Object.values(tests).forEach((v: any) => {
-    if (v === 'pass') passCount++
-    else if (v === 'fail') failCount++
-    else ntCount++
+  TEST_GROUPS.forEach(group => {
+    group.items.forEach(item => {
+      const r = tests[item.key]
+      if (r === 'pass') passCount++
+      else if (r === 'fail') failCount++
+      else ntCount++
+    })
   })
 
   const catBars = [
@@ -476,7 +484,7 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
         {/* Stat chips */}
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
           <View style={{ flex: 1, backgroundColor: C.gray100, borderRadius: 8, padding: '10px 16px', alignItems: 'center' }}>
-            <Text style={{ color: C.cyan, fontFamily: 'Helvetica-Bold', fontSize: 20 }}>{Object.keys(tests).length}</Text>
+            <Text style={{ color: C.cyan, fontFamily: 'Helvetica-Bold', fontSize: 20 }}>{TOTAL_FUNCTION_TESTS}</Text>
             <Text style={{ color: C.gray400, fontSize: 8, marginTop: 2 }}>function tests</Text>
           </View>
           <View style={{ flex: 1, backgroundColor: C.gray100, borderRadius: 8, padding: '10px 16px', alignItems: 'center' }}>

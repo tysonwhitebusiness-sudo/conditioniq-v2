@@ -9,8 +9,21 @@ export async function generateInspectionPDF(
   const { pdf } = await import('@react-pdf/renderer')
   const { default: InspectionReport } = await import('./pdf-report')
 
+  // Fetch branding info for white label (company_id may be on the inspection)
+  let logoUrl: string | null = null
+  let companyName: string | null = null
+  const companyId = inspectionData.company_id as string | undefined
+  if (companyId) {
+    try {
+      const { getCompanyLogo } = await import('./branding-actions')
+      const branding = await getCompanyLogo(companyId)
+      logoUrl = branding.logoUrl
+      companyName = branding.companyName
+    } catch { /* non-fatal */ }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const element = React.createElement(InspectionReport, { inspectionData, scoreResult, signatureUrl }) as any
+  const element = React.createElement(InspectionReport, { inspectionData, scoreResult, signatureUrl, logoUrl, companyName }) as any
   const blob = await pdf(element).toBlob()
 
   const inspectionId = inspectionData.inspectionId as string | undefined

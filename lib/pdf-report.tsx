@@ -80,14 +80,17 @@ const s = StyleSheet.create({
 
 // ── Reusable components ────────────────────────────────────────────────────
 
-function ReportPage({ vin, date, pageNum, totalPages, children }: {
-  vin: string; date: string; pageNum: number; totalPages: number; children: React.ReactNode
+function ReportPage({ vin, date, pageNum, totalPages, logoUrl, companyName, children }: {
+  vin: string; date: string; pageNum: number; totalPages: number
+  logoUrl?: string | null; companyName?: string | null; children: React.ReactNode
 }) {
   return (
     <Page size="A4" style={s.page}>
       <View style={s.pageHeader}>
         <View style={s.headerLeft}>
-          <Text style={s.headerBrand}>CONDITION IQ</Text>
+          {logoUrl
+            ? <Image src={logoUrl} style={{ height: 20, maxWidth: 100, objectFit: 'contain' }} />
+            : <Text style={s.headerBrand}>{companyName ?? 'CONDITION IQ'}</Text>}
           <View style={s.headerDiv} />
           <Text style={s.headerSub}>VEHICLE CONDITION REPORT</Text>
         </View>
@@ -359,9 +362,11 @@ interface ReportProps {
   scoreResult: ScoreResult
   signatureUrl: string
   photos?: Record<string, string>
+  logoUrl?: string | null
+  companyName?: string | null
 }
 
-export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {} }: ReportProps) {
+export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {}, logoUrl, companyName }: ReportProps) {
   const vi   = inspectionData.vehicleInfo ?? {}
   const bol  = inspectionData.bol_data ?? {}
   const keys = inspectionData.keys_data ?? {}
@@ -420,7 +425,7 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
   const pgEngine        = hasExtOverflow ? 7 : 6
   const pgCert          = totalPages
 
-  const base = { vin, date, totalPages }
+  const base = { vin, date, totalPages, logoUrl, companyName }
 
   // NHTSA-sourced fields
   const nhtsaBodyClass = vi.bodyClass  ?? vi.body_class  ?? ''

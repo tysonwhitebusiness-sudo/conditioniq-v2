@@ -7,12 +7,14 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
 import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction } from '@/lib/inspection-server-actions'
+import { calculateVehicleBilling, type BillingType } from '@/lib/lot-actions'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import {
   ArrowLeft, Play, Send, ExternalLink, Download,
-  Camera, Loader2, X, CheckCircle, LogOut,
+  Camera, Loader2, X, CheckCircle, LogOut, DollarSign,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -145,6 +147,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const router = useRouter()
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
+  const lotMapEnabled = useFeatureFlag('lot_map')
   const companyId = effectiveCompany?.id ?? ''
   const isFMC = effectiveCompany?.account_type === 'fmc'
 
@@ -153,6 +156,21 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [loadingVehicle, setLoadingVehicle] = useState(true)
   const [inspections, setInspections] = useState<any[]>([])
   const [loadingInspections, setLoadingInspections] = useState(false)
+
+  // Billing (lot_map gated)
+  const [companyBillingDefaults, setCompanyBillingDefaults] = useState<any>(null)
+  const [billingType, setBillingType] = useState<BillingType>('daily')
+  const [rateOverride, setRateOverride] = useState('')
+  const [billToName, setBillToName] = useState('')
+  const [billToContact, setBillToContact] = useState('')
+  const [savingBilling, setSavingBilling] = useState(false)
+  const [billingSaved, setBillingSaved] = useState(false)
+
+  // Invoice modal (lot_map gated)
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoiceNotes, setInvoiceNotes] = useState('')
+  const [invoiceDueDate, setInvoiceDueDate] = useState('')
+  const [generatingInvoice, setGeneratingInvoice] = useState(false)
 
   // Photos (lazy)
   const [photos, setPhotos] = useState<{ url: string; label: string; date: string }[]>([])
@@ -210,6 +228,26 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   }, [companyId, params.vehicleId, fetchInspections])
 
   useEffect(() => { fetchVehicle() }, [fetchVehicle])
+
+  // ── Load billing defaults once lot_map flag resolves
+  useEffect(() => {
+    if (!lotMapEnabled || !companyId) return
+    createClient()
+      .from('companies')
+      .select('default_daily_rate, default_monthly_rate, default_billing_type')
+      .eq('id', companyId)
+      .single()
+      .then(({ data }) => setCompanyBillingDefaults(data ?? {}))
+  }, [lotMapEnabled, companyId])
+
+  // ── Populate billing state from vehicle once loaded
+  useEffect(() => {
+    if (!vehicle) return
+    setBillingType((vehicle.billing_type as BillingType) ?? 'daily')
+    setRateOverride(vehicle.daily_rate != null ? String(vehicle.daily_rate) : vehicle.monthly_rate != null ? String(vehicle.monthly_rate) : '')
+    setBillToName(vehicle.bill_to_name ?? '')
+    setBillToContact(vehicle.bill_to_contact ?? '')
+  }, [vehicle?.id])
 
   // ── Lazy load photos
   const loadPhotos = async () => {
@@ -281,6 +319,77 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setCurrentInspectionId(null)
     await fetchVehicle()
   }, [effectiveCompany?.id, vehicle?.vin, fetchVehicle])
+
+  // ── Save vehicle billing overrides
+  const saveBilling = async () => {
+    if (!vehicle) return
+    setSavingBilling(true)
+    const rateVal = rateOverride ? parseFloat(rateOverride) : null
+    await createClient()
+      .from('storage_vehicles')
+      .update({
+        billing_type: billingType,
+        daily_rate: billingType === 'daily' ? rateVal : null,
+        monthly_rate: billingType === 'monthly' ? rateVal : null,
+        bill_to_name: billToName || null,
+        bill_to_contact: billToContact || null,
+      })
+      .eq('id', vehicle.id)
+    setSavingBilling(false)
+    setBillingSaved(true)
+    setTimeout(() => setBillingSaved(false), 2500)
+    await fetchVehicle()
+  }
+
+  // ── Generate lot invoice
+  const handleGenerateInvoice = async () => {
+    if (!vehicle || !effectiveCompany || !user) return
+    const billingResult = calculateVehicleBilling(
+      { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
+      companyBillingDefaults ?? {},
+    )
+    if (billingResult.rate === null || billingResult.accruedAmount === null) {
+      alert('Please set a rate before generating an invoice.')
+      return
+    }
+    setGeneratingInvoice(true)
+    try {
+      const { getNextInvoiceNumber } = await import('@/lib/invoice-actions')
+      const { generateAndSaveInvoice } = await import('@/lib/invoice-generator')
+      const invoiceNumber = await getNextInvoiceNumber(effectiveCompany.id)
+      const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      const vehicleTitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Vehicle'
+      await generateAndSaveInvoice({
+        companyId: effectiveCompany.id,
+        vehicleId: vehicle.id,
+        invoiceNumber,
+        userId: user.id,
+        invoiceDate: today,
+        dueDate: invoiceDueDate || undefined,
+        companyName: effectiveCompany.name ?? 'Company',
+        billToName,
+        billToContact,
+        vehicleYear: vehicle.year,
+        vehicleMake: vehicle.make,
+        vehicleModel: vehicle.model,
+        vehicleVin: vehicle.vin,
+        vehicleDescription: vehicleTitle,
+        intakeDate: vehicle.arrived_at ? new Date(vehicle.arrived_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
+        daysOnLot: billingResult.daysOnLot,
+        billingType,
+        rate: billingResult.rate,
+        accruedAmount: billingResult.accruedAmount,
+        notes: invoiceNotes || undefined,
+      })
+      setShowInvoiceModal(false)
+      setInvoiceNotes('')
+      setInvoiceDueDate('')
+    } catch (e: any) {
+      alert('Failed to generate invoice: ' + e.message)
+    } finally {
+      setGeneratingInvoice(false)
+    }
+  }
 
   // ── PDF download for a single inspection
   const downloadPDF = async (inspId: string) => {
@@ -570,6 +679,93 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         )}
       </SectionCard>
 
+      {/* ── Billing (lot_map flag gated) ────────────────────────────────────── */}
+      {lotMapEnabled && (() => {
+        const billingResult = calculateVehicleBilling(
+          { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
+          companyBillingDefaults ?? {},
+        )
+        const rateLabel = billingType === 'daily' ? '/day' : '/30 days'
+        const defaultRate = billingType === 'daily'
+          ? companyBillingDefaults?.default_daily_rate
+          : companyBillingDefaults?.default_monthly_rate
+        const inputStyle: React.CSSProperties = {
+          flex: 1, height: 40, border: '1px solid #E1E8F0', borderRadius: 10,
+          padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA',
+        }
+        return (
+          <SectionCard title="Billing">
+            {/* Days on Lot + Accrued */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Days on Lot</p>
+                <p style={{ fontSize: 24, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>{billingResult.daysOnLot}<span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>d</span></p>
+              </div>
+              <div style={{ background: billingResult.accruedAmount != null ? '#E0F7FC' : '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Accrued</p>
+                <p style={{ fontSize: 24, fontWeight: 800, color: billingResult.accruedAmount != null ? '#00B4D8' : '#CBD5E1', margin: 0 }}>
+                  {billingResult.accruedAmount != null ? `$${billingResult.accruedAmount.toFixed(2)}` : '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Billing type toggle */}
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Billing Type</p>
+              <div style={{ display: 'flex', gap: 0, background: '#F0F4F8', borderRadius: 10, padding: 3 }}>
+                {(['daily', 'monthly'] as BillingType[]).map(t => (
+                  <button key={t} onClick={() => { setBillingType(t); setRateOverride('') }}
+                    style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: billingType === t ? '#0D1B2A' : 'transparent', color: billingType === t ? '#FFF' : '#4A5568', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize', transition: 'background 150ms ease' }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Rate override */}
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Rate {rateLabel}</p>
+              <div style={{ position: 'relative' }}>
+                <DollarSign size={13} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="number" min="0" step="0.01"
+                  placeholder={defaultRate != null ? `${defaultRate} (default)` : 'No default set'}
+                  value={rateOverride}
+                  onChange={e => setRateOverride(e.target.value)}
+                  style={{ ...inputStyle, paddingLeft: 28 }}
+                />
+              </div>
+              {!rateOverride && defaultRate != null && (
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Using company default: ${defaultRate}{rateLabel}</p>
+              )}
+            </div>
+
+            {/* Bill To */}
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 16 }}>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Bill To Name</p>
+                <input type="text" placeholder="Customer or company name" value={billToName} onChange={e => setBillToName(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Bill To Contact</p>
+                <input type="text" placeholder="Email or phone" value={billToContact} onChange={e => setBillToContact(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={saveBilling} disabled={savingBilling}
+                style={{ flex: 1, height: 42, borderRadius: 10, border: 'none', background: billingSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: savingBilling ? 'default' : 'pointer', fontFamily: 'inherit', opacity: savingBilling ? 0.7 : 1, transition: 'background 300ms ease' }}>
+                {billingSaved ? 'Saved ✓' : savingBilling ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => setShowInvoiceModal(true)}
+                style={{ height: 42, padding: '0 16px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                Generate Invoice
+              </button>
+            </div>
+          </SectionCard>
+        )
+      })()}
+
       {/* ── Notes ───────────────────────────────────────────────────────────── */}
       <SectionCard title="Notes" count={parsedNotes.length || undefined}>
         {/* New note input */}
@@ -610,6 +806,71 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
       {/* Lightbox */}
       {lightbox && <Lightbox url={lightbox.url} label={lightbox.label} onClose={() => setLightbox(null)} />}
+
+      {/* Invoice generation modal */}
+      {showInvoiceModal && (() => {
+        const billingResult = calculateVehicleBilling(
+          { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
+          companyBillingDefaults ?? {},
+        )
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowInvoiceModal(false)} />
+            <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Generate Invoice</h3>
+                <button onClick={() => setShowInvoiceModal(false)} style={{ width: 30, height: 30, borderRadius: 15, background: '#F0F4F8', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={14} color="#4A5568" />
+                </button>
+              </div>
+
+              {/* Summary */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 4px' }}>
+                  {[vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'Vehicle'}
+                </p>
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
+                  {billingResult.daysOnLot} days · {billingResult.rate != null ? `$${billingResult.rate.toFixed(2)}/${billingType === 'daily' ? 'day' : 'mo'}` : 'No rate set'}
+                </p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: billingResult.accruedAmount != null ? '#00B4D8' : '#94A3B8', margin: '6px 0 0' }}>
+                  Total: {billingResult.accruedAmount != null ? `$${billingResult.accruedAmount.toFixed(2)}` : '—'}
+                </p>
+              </div>
+
+              {billingResult.rate === null && (
+                <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                  <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>Set a rate in the Billing section before generating an invoice.</p>
+                </div>
+              )}
+
+              {/* Due Date */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Due Date <span style={{ color: '#94A3B8', fontWeight: 400 }}>(optional)</span></label>
+                <input type="date" value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)}
+                  style={{ width: '100%', height: 40, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }} />
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Notes <span style={{ color: '#94A3B8', fontWeight: 400 }}>(optional)</span></label>
+                <textarea value={invoiceNotes} onChange={e => setInvoiceNotes(e.target.value)} rows={2} placeholder="Payment terms, instructions…"
+                  style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowInvoiceModal(false)}
+                  style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
+                <button onClick={handleGenerateInvoice} disabled={generatingInvoice || billingResult.rate === null}
+                  style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: generatingInvoice || billingResult.rate === null ? '#E1E8F0' : '#0D1B2A', color: generatingInvoice || billingResult.rate === null ? '#94A3B8' : '#FFF', fontSize: 14, fontWeight: 700, cursor: generatingInvoice || billingResult.rate === null ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {generatingInvoice ? <><Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />Generating…</> : 'Generate & Download'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Release confirmation modal */}
       {confirmRelease && (

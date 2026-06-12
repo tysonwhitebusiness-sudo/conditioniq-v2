@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -49,6 +49,7 @@ export default function DesktopSidebar({
 
   const isFMC = effectiveCompany?.account_type === 'fmc'
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const whiteLabelEnabled = useFeatureFlag('white_label')
   const reportsUsed = effectiveCompany?.reports_used ?? 0
   const reportsTotal = effectiveCompany?.reports_included ?? 10
   const usagePct = Math.min(100, reportsTotal > 0 ? (reportsUsed / reportsTotal) * 100 : 0)
@@ -201,6 +202,16 @@ export default function DesktopSidebar({
           <button onClick={() => !isInspecting && router.push('/settings/billing')} title="Billing" style={collapsedItemStyle(pathname === '/settings/billing')}>
             <CreditCard size={18} />
           </button>
+          {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
+            <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} title="Lot Billing" style={collapsedItemStyle(pathname === '/settings/lot-billing')}>
+              <DollarSign size={18} />
+            </button>
+          )}
+          {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
+            <button onClick={() => !isInspecting && router.push('/settings/branding')} title="Branding" style={collapsedItemStyle(pathname === '/settings/branding')}>
+              <Palette size={18} />
+            </button>
+          )}
           {(isOwnerUser || companyRole === 'admin') && (
             <button onClick={() => !isInspecting && router.push('/settings/members')} title="Team Members" style={collapsedItemStyle(pathname === '/settings/members')}>
               <Users size={18} />
@@ -242,6 +253,18 @@ export default function DesktopSidebar({
             <CreditCard size={18} />
             <span>Billing</span>
           </button>
+          {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
+            <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} style={expandedItemStyle(pathname === '/settings/lot-billing')}>
+              <DollarSign size={18} />
+              <span>Lot Billing</span>
+            </button>
+          )}
+          {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
+            <button onClick={() => !isInspecting && router.push('/settings/branding')} style={expandedItemStyle(pathname === '/settings/branding')}>
+              <Palette size={18} />
+              <span>Branding</span>
+            </button>
+          )}
           {(isOwnerUser || companyRole === 'admin') && (
             <button onClick={() => !isInspecting && router.push('/settings/members')} style={expandedItemStyle(pathname === '/settings/members')}>
               <Users size={18} />
@@ -297,7 +320,7 @@ export default function DesktopSidebar({
               </p>
             </div>
             <button
-              onClick={async (e) => { e.stopPropagation(); await signOut() }}
+              onClick={async (e) => { e.stopPropagation(); await signOut(); router.replace('/login') }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, flexShrink: 0 }}
               title="Sign out"
             >

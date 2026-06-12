@@ -14,7 +14,13 @@ interface InspectionCameraProps {
   startKey?: string
   onCapture: (key: string, dataUrl: string) => void
   onClose: () => void
+  mode?: 'vehicle' | 'square'
 }
+
+const GUIDE_W_PCT = 85
+const GUIDE_H_PCT = 60
+const OFFSET_UP_PCT = 5
+const SQUARE_SIZE_PCT = 75
 
 export default function InspectionCamera({
   slots,
@@ -22,6 +28,7 @@ export default function InspectionCamera({
   startKey,
   onCapture,
   onClose,
+  mode = 'vehicle',
 }: InspectionCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -92,13 +99,23 @@ export default function InspectionCamera({
     const canvas = canvasRef.current
     if (!video || !canvas || !streaming) return
 
-    // Guide dimensions (must match CSS)
     const W = video.clientWidth || window.innerWidth
     const H = video.clientHeight || window.innerHeight
-    const guideW = W * 0.85
-    const guideH = H * 0.60
-    const guideLeft = (W - guideW) / 2
-    const guideTop = H / 2 - guideH / 2 - H * 0.05
+
+    let guideLeft: number, guideTop: number, guideW: number, guideH: number
+
+    if (mode === 'square') {
+      const size = Math.min(W, H) * SQUARE_SIZE_PCT / 100
+      guideW = size
+      guideH = size
+      guideLeft = (W - size) / 2
+      guideTop = (H - size) / 2
+    } else {
+      guideW = W * GUIDE_W_PCT / 100
+      guideH = H * GUIDE_H_PCT / 100
+      guideLeft = (W - guideW) / 2
+      guideTop = H / 2 - guideH / 2 - H * OFFSET_UP_PCT / 100
+    }
 
     // objectFit: cover math
     const vW = video.videoWidth
@@ -119,7 +136,7 @@ export default function InspectionCamera({
 
     onCapture(currentKey, dataUrl)
     advanceOrClose(currentKey, { ...values, [currentKey]: dataUrl })
-  }, [streaming, currentKey, values, onCapture, advanceOrClose])
+  }, [streaming, currentKey, values, onCapture, advanceOrClose, mode])
 
   const handleFileUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,11 +155,6 @@ export default function InspectionCamera({
 
   const handleClose = useCallback(() => { stopCamera(); onClose() }, [stopCamera, onClose])
 
-  // Guide dimensions for CSS (computed with vw/vh via CSS calc)
-  const GUIDE_W_PCT = 85
-  const GUIDE_H_PCT = 60
-  const OFFSET_UP_PCT = 5
-
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#000' }}>
       {/* Live video */}
@@ -155,7 +167,6 @@ export default function InspectionCamera({
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {error ? (
-        /* ── Error state ─────────────────────────────────────────────────────── */
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32, background: '#000',
@@ -172,9 +183,101 @@ export default function InspectionCamera({
             Cancel
           </button>
         </div>
+      ) : mode === 'square' ? (
+        <>
+          {/* ── Square mode overlay ─────────────────────────────────────────────── */}
+          {/* Top */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 'calc(50% - 37.5vmin)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
+          {/* Bottom */}
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, top: 'calc(50% + 37.5vmin)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
+          {/* Left */}
+          <div style={{ position: 'absolute', top: 'calc(50% - 37.5vmin)', bottom: 'calc(50% - 37.5vmin)', left: 0, width: 'calc(50% - 37.5vmin)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
+          {/* Right */}
+          <div style={{ position: 'absolute', top: 'calc(50% - 37.5vmin)', bottom: 'calc(50% - 37.5vmin)', right: 0, width: 'calc(50% - 37.5vmin)', background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }} />
+
+          {/* ── Square guide box ──────────────────────────────────────────────── */}
+          <div style={{
+            position: 'absolute',
+            left: 'calc(50% - 37.5vmin)',
+            top: 'calc(50% - 37.5vmin)',
+            width: '75vmin',
+            height: '75vmin',
+            pointerEvents: 'none',
+          }}>
+            {([
+              { top: 0,    left: 0,    borderTop: '3px solid #FFF', borderLeft: '3px solid #FFF' },
+              { top: 0,    right: 0,   borderTop: '3px solid #FFF', borderRight: '3px solid #FFF' },
+              { bottom: 0, left: 0,    borderBottom: '3px solid #FFF', borderLeft: '3px solid #FFF' },
+              { bottom: 0, right: 0,   borderBottom: '3px solid #FFF', borderRight: '3px solid #FFF' },
+            ] as React.CSSProperties[]).map((style, i) => (
+              <div key={i} style={{ position: 'absolute', width: 24, height: 24, ...style }} />
+            ))}
+
+            {/* Label above */}
+            <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, paddingBottom: 12, textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#FFF', textShadow: '0 1px 6px rgba(0,0,0,0.9)' }}>
+                {currentSlot?.label ?? 'Damage Photo'}
+              </p>
+            </div>
+
+            {/* Instruction below */}
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, paddingTop: 10, textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255,255,255,0.65)', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                Center damage within frame
+              </p>
+            </div>
+          </div>
+
+          {/* ── X button ─────────────────────────────────────────────────────── */}
+          <button
+            onClick={handleClose}
+            style={{
+              position: 'absolute',
+              top: 'max(20px, env(safe-area-inset-top))',
+              left: 20, zIndex: 10,
+              width: 40, height: 40, borderRadius: 20,
+              background: 'rgba(0,0,0,0.5)', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={20} color="#FFF" />
+          </button>
+
+          {/* ── Bottom row: upload + shutter ─────────────────────────────────── */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            paddingBottom: 'max(40px, env(safe-area-inset-bottom))',
+            padding: '20px 40px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 22, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Upload size={20} color="#FFF" />
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>Upload</span>
+              <input type="file" accept="image/*,image/heic,image/heif" style={{ display: 'none' }} onChange={handleFileUpload} />
+            </label>
+
+            <button
+              onClick={capturePhoto}
+              disabled={!streaming}
+              style={{
+                width: 76, height: 76, borderRadius: 38,
+                background: '#FFF',
+                border: '5px solid rgba(255,255,255,0.35)',
+                boxShadow: '0 0 0 3px rgba(255,255,255,0.15)',
+                cursor: streaming ? 'pointer' : 'default',
+                opacity: streaming ? 1 : 0.5,
+                padding: 0, flexShrink: 0,
+              }}
+            />
+
+            <div style={{ width: 44 }} />
+          </div>
+        </>
       ) : (
         <>
-          {/* ── Semi-transparent overlay (4 surrounding panels) ──────────────── */}
+          {/* ── Vehicle mode overlay (4 surrounding panels) ──────────────────── */}
           {/* Top */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0,
@@ -213,7 +316,6 @@ export default function InspectionCamera({
             height: `${GUIDE_H_PCT}vh`,
             pointerEvents: 'none',
           }}>
-            {/* Corner markers — L-shaped, 24px arms, 3px thick */}
             {([
               { top: 0,    left: 0,    borderTop: '3px solid #FFF', borderLeft: '3px solid #FFF' },
               { top: 0,    right: 0,   borderTop: '3px solid #FFF', borderRight: '3px solid #FFF' },

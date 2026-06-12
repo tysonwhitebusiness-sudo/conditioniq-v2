@@ -58,6 +58,9 @@ export interface AssignedVehicle {
   released_at: string | null
   checkin_inspection_id: string | null
   latest_score: number | null
+  daily_rate: number | null
+  monthly_rate: number | null
+  billing_type: string | null
 }
 
 export interface AvailableVehicle {
@@ -101,7 +104,7 @@ export async function getLotSpots(
     .from('lot_vehicle_assignments')
     .select(`
       id, spot_id, vehicle_id, assigned_at, assigned_by,
-      vehicle:storage_vehicles(id, vin, year, make, model, lifecycle_status, arrived_at, released_at, checkin_inspection_id, latest_score)
+      vehicle:storage_vehicles(id, vin, year, make, model, lifecycle_status, arrived_at, released_at, checkin_inspection_id, latest_score, daily_rate, monthly_rate, billing_type)
     `)
     .in('spot_id', spots.map(s => s.id))
     .is('unassigned_at', null)
@@ -254,6 +257,45 @@ export async function updateLotShape(id: string, updates: Partial<Omit<LotShape,
 export async function deleteLotShape(id: string): Promise<void> {
   const supabase = createClient()
   await supabase.from('lot_shapes').delete().eq('id', id)
+}
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export type BillingType = 'daily' | 'monthly'
+
+export interface VehicleBillingResult {
+  daysOnLot: number
+  billingType: BillingType
+  rate: number | null       // resolved rate (vehicle override or company default)
+  accruedAmount: number | null
+}
+
+export function calculateVehicleBilling(
+  vehicle: { arrived_at?: string | null; released_at?: string | null; billing_type?: string | null; daily_rate?: number | null; monthly_rate?: number | null },
+  company: { default_billing_type?: string | null; default_daily_rate?: number | null; default_monthly_rate?: number | null },
+): VehicleBillingResult {
+  const start = vehicle.arrived_at ? new Date(vehicle.arrived_at) : null
+  const end = vehicle.released_at ? new Date(vehicle.released_at) : new Date()
+  const daysOnLot = start ? Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86400000)) : 0
+
+  const billingType: BillingType =
+    (vehicle.billing_type as BillingType) ??
+    (company.default_billing_type as BillingType) ??
+    'daily'
+
+  const rate =
+    billingType === 'daily'
+      ? (vehicle.daily_rate ?? company.default_daily_rate ?? null)
+      : (vehicle.monthly_rate ?? company.default_monthly_rate ?? null)
+
+  let accruedAmount: number | null = null
+  if (rate !== null) {
+    accruedAmount = billingType === 'daily'
+      ? daysOnLot * rate
+      : (daysOnLot / 30) * rate
+  }
+
+  return { daysOnLot, billingType, rate, accruedAmount }
 }
 
 // ── Occupancy ─────────────────────────────────────────────────────────────────

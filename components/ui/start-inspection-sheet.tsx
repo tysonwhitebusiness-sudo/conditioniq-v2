@@ -41,8 +41,8 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
   const decode = async (v: string) => {
     setDecoding(true)
     try {
-      const { decodeVIN } = await import('@/lib/vin-decode')
-      const r = await decodeVIN(v)
+      const { decodeVINAction } = await import('@/lib/vin-actions')
+      const r = await decodeVINAction(v)
       if (r) { setYear(r.year ?? ''); setMake(r.make ?? ''); setModel(r.model ?? '') }
     } finally { setDecoding(false) }
   }

@@ -7,8 +7,9 @@ import LotGrid from './lot-grid'
 import LotSetupOverlay from './lot-setup-overlay'
 import AssignVehicleModal from './assign-vehicle-modal'
 import VehicleDetailSlideOver from './vehicle-detail-slide-over'
-import { getLotSpots, getLotBackground, getLotShapes } from '@/lib/lot-actions'
+import { getLotSpots, getLotBackground, getLotShapes, calculateVehicleBilling } from '@/lib/lot-actions'
 import type { LotSpot, LotShape } from '@/lib/lot-actions'
+import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
 
 interface Props {
@@ -27,6 +28,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const [spots, setSpots]   = useState<LotSpot[]>([])
   const [shapes, setShapes] = useState<LotShape[]>([])
   const [bgUrl, setBgUrl]   = useState<string | null>(null)
+  const [companyDefaults, setCompanyDefaults] = useState<{ default_daily_rate: number | null; default_monthly_rate: number | null; default_billing_type: string | null } | null>(null)
   const [bgPan, setBgPan]   = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [bgRotation, setBgRotation] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -52,12 +54,14 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   }
 
   const load = async () => {
-    const [s, sh, bg] = await Promise.all([
+    const [s, sh, bg, companyRes] = await Promise.all([
       getLotSpots(companyId, locationId),
       getLotShapes(companyId, locationId),
       getLotBackground(companyId, locationId),
+      createClient().from('companies').select('default_daily_rate, default_monthly_rate, default_billing_type').eq('id', companyId).single(),
     ])
     setSpots(s); setShapes(sh); setBgUrl(bg)
+    setCompanyDefaults(companyRes.data ?? null)
     setLoading(false)
   }
 
@@ -71,6 +75,23 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const occupied = spots.filter(s => s.active_assignment).length
   const total = spots.length
   const available = total - occupied
+
+  // Billing calculations
+  const defaults = companyDefaults ?? {}
+  const defaultDailyRate = defaults.default_daily_rate ?? null
+
+  // Sum daily accrual across occupied vehicles
+  const dailyAccruing = spots.reduce((sum, spot) => {
+    if (!spot.active_assignment?.vehicle) return sum
+    const v = spot.active_assignment.vehicle
+    const result = calculateVehicleBilling(v, defaults)
+    if (result.rate === null) return sum
+    return sum + (result.billingType === 'daily' ? result.rate : result.rate / 30)
+  }, 0)
+
+  // Opportunity cost: empty spots × default daily rate
+  const dailyOpportunityCost = defaultDailyRate != null ? available * defaultDailyRate : null
+  const hasBillingData = dailyAccruing > 0 || dailyOpportunityCost != null
 
   if (loading) {
     return (
@@ -91,14 +112,29 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         </h1>
 
         {isMobile ? (
-          <span style={{ fontSize: 13, color: '#4A5568', fontWeight: 600 }}>
-            <span style={{ color: '#00B4D8' }}>{occupied}</span>/{total} occupied · <span style={{ color: '#10B981' }}>{available}</span> free
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+            <span style={{ fontSize: 13, color: '#4A5568', fontWeight: 600 }}>
+              <span style={{ color: '#00B4D8' }}>{occupied}</span>/{total} · <span style={{ color: '#10B981' }}>{available}</span> free
+            </span>
+            {hasBillingData && (
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                {dailyAccruing > 0 && <span style={{ color: '#10B981' }}>${dailyAccruing.toFixed(0)}/d accruing</span>}
+                {dailyAccruing > 0 && dailyOpportunityCost != null && ' · '}
+                {dailyOpportunityCost != null && <span style={{ color: '#F59E0B' }}>${dailyOpportunityCost.toFixed(0)}/d empty</span>}
+              </span>
+            )}
+          </div>
         ) : (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <StatChip label="Total Spots" value={total} />
             <StatChip label="Occupied" value={occupied} color="#00B4D8" />
             <StatChip label="Available" value={available} color="#10B981" />
+            {dailyAccruing > 0 && (
+              <BillingChip label="Accruing/day" value={`$${dailyAccruing.toFixed(2)}`} color="#10B981" bg="#D1FAE5" />
+            )}
+            {dailyOpportunityCost != null && (
+              <BillingChip label="Empty cost/day" value={`$${dailyOpportunityCost.toFixed(2)}`} color="#92400E" bg="#FEF3C7" />
+            )}
           </div>
         )}
 
@@ -198,6 +234,15 @@ function StatChip({ label, value, color }: { label: string; value: number; color
     <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
       <p style={{ fontSize: 18, fontWeight: 800, color: color ?? '#0D1B2A', margin: 0 }}>{value}</p>
       <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{label}</p>
+    </div>
+  )
+}
+
+function BillingChip({ label, value, color, bg }: { label: string; value: string; color: string; bg: string }) {
+  return (
+    <div style={{ background: bg, border: `1px solid ${color}22`, borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
+      <p style={{ fontSize: 16, fontWeight: 800, color, margin: 0 }}>{value}</p>
+      <p style={{ fontSize: 11, color, opacity: 0.7, margin: 0 }}>{label}</p>
     </div>
   )
 }

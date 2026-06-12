@@ -78,7 +78,9 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
   useEffect(() => {
     const savedLoc = localStorage.getItem('vcr_last_location')
     if (savedLoc && !data.location) onChange({ ...data, location: savedLoc })
-  }, [])
+    // If VIN is already 17 chars on mount (e.g. from Pick from Vehicles), run decode
+    if (vin.length === 17 && !data.advancedInfo) autoDecode(vin)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-infer inspection type when VIN is complete and type not yet manually set
   useEffect(() => {

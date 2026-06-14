@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
+import { saveLotBillingDefaultsAction } from '@/lib/lot-server-actions'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { ArrowLeft, DollarSign, Check } from 'lucide-react'
@@ -43,17 +44,14 @@ export default function LotBillingPage() {
   const handleSave = async () => {
     if (!effectiveCompany?.id) return
     setSaving(true)
-    const { error } = await createClient()
-      .from('companies')
-      .update({
-        default_daily_rate: defaultDailyRate ? parseFloat(defaultDailyRate) : null,
-        default_monthly_rate: defaultMonthlyRate ? parseFloat(defaultMonthlyRate) : null,
-        default_billing_type: defaultBillingType,
-      })
-      .eq('id', effectiveCompany.id)
+    const { error } = await saveLotBillingDefaultsAction(effectiveCompany.id, {
+      default_daily_rate: defaultDailyRate ? parseFloat(defaultDailyRate) : null,
+      default_monthly_rate: defaultMonthlyRate ? parseFloat(defaultMonthlyRate) : null,
+      default_billing_type: defaultBillingType,
+    })
     setSaving(false)
     if (error) {
-      alert('Failed to save: ' + error.message)
+      alert('Failed to save: ' + error)
       return
     }
     setSaved(true)

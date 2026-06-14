@@ -88,3 +88,24 @@ export async function removeLotBackgroundAction(companyId: string, locationId?: 
   const path = locationId ? `${companyId}/${locationId}.jpg` : `${companyId}/main.jpg`
   await supabase.storage.from('lot-backgrounds').remove([path])
 }
+
+export async function saveLotBillingDefaultsAction(
+  companyId: string,
+  defaults: {
+    default_daily_rate: number | null
+    default_monthly_rate: number | null
+    default_billing_type: 'daily' | 'monthly'
+  },
+): Promise<{ error: string | null }> {
+  if (!companyId) return { error: 'Missing company ID' }
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('companies')
+    .update(defaults)
+    .eq('id', companyId)
+  if (error) {
+    console.error('[lot-billing] save defaults', error)
+    return { error: error.message }
+  }
+  return { error: null }
+}

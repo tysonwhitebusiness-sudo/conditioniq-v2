@@ -207,6 +207,7 @@ export default function VehicleInspectionApp() {
                 onComplete={handleInspectionComplete}
                 onCancel={handleCancelInspection}
                 onStepChange={setWizardStep}
+                sidebarWidth={sidebarWidth}
               />
             </div>
           </div>

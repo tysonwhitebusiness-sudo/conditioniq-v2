@@ -42,9 +42,10 @@ interface Props {
   initialStep?: StepId
   isRemote?: boolean
   onStepChange?: (stepNum: number) => void
+  sidebarWidth?: number
 }
 
-export default function InspectionWizard({ inspectionId, initialData, inspectorId, onComplete, onCancel, initialStep, onStepChange }: Props) {
+export default function InspectionWizard({ inspectionId, initialData, inspectorId, onComplete, onCancel, initialStep, onStepChange, sidebarWidth = 0 }: Props) {
   const { effectiveCompany } = useAuth()
   const [currentStep, setCurrentStep] = useState<StepId>(initialStep ?? 'vehicle-info')
   const [data, setData] = useState<Record<string, Record<string, any>>>({
@@ -197,6 +198,9 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4F8' }}>
+      {sidebarWidth > 0 && (
+        <style>{`.wizard-bottom-bar { left: ${sidebarWidth}px !important; }`}</style>
+      )}
       {/* Sticky header — 60px + 4px progress bar */}
       <div className="wizard-header" style={{ position: 'sticky', top: 0, zIndex: 20, background: '#0D1B2A' }}>
         <div style={{ maxWidth: 480, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>

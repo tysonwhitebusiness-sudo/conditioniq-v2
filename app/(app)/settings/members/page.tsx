@@ -14,7 +14,7 @@ const ROLE_CONFIG = {
 }
 
 export default function MembersPage() {
-  const { effectiveCompany, user, companyRole, platformRole } = useAuth()
+  const { effectiveCompany, user, companyRole, platformRole, loading: authLoading } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const companyId = effectiveCompany?.id ?? ''
 
@@ -63,7 +63,7 @@ export default function MembersPage() {
         </div>
 
         {/* Add member — via CIQ team */}
-        {canManage && (
+        {!authLoading && canManage && (
           <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 16, padding: '18px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 4px' }}>Need to add a team member?</p>
@@ -119,7 +119,7 @@ export default function MembersPage() {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: cfg.bg, color: cfg.color, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>
                   <cfg.icon size={11} />{cfg.label}
                 </span>
-                {canManage && !isSelf && (
+                {!authLoading && canManage && !isSelf && (
                   isUpdating ? (
                     <Loader2 size={16} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
                   ) : (

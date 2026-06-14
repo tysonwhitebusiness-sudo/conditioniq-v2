@@ -24,6 +24,8 @@ interface Props {
   bgPan?: { x: number; y: number }
   bgRotation?: number
   selectedSpotId?: string | null
+  canSetup?: boolean
+  onSetupClick?: () => void
   onSpotClick?: (spot: LotSpot) => void
   onCanvasClick?: (xPct: number, yPct: number) => void
   onBgPanChange?: (pan: { x: number; y: number }) => void
@@ -33,6 +35,7 @@ interface Props {
 
 export default function LotGrid({
   spots, shapes = [], mode, bgUrl, bgPan, bgRotation = 0, selectedSpotId,
+  canSetup, onSetupClick,
   onSpotClick, onCanvasClick, onBgPanChange, onSpotDragMove, onSpotDragEnd,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -211,7 +214,16 @@ export default function LotGrid({
       {spots.length === 0 && mode === 'view' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, zIndex: 2 }}>
           <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No spots configured yet.</p>
-          <p style={{ fontSize: 12, color: '#CBD5E0', margin: 0 }}>Ask an admin to set up the lot layout.</p>
+          {canSetup ? (
+            <button
+              onClick={onSetupClick}
+              style={{ height: 36, padding: '0 18px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              Set Up Lot Layout
+            </button>
+          ) : (
+            <p style={{ fontSize: 12, color: '#CBD5E0', margin: 0 }}>Ask an admin to set up the lot layout.</p>
+          )}
         </div>
       )}
       {spots.length === 0 && mode === 'setup' && (

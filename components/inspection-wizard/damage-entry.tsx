@@ -342,7 +342,7 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
                     </p>
                     <button
                       type="button"
-                      onClick={() => setExpanded(null)}
+                      onClick={e => { e.stopPropagation(); setExpanded(null) }}
                       style={{
                         fontSize: 12, color: '#00B4D8', background: 'none',
                         border: 'none', cursor: 'pointer', padding: 0,

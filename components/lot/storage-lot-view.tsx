@@ -174,6 +174,8 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         bgUrl={bgUrl}
         bgPan={bgPan}
         bgRotation={bgRotation}
+        canSetup={canSetup}
+        onSetupClick={() => setSetupOpen(true)}
         onSpotClick={handleSpotClick}
       />
 

@@ -43,7 +43,7 @@ export default function LotBillingPage() {
   const handleSave = async () => {
     if (!effectiveCompany?.id) return
     setSaving(true)
-    await createClient()
+    const { error } = await createClient()
       .from('companies')
       .update({
         default_daily_rate: defaultDailyRate ? parseFloat(defaultDailyRate) : null,
@@ -52,6 +52,10 @@ export default function LotBillingPage() {
       })
       .eq('id', effectiveCompany.id)
     setSaving(false)
+    if (error) {
+      alert('Failed to save: ' + error.message)
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }

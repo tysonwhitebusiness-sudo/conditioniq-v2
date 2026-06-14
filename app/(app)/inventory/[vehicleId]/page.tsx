@@ -351,6 +351,9 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       alert('Please set a rate before generating an invoice.')
       return
     }
+    if (billingResult.accruedAmount === 0) {
+      if (!window.confirm('This vehicle has accrued $0.00. Generate a $0 invoice anyway?')) return
+    }
     setGeneratingInvoice(true)
     try {
       const { getNextInvoiceNumber } = await import('@/lib/invoice-actions')
@@ -899,6 +902,20 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
       <BottomNav />
     </div>
+
+    {/* Billing saved toast */}
+    {billingSaved && (
+      <div style={{
+        position: 'fixed', top: 24, right: 24, zIndex: 200,
+        background: '#10B981', color: '#FFF',
+        padding: '12px 20px', borderRadius: 10,
+        fontWeight: 700, fontSize: 14,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        pointerEvents: 'none',
+      }}>
+        Saved ✓
+      </div>
+    )}
     </>
   )
 }

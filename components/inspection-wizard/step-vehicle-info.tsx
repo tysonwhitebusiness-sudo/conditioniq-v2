@@ -38,6 +38,7 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [advancedInfo, setAdvancedInfo] = useState<VINDecodeResult | null>(data.advancedInfo ?? null)
   const [inferring, setInferring] = useState(false)
+  const [vinAttempted, setVinAttempted] = useState(false)
 
   const vin = data.vin ?? ''
   const isVinComplete = vin.length === 17
@@ -140,6 +141,11 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <div style={{ flex: 1 }}>
+              {vinAttempted && !isVinComplete && !decodeError && (
+                <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>
+                  VIN must be 17 characters ({vin.length}/17 entered)
+                </p>
+              )}
               {decodeError && (
                 <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{decodeError}</p>
               )}
@@ -307,8 +313,13 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
           </p>
         )}
         <button
-          onClick={onNext}
-          disabled={!canAdvance}
+          onClick={() => {
+            if (!canAdvance) {
+              if (!isVinComplete) setVinAttempted(true)
+              return
+            }
+            onNext()
+          }}
           style={{
             width: '100%', height: 52, borderRadius: 12, border: 'none',
             fontWeight: 700, fontSize: 15, cursor: canAdvance ? 'pointer' : 'not-allowed',

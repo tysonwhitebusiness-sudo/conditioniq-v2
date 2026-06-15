@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
+import { getUserCompanyRole } from '@/lib/auth-server-actions'
 
 interface UserProfile {
   id: string
@@ -80,12 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(profile ?? null)
 
     if (profile?.company_id) {
-      const [compRes, memberRes] = await Promise.all([
+      const [compRes, memberRole] = await Promise.all([
         supabase.from('companies').select('*').eq('id', profile.company_id).single(),
-        supabase.from('company_members').select('role').eq('user_id', u.id).eq('company_id', profile.company_id).single(),
+        getUserCompanyRole(u.id, profile.company_id),
       ])
       setCompany(compRes.data ?? null)
-      setCompanyRole((memberRes.data?.role as CompanyRole) ?? null)
+      setCompanyRole(memberRole)
     } else {
       setCompany(null)
       setCompanyRole(null)

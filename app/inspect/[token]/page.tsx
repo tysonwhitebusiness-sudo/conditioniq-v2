@@ -7,6 +7,7 @@ import { createFakeAuthContext, AuthContext } from '@/contexts/auth-context'
 import { initiateInspectionRequest } from '@/lib/usage-actions'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import SharedInspectionView from '@/components/shared-inspection-view'
+import { getInspectionRequestByToken } from '@/lib/inspection-server-actions'
 import { XCircle, Clock, CheckCircle, Car } from 'lucide-react'
 
 type PageStatus =
@@ -44,12 +45,8 @@ export default function InspectTokenPage() {
 
   useEffect(() => {
     async function validate() {
-      // 1. Check inspection_requests table first
-      const { data: req } = await supabase
-        .from('inspection_requests')
-        .select('id, company_id, vin, notes, token, expires_at, used_at')
-        .eq('token', token)
-        .single()
+      // 1. Check inspection_requests via server action (admin client bypasses RLS on the table)
+      const req = await getInspectionRequestByToken(token)
 
       if (req) {
         if (req.used_at) { setStatus('used'); return }
@@ -85,12 +82,17 @@ export default function InspectTokenPage() {
         if (anonErr) throw anonErr
       }
 
-      const { inspectionId: id } = await initiateInspectionRequest({
+      const result = await initiateInspectionRequest({
         requestId: request.id,
         companyId: request.company_id,
         vin: request.vin ?? undefined,
       })
-      setInspectionId(id)
+      if (result.error) {
+        setStartError(result.error)
+        setStatus('intake')
+        return
+      }
+      setInspectionId(result.inspectionId)
       setStatus('inspecting')
     } catch (e: any) {
       setStartError(e.message ?? 'Failed to start inspection')

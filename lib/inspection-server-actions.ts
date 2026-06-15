@@ -123,6 +123,16 @@ export async function fetchInspectorNames(inspectorIds: string[]): Promise<Recor
   return map
 }
 
+export async function getInspectionRequestByToken(token: string) {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('inspection_requests')
+    .select('id, company_id, vin, notes, token, expires_at, used_at')
+    .eq('token', token)
+    .maybeSingle()
+  return data ?? null
+}
+
 // ── Storage operations — require SUPABASE_SERVICE_ROLE_KEY in Vercel env vars
 
 export async function createSignedUploadUrlAction(path: string): Promise<{ token: string; signedUrl: string } | null> {

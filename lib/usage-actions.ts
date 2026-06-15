@@ -231,69 +231,74 @@ export async function initiateInspectionRequest({
   requestId: string
   companyId: string
   vin?: string
-}): Promise<{ inspectionId: string }> {
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase = createAdminClient()
+}): Promise<{ inspectionId: string; error: null } | { inspectionId: null; error: string }> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
 
-  // Use admin client directly — anonymous inspectors have no session cookie,
-  // so the session-based createClient() can't read the companies table.
-  const { data: company } = await supabase
-    .from('companies')
-    .select('reports_used, reports_included, subscription_tier')
-    .eq('id', companyId)
-    .single()
-  const usageState = {
-    used: company?.reports_used ?? 0,
-    isOverage: company ? (company.reports_used ?? 0) >= (company.reports_included ?? 0) : false,
-  }
-
-  const { data: inspection, error } = await supabase
-    .from('vehicle_inspections')
-    .insert({
-      company_id: companyId,
-      status: 'in_progress',
-      usage_status: 'initiated',
-      initiated_at: new Date().toISOString(),
-      is_overage: usageState.isOverage,
-      ...(vin ? { vin } : {}),
-    })
-    .select('id')
-    .single()
-
-  if (error || !inspection) throw new Error(error?.message ?? 'Failed to create inspection')
-
-  const vinKey = vin?.trim() || null
-
-  await Promise.all([
-    supabase
+    const { data: company } = await supabase
       .from('companies')
-      .update({ reports_used: usageState.used + 1 })
-      .eq('id', companyId),
-    supabase
-      .from('inspection_requests')
-      .update({ used_at: new Date().toISOString() })
-      .eq('id', requestId),
-  ])
-
-  // Immediately add to storage inventory — status pending_inspection, no score yet
-  if (vinKey) {
-    const now = new Date().toISOString()
-    const { data: existing } = await supabase
-      .from('storage_vehicles')
-      .select('id, status')
-      .eq('company_id', companyId)
-      .eq('vin', vinKey)
-      .maybeSingle()
-    if (existing) {
-      if (existing.status === 'active') {
-        await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existing.id)
-      }
-    } else {
-      await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).catch(() => {})
+      .select('reports_used, reports_included, subscription_tier')
+      .eq('id', companyId)
+      .single()
+    const usageState = {
+      used: company?.reports_used ?? 0,
+      isOverage: company ? (company.reports_used ?? 0) >= (company.reports_included ?? 0) : false,
     }
-  }
 
-  return { inspectionId: inspection.id }
+    const { data: inspection, error } = await supabase
+      .from('vehicle_inspections')
+      .insert({
+        company_id: companyId,
+        status: 'in_progress',
+        usage_status: 'initiated',
+        initiated_at: new Date().toISOString(),
+        is_overage: usageState.isOverage,
+        ...(vin ? { vin } : {}),
+      })
+      .select('id')
+      .single()
+
+    if (error || !inspection) {
+      console.error('[initiateInspectionRequest] insert error', error)
+      return { inspectionId: null, error: error?.message ?? 'Failed to create inspection' }
+    }
+
+    const vinKey = vin?.trim() || null
+
+    await Promise.all([
+      supabase
+        .from('companies')
+        .update({ reports_used: usageState.used + 1 })
+        .eq('id', companyId),
+      supabase
+        .from('inspection_requests')
+        .update({ used_at: new Date().toISOString() })
+        .eq('id', requestId),
+    ])
+
+    if (vinKey) {
+      const now = new Date().toISOString()
+      const { data: existing } = await supabase
+        .from('storage_vehicles')
+        .select('id, status')
+        .eq('company_id', companyId)
+        .eq('vin', vinKey)
+        .maybeSingle()
+      if (existing) {
+        if (existing.status === 'active') {
+          await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existing.id)
+        }
+      } else {
+        await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).catch(() => {})
+      }
+    }
+
+    return { inspectionId: inspection.id, error: null }
+  } catch (e: any) {
+    console.error('[initiateInspectionRequest] unexpected error', e)
+    return { inspectionId: null, error: e?.message ?? 'Unknown error starting inspection' }
+  }
 }
 
 export async function getMonthlyUsageCount(companyId: string): Promise<number> {

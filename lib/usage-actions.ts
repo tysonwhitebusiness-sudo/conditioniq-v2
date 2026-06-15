@@ -290,7 +290,7 @@ export async function initiateInspectionRequest({
           await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existing.id)
         }
       } else {
-        await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).catch(() => {})
+        await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).then(() => {}, () => {})
       }
     }
 

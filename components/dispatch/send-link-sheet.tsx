@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { X, Copy, Check, Mail, Send, Loader2, CheckCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
-import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { getStorageLocations } from '@/lib/storage-actions'
+import { createDispatchAction } from '@/lib/dispatch-actions'
 
 export interface SendLinkSheetProps {
   isOpen: boolean
@@ -110,22 +110,16 @@ export default function SendLinkSheet({
     if (!vinValid) { setVinError('Please enter a valid 17-character VIN'); return }
     setGenerating(true); setGenError('')
     try {
-      const token = crypto.randomUUID()
-      const { error: dbErr } = await createClient()
-        .from('inspection_requests')
-        .insert({
-          company_id: effectiveCompany.id,
-          vin: cleanVin,
-          year: year || null,
-          make: make || null,
-          model: model || null,
-          notes: notes.trim() || null,
-          location_id: locationId || null,
-          token,
-          status: 'pending',
-          expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-        })
-      if (dbErr) throw dbErr
+      const { token, error } = await createDispatchAction({
+        companyId: effectiveCompany.id,
+        vin: cleanVin,
+        year: year || null,
+        make: make || null,
+        model: model || null,
+        notes: notes.trim() || null,
+        locationId: locationId || null,
+      })
+      if (error) throw new Error(error)
       const link = `${window.location.origin}/inspect/${token}`
       setGeneratedLink(link)
       setGeneratedVin(cleanVin)

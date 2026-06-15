@@ -23,6 +23,7 @@ export interface LotInvoice {
   status: 'draft' | 'sent' | 'paid'
   created_at: string
   created_by: string | null
+  bulk_invoice_id: string | null  // null for individual invoices; shared UUID for bulk batches
 }
 
 export async function getNextInvoiceNumber(companyId: string): Promise<string> {

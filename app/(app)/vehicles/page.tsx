@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car } from 'lucide-react'
+import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car, Receipt } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -16,6 +16,8 @@ import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import BulkBillingModal, { type BulkVehicle } from '@/components/billing/bulk-billing-modal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -477,6 +479,21 @@ export default function VehiclesPage() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsList, setReportsList] = useState<any[]>([])
 
+  // Bulk billing
+  const lotMapEnabled = useFeatureFlag('lot_map')
+  const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
+  const [showBulkBilling, setShowBulkBilling] = useState(false)
+
+  function toggleVehicleSelect(id: string) {
+    setSelectedVehicleIds(prev => {
+      const next = new Set<string>(Array.from(prev))
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() { setSelectedVehicleIds(new Set<string>()) }
+
   const loadVehicles = useCallback(async () => {
     if (!companyId) return
     setLoading(true)
@@ -700,14 +717,21 @@ export default function VehiclesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E1E8F0' }}>
+                {lotMapEnabled && (
+                  <th style={{ padding: '11px 10px 11px 14px', width: 36 }}>
+                    <input type="checkbox" checked={sorted.length > 0 && sorted.every(v => selectedVehicleIds.has(v.id))}
+                      onChange={e => setSelectedVehicleIds(e.target.checked ? new Set(sorted.map(v => v.id)) : new Set())}
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F4A62A' }} />
+                  </th>
+                )}
                 {['Vehicle', 'Status', 'Days', 'Released', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={8} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
-              {!loading && sorted.length === 0 && <tr><td colSpan={8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
+              {loading && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
+              {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
               {!loading && sorted.map(v => {
                 const sc = STATUS_CFG[v._status]
                 const days = daysOnLot(v.arrived_at, v.released_at, v._status)
@@ -716,7 +740,14 @@ export default function VehiclesPage() {
                 return (
                   <Fragment key={v.id}>
                     <tr className="veh-row" onClick={() => { setExpandedId(isExp ? null : v.id); setOpenKebab(null) }}
-                      style={{ borderBottom: isExp ? 'none' : '1px solid #F0F4F8', cursor: 'pointer', background: isExp ? '#F8FAFC' : undefined }}>
+                      style={{ borderBottom: isExp ? 'none' : '1px solid #F0F4F8', cursor: 'pointer', background: selectedVehicleIds.has(v.id) ? '#FFFBEB' : isExp ? '#F8FAFC' : undefined }}>
+                      {/* Checkbox */}
+                      {lotMapEnabled && (
+                        <td style={{ padding: '13px 10px 13px 14px', width: 36 }} onClick={e => { e.stopPropagation(); toggleVehicleSelect(v.id) }}>
+                          <input type="checkbox" checked={selectedVehicleIds.has(v.id)} onChange={() => toggleVehicleSelect(v.id)}
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F4A62A' }} />
+                        </td>
+                      )}
                       {/* Vehicle */}
                       <td style={{ padding: '13px 14px' }}>
                         {(v.make || v.model)
@@ -795,7 +826,7 @@ export default function VehiclesPage() {
                     </tr>
                     {isExp && (
                       <tr>
-                        <td colSpan={8} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
+                        <td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
                           <ExpandedRow vehicle={v} companyId={companyId} />
                         </td>
                       </tr>
@@ -922,6 +953,35 @@ export default function VehiclesPage() {
         prefilledMake={dispatchSheet.make}
         prefilledModel={dispatchSheet.model}
       />
+
+      {/* Bulk billing selection bar */}
+      {lotMapEnabled && selectedVehicleIds.size > 0 && (
+        <div style={{ position: 'fixed', bottom: isDesktop ? 24 : 'calc(72px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: '#0D1B2A', borderRadius: 16, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.35)', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}>
+            {selectedVehicleIds.size} vehicle{selectedVehicleIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <button onClick={() => setShowBulkBilling(true)}
+            style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <Receipt size={14} /> Bulk Bill
+          </button>
+          <button onClick={clearSelection}
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={14} color="#94A3B8" />
+          </button>
+        </div>
+      )}
+
+      {showBulkBilling && (
+        <BulkBillingModal
+          companyId={companyId}
+          companyName={effectiveCompany?.name ?? 'Your Company'}
+          userId={user?.id ?? null}
+          vehicles={allTagged.filter(v => selectedVehicleIds.has(v.id)) as BulkVehicle[]}
+          onClose={() => setShowBulkBilling(false)}
+          onSuccess={() => { setShowBulkBilling(false); clearSelection() }}
+        />
+      )}
+
       <BottomNav />
     </div>
     </>

@@ -307,3 +307,108 @@ export async function getLotOccupancy(
   const spots = await getLotSpots(companyId, locationId)
   return { total: spots.length, occupied: spots.filter(s => s.active_assignment).length }
 }
+
+// ── Bulk Billing ──────────────────────────────────────────────────────────────
+
+export interface BulkVehicleRow {
+  vehicleId: string
+  vin: string
+  year: number | null
+  make: string | null
+  model: string | null
+  arrivedAt: string | null
+  releasedAt: string | null
+  billingType: BillingType
+  rate: number | null
+  effectiveStart: string    // YYYY-MM-DD
+  effectiveEnd: string      // YYYY-MM-DD
+  days: number
+  subtotal: number | null
+  warning: 'arrived_late' | null   // arrived after range start — yellow, must acknowledge
+  note: 'released_early' | null    // released before range end — gray
+  excluded: boolean                 // not on lot during range at all — red
+}
+
+function toUtcDay(isoStr: string): Date {
+  const d = new Date(isoStr)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+export function calculateBulkBilling(
+  vehicles: Array<{
+    id: string
+    vin: string
+    year?: number | null
+    make?: string | null
+    model?: string | null
+    arrived_at?: string | null
+    released_at?: string | null
+    billing_type?: string | null
+    daily_rate?: number | null
+    monthly_rate?: number | null
+  }>,
+  rangeStart: string,   // YYYY-MM-DD
+  rangeEnd: string,     // YYYY-MM-DD
+  company: {
+    default_billing_type?: string | null
+    default_daily_rate?: number | null
+    default_monthly_rate?: number | null
+  },
+): BulkVehicleRow[] {
+  const rStart = toUtcDay(rangeStart)
+  const rEnd   = toUtcDay(rangeEnd)
+
+  return vehicles.map(v => {
+    const arrivedAt  = v.arrived_at  ? toUtcDay(v.arrived_at)  : null
+    const releasedAt = v.released_at ? toUtcDay(v.released_at) : null
+
+    // Exclude: no arrived_at, arrived after range ends, or released before range starts
+    const excluded =
+      arrivedAt === null ||
+      arrivedAt > rEnd ||
+      (releasedAt !== null && releasedAt < rStart)
+
+    const effStart = arrivedAt && arrivedAt > rStart ? arrivedAt : rStart
+    const effEnd   = releasedAt && releasedAt < rEnd ? releasedAt : rEnd
+
+    // days inclusive of both endpoints (spec: end-start+1)
+    const days = excluded ? 0 : Math.max(0, Math.floor((effEnd.getTime() - effStart.getTime()) / 86400000) + 1)
+
+    const warning: 'arrived_late' | null = !excluded && arrivedAt && arrivedAt > rStart ? 'arrived_late' : null
+    const note: 'released_early' | null  = !excluded && releasedAt && releasedAt < rEnd ? 'released_early' : null
+
+    const billingType: BillingType =
+      (v.billing_type as BillingType) ??
+      (company.default_billing_type as BillingType) ??
+      'daily'
+
+    const rate =
+      billingType === 'daily'
+        ? (v.daily_rate ?? company.default_daily_rate ?? null)
+        : (v.monthly_rate ?? company.default_monthly_rate ?? null)
+
+    let subtotal: number | null = null
+    if (!excluded && rate !== null) {
+      subtotal = billingType === 'daily' ? days * rate : (days / 30) * rate
+    }
+
+    return {
+      vehicleId: v.id,
+      vin: v.vin,
+      year: v.year ?? null,
+      make: v.make ?? null,
+      model: v.model ?? null,
+      arrivedAt: v.arrived_at ?? null,
+      releasedAt: v.released_at ?? null,
+      billingType,
+      rate,
+      effectiveStart: effStart.toISOString().slice(0, 10),
+      effectiveEnd:   effEnd.toISOString().slice(0, 10),
+      days,
+      subtotal,
+      warning,
+      note,
+      excluded,
+    }
+  })
+}

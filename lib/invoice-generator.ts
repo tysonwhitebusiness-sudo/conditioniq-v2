@@ -82,6 +82,7 @@ export async function generateAndSaveInvoice(
     notes: data.notes ?? null,
     status: 'draft',
     created_by: data.userId,
+    bulk_invoice_id: null,
   })
 
   return { invoice, opened: !!storagePath }

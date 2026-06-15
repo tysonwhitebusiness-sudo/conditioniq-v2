@@ -55,7 +55,7 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
     const cleaned = raw.replace(VIN_REGEX, '').toUpperCase().slice(0, 17)
     onChange({ ...data, vin: cleaned })
     if (cleaned.length === 17) autoDecode(cleaned)
-    else setAdvancedInfo(null)
+    else { setAdvancedInfo(null); setDecodeError(null) }
   }, [data, onChange])
 
   const autoDecode = useCallback(async (vinStr: string) => {
@@ -141,9 +141,9 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <div style={{ flex: 1 }}>
-              {vinAttempted && !isVinComplete && !decodeError && (
+              {vinAttempted && !isVinComplete && (
                 <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>
-                  VIN must be 17 characters ({vin.length}/17 entered)
+                  VIN must be 17 characters.
                 </p>
               )}
               {decodeError && (

@@ -351,9 +351,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       alert('Please set a rate before generating an invoice.')
       return
     }
-    if (billingResult.accruedAmount === 0) {
-      if (!window.confirm('This vehicle has accrued $0.00. Generate a $0 invoice anyway?')) return
-    }
     setGeneratingInvoice(true)
     try {
       const { getNextInvoiceNumber } = await import('@/lib/invoice-actions')
@@ -759,7 +756,12 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 style={{ flex: 1, height: 42, borderRadius: 10, border: 'none', background: billingSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: savingBilling ? 'default' : 'pointer', fontFamily: 'inherit', opacity: savingBilling ? 0.7 : 1, transition: 'background 300ms ease' }}>
                 {billingSaved ? 'Saved ✓' : savingBilling ? 'Saving…' : 'Save'}
               </button>
-              <button onClick={() => setShowInvoiceModal(true)}
+              <button onClick={() => {
+                if (billingResult.accruedAmount !== null && Number(billingResult.accruedAmount) === 0) {
+                  if (!window.confirm('This vehicle has accrued $0.00. Generate a $0 invoice anyway?')) return
+                }
+                setShowInvoiceModal(true)
+              }}
                 style={{ height: 42, padding: '0 16px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Generate Invoice
               </button>

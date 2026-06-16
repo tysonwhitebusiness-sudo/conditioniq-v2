@@ -49,6 +49,7 @@ export default function VehicleInspectionApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
   const [showSendSheet, setShowSendSheet] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (effectiveCompany?.id) {
@@ -85,7 +86,7 @@ export default function VehicleInspectionApp() {
       saveSession(inspectionId, initialData)
       setAppStep('inspecting')
     } catch (e: any) {
-      alert('Failed to start inspection: ' + e.message)
+      setErrorMsg('Failed to start inspection: ' + e.message)
     } finally {
       setStartingInspection(false)
       setShowUsageModal(false)
@@ -147,7 +148,7 @@ export default function VehicleInspectionApp() {
       const { generateInspectionPDF } = await import('@/lib/pdf-generator')
       await generateInspectionPDF(data, scoreResult, data.signature_url ?? '')
     } catch (e: any) {
-      alert('Could not generate report: ' + (e.message ?? 'Unknown error'))
+      setErrorMsg('Could not generate report: ' + (e.message ?? 'Unknown error'))
     }
   }, [])
 
@@ -178,6 +179,16 @@ export default function VehicleInspectionApp() {
         open={showSendSheet}
         onClose={() => setShowSendSheet(false)}
       />
+      {errorMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </>
   )
 

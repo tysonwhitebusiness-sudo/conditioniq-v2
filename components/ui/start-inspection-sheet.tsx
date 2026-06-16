@@ -30,6 +30,9 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
   const [model, setModel] = useState('')
   const [decoding, setDecoding] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [resumeData, setResumeData] = useState<{ inspectionId: string; startedAt: string } | null>(null)
+  const [pendingStart, setPendingStart] = useState<{ type: 'standard' | 'one_off'; vd?: { vin: string; year?: string; make?: string; model?: string } } | null>(null)
 
   // Pick from Vehicles state
   const [vehicles, setVehicles] = useState<any[]>([])
@@ -75,38 +78,81 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
     setOption(null)
     setVin(''); setYear(''); setMake(''); setModel('')
     setSearch('')
+    setResumeData(null)
+    setPendingStart(null)
   }
 
   const close = () => { reset(); onClose() }
+
+  const proceedWithStart = async (type: 'standard' | 'one_off', vd?: { vin: string; year?: string; make?: string; model?: string }) => {
+    if (!effectiveCompany || !user) return
+    const { initiateInspection } = await import('@/lib/usage-actions')
+    const { getDeviceId } = await import('@/lib/device-id')
+
+    if (vd?.vin) {
+      const { addVehicleToSystem } = await import('@/lib/storage-actions')
+      await addVehicleToSystem(effectiveCompany.id, {
+        vin: vd.vin, year: vd.year, make: vd.make, model: vd.model,
+        lifecycleStatus: type === 'one_off' ? 'one_off' : 'on_lot',
+      }).catch(() => {})
+    }
+
+    const { inspectionId } = await initiateInspection({
+      companyId: effectiveCompany.id,
+      inspectorId: user.id,
+      initialData: vd?.vin ? { vin: vd.vin, year: vd.year, make: vd.make, model: vd.model } : undefined,
+      deviceId: getDeviceId(),
+    })
+
+    try { sessionStorage.setItem('pending_inspection_id', inspectionId) } catch {}
+    close()
+    router.push('/vehicles')
+  }
 
   const startInspection = async (type: 'standard' | 'one_off', vehicleData?: { vin: string; year?: string; make?: string; model?: string }) => {
     if (!effectiveCompany || !user) return
     setStarting(true)
     try {
-      const { initiateInspection } = await import('@/lib/usage-actions')
-      const { getDeviceId } = await import('@/lib/device-id')
       const vd = vehicleData ?? (cleanVin ? { vin: cleanVin, year, make, model } : undefined)
 
-      if (vd?.vin) {
-        const { addVehicleToSystem } = await import('@/lib/storage-actions')
-        await addVehicleToSystem(effectiveCompany.id, {
-          vin: vd.vin, year: vd.year, make: vd.make, model: vd.model,
-          lifecycleStatus: type === 'one_off' ? 'one_off' : 'in_progress',
-        }).catch(() => {})
+      if (vd?.vin && type !== 'one_off') {
+        const { checkExistingInspection } = await import('@/lib/usage-actions')
+        const existing = await checkExistingInspection(effectiveCompany.id, vd.vin)
+        if (existing) {
+          setResumeData(existing)
+          setPendingStart({ type, vd })
+          setStarting(false)
+          return
+        }
       }
 
-      const { inspectionId } = await initiateInspection({
-        companyId: effectiveCompany.id,
-        inspectorId: user.id,
-        initialData: vd?.vin ? { vin: vd.vin, year: vd.year, make: vd.make, model: vd.model } : undefined,
-        deviceId: getDeviceId(),
-      })
-
-      try { sessionStorage.setItem('pending_inspection_id', inspectionId) } catch {}
-      close()
-      router.push('/vehicles')
+      await proceedWithStart(type, vd)
     } catch (e: any) {
-      alert('Failed to start: ' + e.message)
+      setErrorMsg('Failed to start: ' + e.message)
+    } finally { setStarting(false) }
+  }
+
+  const handleResume = () => {
+    if (!resumeData) return
+    try { sessionStorage.setItem('pending_inspection_id', resumeData.inspectionId) } catch {}
+    setResumeData(null)
+    setPendingStart(null)
+    close()
+    router.push('/vehicles')
+  }
+
+  const handleStartFresh = async () => {
+    if (!resumeData || !pendingStart) return
+    setStarting(true)
+    try {
+      const { abandonInspection } = await import('@/lib/usage-actions')
+      await abandonInspection(resumeData.inspectionId)
+      const { type, vd } = pendingStart
+      setResumeData(null)
+      setPendingStart(null)
+      await proceedWithStart(type, vd)
+    } catch (e: any) {
+      setErrorMsg('Failed to start: ' + e.message)
     } finally { setStarting(false) }
   }
 
@@ -323,6 +369,43 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
           </button>
         </div>
       </div>
+
+      {resumeData && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => { setResumeData(null); setPendingStart(null) }} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px' }}>Inspection In Progress</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+              An inspection for this vehicle is already in progress{resumeData ? ` (started ${new Date(resumeData.startedAt).toLocaleDateString()})` : ''}. Resume to continue where you left off, or start fresh.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={handleResume}
+                disabled={starting}
+                style={{ height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: starting ? 0.6 : 1 }}>
+                Resume Inspection
+              </button>
+              <button
+                onClick={handleStartFresh}
+                disabled={starting}
+                style={{ height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: starting ? 0.6 : 1 }}>
+                {starting ? 'Starting…' : 'Start Fresh'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

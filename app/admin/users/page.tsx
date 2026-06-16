@@ -14,6 +14,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [updating, setUpdating] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,7 +30,7 @@ export default function AdminUsersPage() {
       await updatePlatformRole(userId, newRole)
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, platform_role: newRole } : u))
     } catch (e: any) {
-      alert('Failed: ' + e.message)
+      setErrorMsg('Failed: ' + e.message)
     } finally { setUpdating(null) }
   }
 
@@ -120,6 +121,17 @@ export default function AdminUsersPage() {
         </table>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+
+      {errorMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+          <div style={{ position: 'relative', background: '#1E293B', border: '1px solid #334155', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9', margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: '#94A3B8', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#334155', color: '#F1F5F9', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

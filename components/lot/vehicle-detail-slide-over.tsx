@@ -9,7 +9,6 @@ import type { LotSpot } from '@/lib/lot-actions'
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   pending_arrival: { label: 'Pending Arrival', bg: '#F0F4F8', color: '#94A3B8' },
   on_lot:          { label: 'On Lot',          bg: '#E0F7FC', color: '#0097B2' },
-  in_progress:     { label: 'In Progress',     bg: '#EDE9FE', color: '#5B21B6' },
   one_off:         { label: 'One-Off',         bg: '#FFF0E8', color: '#C2410C' },
   releasing:       { label: 'Releasing',       bg: '#FEF3C7', color: '#92400E' },
   released:        { label: 'Released',        bg: '#D1FAE5', color: '#065F46' },

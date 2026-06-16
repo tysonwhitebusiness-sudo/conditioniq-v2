@@ -8,7 +8,6 @@ import type { AvailableVehicle, LotSpot } from '@/lib/lot-actions'
 const STATUS_LABEL: Record<string, string> = {
   pending_arrival: 'Pending Arrival',
   on_lot: 'On Lot',
-  in_progress: 'In Progress',
   one_off: 'One-Off',
   releasing: 'Releasing',
 }

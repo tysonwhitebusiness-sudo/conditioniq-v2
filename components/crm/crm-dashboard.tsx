@@ -8,7 +8,7 @@ import {
   getCompanyBreakdown, updateGoalTargets,
 } from '@/lib/crm-actions'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts'
-import { Mail, Phone, Linkedin, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { Mail, Phone, Link2, Check, ChevronDown, ChevronRight } from 'lucide-react'
 
 const COMPANY_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   storage_facility: { bg: '#E0F7FC', color: '#0097B2' },
@@ -107,7 +107,7 @@ export default function CRMDashboard() {
     { label: 'Emails This Week', value: stats?.emailsThisWeek, icon: Mail, color: '#00B4D8' },
     { label: 'Emails This Month', value: stats?.emailsThisMonth, icon: Mail, color: '#8B5CF6' },
     { label: 'Reply Rate', value: `${stats?.replyRate ?? 0}%`, icon: Check, color: '#10B981' },
-    { label: 'LinkedIn This Month', value: '—', icon: Linkedin, color: '#0077B5' },
+    { label: 'LinkedIn This Month', value: '—', icon: Link2, color: '#0077B5' },
     { label: 'Demo Calls Booked', value: '—', icon: Phone, color: '#F4A62A' },
     { label: 'Total Converted', value: stats?.totalConverted, icon: Check, color: '#10B981' },
   ]
@@ -142,7 +142,7 @@ export default function CRMDashboard() {
             <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
               <Icon size={15} color={color} />
             </div>
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#0D1B2A', margin: '0 0 2px', lineHeight: 1 }}>{value ?? '0'}</p>
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#0D1B2A', margin: '0 0 2px', lineHeight: 1 }}>{(value as React.ReactNode) ?? '0'}</p>
             <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{label}</p>
           </Card>
         ))}
@@ -173,7 +173,7 @@ export default function CRMDashboard() {
               </defs>
               <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={30} tickFormatter={v => `${v}%`} />
-              <Tooltip formatter={(v: number) => [`${v}%`, 'Reply Rate']} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
+              <Tooltip formatter={(v) => typeof v === 'number' ? [`${v}%`, 'Reply Rate'] as [string, string] : ''} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
               <Area type="monotone" dataKey="rate" stroke="#10B981" strokeWidth={2} fill="url(#rg)" />
             </AreaChart>
           </ResponsiveContainer>

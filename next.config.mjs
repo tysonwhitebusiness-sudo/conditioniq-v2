@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
@@ -18,4 +20,14 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+export default withSentryConfig(nextConfig, {
+  // Silent during builds — set SENTRY_LOG_LEVEL=debug to verbose
+  silent: true,
+  // Uploads source maps to Sentry for readable stack traces in production.
+  // Requires SENTRY_AUTH_TOKEN env var (set in Vercel, not committed to repo).
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  // Automatically tree-shake Sentry debug code in production
+  automaticVercelMonitors: false,
+})

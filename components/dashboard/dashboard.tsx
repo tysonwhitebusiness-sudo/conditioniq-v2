@@ -25,6 +25,7 @@ export default function Dashboard({ onStartInspection, onResumeInspection, onVie
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [shareSuccess, setShareSuccess] = useState<string | null>(null)
+  const [infoMsg, setInfoMsg] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -65,7 +66,7 @@ export default function Dashboard({ onStartInspection, onResumeInspection, onVie
       const token = await createInspectionRequest(effectiveCompany.id, { vin, year, make, model }, 24)
       const link = `${window.location.origin}/complete/${token}`
       await navigator.clipboard.writeText(link)
-      alert('Link copied! Share it with the remote inspector.')
+      setInfoMsg('Link copied! Share it with the remote inspector.')
     } catch { /* ignore */ }
   }
 
@@ -251,6 +252,17 @@ export default function Dashboard({ onStartInspection, onResumeInspection, onVie
           </div>
         )}
       </div>
+
+      {infoMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setInfoMsg(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Link Copied</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{infoMsg}</p>
+            <button onClick={() => setInfoMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

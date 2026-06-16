@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, Car, X } from 'lucide-react'
 import { updateInspectionOfflineAware } from '@/lib/offline-sync'
-import { completeInspection } from '@/lib/usage-actions'
+import { completeInspection, abandonInspection } from '@/lib/usage-actions'
 import { useAuth } from '@/contexts/auth-context'
 import { buildCustodyRecord, captureGPS } from '@/lib/chain-of-custody'
 import { insertAuditEntry } from '@/lib/audit-trail'
@@ -19,7 +19,7 @@ import StepInterior from './step-interior'
 import StepEngine from './step-engine'
 import StepReview from './step-review'
 
-type StepId = 'vehicle-info' | 'bol' | 'keys' | 'function' | 'documentation' | 'exterior' | 'interior' | 'engine' | 'review'
+export type StepId = 'vehicle-info' | 'bol' | 'keys' | 'function' | 'documentation' | 'exterior' | 'interior' | 'engine' | 'review'
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'vehicle-info', label: 'Vehicle Info' },
@@ -332,7 +332,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
           <div style={{ background: '#FFFFFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 340 }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px' }}>Cancel Inspection?</h3>
             <p style={{ fontSize: 14, color: '#4A5568', margin: '0 0 24px' }}>
-              Your progress has been saved. You can resume this inspection from the Queue.
+              This inspection will be cancelled. No report will be charged for cancelled inspections.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
@@ -342,7 +342,11 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
                 Keep Going
               </button>
               <button
-                onClick={() => { setShowCancelDialog(false); onCancel?.() }}
+                onClick={() => {
+                  setShowCancelDialog(false)
+                  abandonInspection(inspectionId).catch(err => console.error('[abandon]', err))
+                  onCancel?.()
+                }}
                 style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#EF4444', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
               >
                 Cancel

@@ -24,7 +24,7 @@ export async function getAdminStats() {
 
   const topCustomers = companiesData
     .map(c => ({ ...c, accountAgeDays: Math.floor((Date.now() - new Date(c.created_at as string).getTime()) / 86400000) }))
-    .sort((a, b) => (b.reports_used as number) - (a.reports_used as number))
+    .sort((a, b) => ((b as any).reports_used as number) - ((a as any).reports_used as number))
     .slice(0, 10)
 
   return {

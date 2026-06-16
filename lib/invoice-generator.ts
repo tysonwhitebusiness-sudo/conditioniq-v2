@@ -1,5 +1,6 @@
 import type { InvoicePDFData } from './invoice-pdf'
 import type { LotInvoice } from './invoice-actions'
+import { captureHighSeverityError } from './sentry'
 
 export async function generateAndSaveInvoice(
   data: InvoicePDFData & {
@@ -49,6 +50,7 @@ export async function generateAndSaveInvoice(
       const viewUrl = await getInvoiceSignedUrl(storagePath)
       if (viewUrl) window.open(viewUrl, '_blank')
     } else {
+      captureHighSeverityError(error, { flow: 'invoice-upload', invoiceNumber: data.invoiceNumber, companyId: data.companyId })
       console.error('[invoice-generator] upload error', error)
     }
   }
@@ -64,26 +66,32 @@ export async function generateAndSaveInvoice(
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 
-  const invoice = await saveLotInvoice({
-    company_id: data.companyId,
-    vehicle_id: data.vehicleId,
-    invoice_number: data.invoiceNumber,
-    invoice_date: data.invoiceDate,
-    due_date: data.dueDate ?? null,
-    bill_to_name: data.billToName ?? null,
-    bill_to_contact: data.billToContact ?? null,
-    vehicle_vin: data.vehicleVin ?? null,
-    vehicle_description: data.vehicleDescription ?? null,
-    days_on_lot: data.daysOnLot,
-    billing_type: data.billingType,
-    rate: data.rate,
-    total_amount: data.accruedAmount,
-    storage_path: storagePath,
-    notes: data.notes ?? null,
-    status: 'draft',
-    created_by: data.userId,
-    bulk_invoice_id: null,
-  })
+  let invoice: LotInvoice | null = null
+  try {
+    invoice = await saveLotInvoice({
+      company_id: data.companyId,
+      vehicle_id: data.vehicleId,
+      invoice_number: data.invoiceNumber,
+      invoice_date: data.invoiceDate,
+      due_date: data.dueDate ?? null,
+      bill_to_name: data.billToName ?? null,
+      bill_to_contact: data.billToContact ?? null,
+      vehicle_vin: data.vehicleVin ?? null,
+      vehicle_description: data.vehicleDescription ?? null,
+      days_on_lot: data.daysOnLot,
+      billing_type: data.billingType,
+      rate: data.rate,
+      total_amount: data.accruedAmount,
+      storage_path: storagePath,
+      notes: data.notes ?? null,
+      status: 'draft',
+      created_by: data.userId,
+      bulk_invoice_id: null,
+    })
+  } catch (err) {
+    captureHighSeverityError(err, { flow: 'saveLotInvoice', invoiceNumber: data.invoiceNumber, companyId: data.companyId })
+    throw err
+  }
 
   return { invoice, opened: !!storagePath }
 }

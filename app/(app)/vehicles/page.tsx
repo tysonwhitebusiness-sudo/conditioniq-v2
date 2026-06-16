@@ -11,8 +11,8 @@ import {
   addVehicleToSystem, getVehicleInspectionHistory,
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
-import { updateVehicleLifecycleStatusAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
-import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
+import { updateVehicleLifecycleStatusAction, getReportSignedUrlAction, loadInspectionForResume } from '@/lib/inspection-server-actions'
+import InspectionWizard, { type StepId } from '@/components/inspection-wizard/inspection-wizard'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
@@ -105,7 +105,7 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
 
   useEffect(() => {
     setLoading(true)
-    const ids = [...new Set([vehicle.checkin_inspection_id, vehicle.checkout_inspection_id, ...(vehicle.inspection_ids ?? [])].filter(Boolean))]
+    const ids = Array.from(new Set([vehicle.checkin_inspection_id, vehicle.checkout_inspection_id, ...(vehicle.inspection_ids ?? [])].filter(Boolean)))
     if (!ids.length) { setHistory([]); setLoading(false); return }
     fetchInspectionsByIds(ids).then(data => { setHistory(data); setLoading(false) })
   }, [vehicle.id])
@@ -447,6 +447,25 @@ const TABS = [
   { id: 'one_off',     label: 'One-Off' },
 ]
 
+const RESUME_STEP_ORDER: Array<{ dataKey: string; nextStep: StepId }> = [
+  { dataKey: 'engine_data',           nextStep: 'review' },
+  { dataKey: 'interior_data',         nextStep: 'engine' },
+  { dataKey: 'exterior_data',         nextStep: 'interior' },
+  { dataKey: 'documentation_data',    nextStep: 'exterior' },
+  { dataKey: 'vehicle_function_data', nextStep: 'documentation' },
+  { dataKey: 'keys_data',             nextStep: 'function' },
+  { dataKey: 'bol_data',              nextStep: 'keys' },
+  { dataKey: 'vehicleInfo',           nextStep: 'bol' },
+]
+
+function inferResumeStep(row: Record<string, any>): StepId {
+  for (const { dataKey, nextStep } of RESUME_STEP_ORDER) {
+    const val = row[dataKey]
+    if (val && typeof val === 'object' && Object.keys(val).length > 0) return nextStep
+  }
+  return 'vehicle-info'
+}
+
 export default function VehiclesPage() {
   const router = useRouter()
   const { effectiveCompany, user } = useAuth()
@@ -458,6 +477,7 @@ export default function VehiclesPage() {
   const [appStep, setAppStep] = useState<AppStep>('browse')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
   const [currentInspectionData, setCurrentInspectionData] = useState<Record<string, any>>({})
+  const [currentInspectionInitialStep, setCurrentInspectionInitialStep] = useState<StepId | undefined>(undefined)
 
   // Table state
   const [vehicles, setVehicles] = useState<any[]>([])
@@ -483,6 +503,8 @@ export default function VehiclesPage() {
   const lotMapEnabled = useFeatureFlag('lot_map')
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
   const [showBulkBilling, setShowBulkBilling] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   function toggleVehicleSelect(id: string) {
     setSelectedVehicleIds(prev => {
@@ -510,18 +532,36 @@ export default function VehiclesPage() {
   useEffect(() => { loadVehicles() }, [loadVehicles])
   useEffect(() => { if (isFMC && companyId) getStorageLocations(companyId).then(setLocations) }, [isFMC, companyId])
 
-  // Auto-start inspection when coming from Start Inspection sheet
+  // Auto-start inspection when coming from Start Inspection sheet (new or resume)
   useEffect(() => {
     if (!user || !companyId) return
-    try {
-      const pendingId = sessionStorage.getItem('pending_inspection_id')
-      if (pendingId) {
+    async function checkPending() {
+      try {
+        const pendingId = sessionStorage.getItem('pending_inspection_id')
+        if (!pendingId) return
         sessionStorage.removeItem('pending_inspection_id')
+
+        // Load any previously saved step data so resume restores progress
+        const row = await loadInspectionForResume(pendingId)
+        const initialData = row ? {
+          vehicleInfo: row.vehicleInfo ?? {},
+          bol_data: row.bol_data ?? {},
+          keys_data: row.keys_data ?? {},
+          vehicle_function_data: row.vehicle_function_data ?? {},
+          documentation_data: row.documentation_data ?? {},
+          exterior_data: row.exterior_data ?? {},
+          interior_data: row.interior_data ?? {},
+          engine_data: row.engine_data ?? {},
+        } : {}
+        const resumeStep = row ? inferResumeStep(row) : undefined
+
         setCurrentInspectionId(pendingId)
-        setCurrentInspectionData({})
+        setCurrentInspectionData(initialData)
+        setCurrentInspectionInitialStep(resumeStep)
         setAppStep('inspecting')
-      }
-    } catch {}
+      } catch {}
+    }
+    checkPending()
   }, [user, companyId])
 
   // Derived
@@ -570,7 +610,7 @@ export default function VehiclesPage() {
       setCurrentInspectionId(inspectionId)
       setCurrentInspectionData({ vehicleInfo: { vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model } })
       setAppStep('inspecting')
-    } catch (e: any) { alert('Failed to start inspection: ' + e.message) }
+    } catch (e: any) { setErrorMsg('Failed to start inspection: ' + e.message) }
   }
 
   const handleWizardComplete = useCallback(async (data: any) => {
@@ -585,7 +625,7 @@ export default function VehiclesPage() {
     setReportsVehicle(v)
     setReportsLoading(true)
     setReportsList([])
-    const ids = [...new Set([v.checkin_inspection_id, v.checkout_inspection_id, ...(v.inspection_ids ?? [])].filter(Boolean))]
+    const ids = Array.from(new Set([v.checkin_inspection_id, v.checkout_inspection_id, ...(v.inspection_ids ?? [])].filter(Boolean)))
     if (!ids.length) { setReportsList([]); setReportsLoading(false); return }
     const data = await fetchInspectionsByIds(ids)
     setReportsList(data)
@@ -609,6 +649,7 @@ export default function VehiclesPage() {
       <InspectionWizard
         inspectionId={currentInspectionId}
         initialData={currentInspectionData}
+        initialStep={currentInspectionInitialStep}
         inspectorId={user?.id}
         onComplete={handleWizardComplete}
         onCancel={() => setAppStep('browse')}
@@ -733,7 +774,7 @@ export default function VehiclesPage() {
               {loading && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
               {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
               {!loading && sorted.map(v => {
-                const sc = STATUS_CFG[v._status]
+                const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
                 const days = daysOnLot(v.arrived_at, v.released_at, v._status)
                 const isExp = expandedId === v.id
                 const reportCount = v.inspection_ids?.length ?? ([v.checkin_inspection_id, v.checkout_inspection_id].filter(Boolean).length)
@@ -816,7 +857,7 @@ export default function VehiclesPage() {
                                 {v._status !== 'released' && (
                                   <button onClick={() => { handleStart(v); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
                                 )}
-                                <button onClick={() => { if (confirm('Delete this vehicle?')) deleteStorageVehicle(v.id).then(loadVehicles); setOpenKebab(null) }}
+                                <button onClick={() => { setConfirmDeleteId(v.id); setOpenKebab(null) }}
                                   style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#EF4444', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
                               </div>
                             )}
@@ -842,13 +883,13 @@ export default function VehiclesPage() {
             {loading && <div style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></div>}
             {!loading && sorted.length === 0 && <p style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>No vehicles found</p>}
             {!loading && sorted.map(v => {
-              const sc = STATUS_CFG[v._status]
+              const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
               const days = daysOnLot(v.arrived_at, v.released_at, v._status)
               const isExp = expandedId === v.id
               return (
                 <div key={v.id} style={{ borderBottom: '1px solid #F0F4F8' }}>
                   <div onClick={() => setExpandedId(isExp ? null : v.id)}
-                    style={{ padding: '13px 14px', borderLeft: `4px solid ${STATUS_BORDER[v._status]}`, cursor: 'pointer' }}>
+                    style={{ padding: '13px 14px', borderLeft: `4px solid ${STATUS_BORDER[v._status as LifecycleStatus] ?? '#94A3B8'}`, cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                       <div>
                         {(v.make || v.model)
@@ -980,6 +1021,31 @@ export default function VehiclesPage() {
           onClose={() => setShowBulkBilling(false)}
           onSuccess={() => { setShowBulkBilling(false); clearSelection() }}
         />
+      )}
+
+      {confirmDeleteId && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setConfirmDeleteId(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Delete Vehicle</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to delete this vehicle? This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => { deleteStorageVehicle(confirmDeleteId).then(loadVehicles); setConfirmDeleteId(null) }} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
       )}
 
       <BottomNav />

@@ -27,7 +27,7 @@ function daysOnLot(arrivedAt: string, releasedAt: string | null) {
 function effectiveStatus(v: any): VehicleStatus | null {
   const s = v.lifecycle_status || v.status
   if (s === 'queued' || s === 'pending_arrival' || s === 'pending_inspection') return 'pending_arrival'
-  if (s === 'on_lot' || s === 'inspected' || s === 'in_progress' || s === 'releasing') return 'on_lot'
+  if (s === 'on_lot' || s === 'inspected' || s === 'releasing') return 'on_lot'
   if (s === 'released') return 'released'
   return null
 }
@@ -49,7 +49,7 @@ function StatCard({ value, label, selected, accent, onClick, loading }: StatCard
     <button
       onClick={onClick}
       style={{
-        flex: 1, minWidth: 80, padding: 16, borderRadius: 18, border: 'none', cursor: 'pointer',
+        flex: 1, minWidth: 80, padding: 16, borderRadius: 18, cursor: 'pointer',
         background: bg,
         border: selected ? 'none' : '1px solid #E1E8F0',
         boxShadow: selected ? '0 4px 16px rgba(0,0,0,0.15)' : '0 1px 3px rgba(13,27,42,0.06)',

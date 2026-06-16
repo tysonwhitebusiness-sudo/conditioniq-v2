@@ -509,7 +509,7 @@ export async function updateVehicleLifecycleStatus(
     updates.checkin_inspection_id = inspectionId
     updates.status = 'inspected'
     // Promote to on_lot from any pre-completion status
-    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival', 'in_progress'].includes(vehicle.lifecycle_status)) {
+    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival'].includes(vehicle.lifecycle_status)) {
       updates.lifecycle_status = 'on_lot'
     }
   } else if (inspectionType === 'check_out') {
@@ -526,7 +526,7 @@ export async function updateVehicleLifecycleStatus(
     }
   } else {
     const cur = vehicle.lifecycle_status
-    if (!cur || ['queued', 'pending_arrival', 'in_progress'].includes(cur)) {
+    if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
       updates.lifecycle_status = 'one_off'
     }
   }

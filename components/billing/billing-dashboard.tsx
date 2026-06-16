@@ -180,6 +180,7 @@ export default function BillingDashboard() {
 }
 
 function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void; currentPlan: string; companyId: string }) {
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const plans = [
     { key: 'starter', name: 'Starter', price: 99, reports: 30, overage: 4.0, features: ['30 reports/mo', '$4.00 overage', 'Mobile app', 'PDF reports'] },
     { key: 'growth', name: 'Growth', price: 199, reports: 75, overage: 3.25, features: ['75 reports/mo', '$3.25 overage', 'Team access', 'Priority support'] },
@@ -193,8 +194,7 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
       message: `Upgrade request: ${currentPlan} → ${targetPlan}`,
       company: companyId,
     })
-    alert('Upgrade request submitted! We\'ll be in touch shortly.')
-    onClose()
+    setSuccessMsg("Upgrade request submitted! We'll be in touch shortly.")
   }
 
   return (
@@ -229,6 +229,17 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
           ))}
         </div>
       </div>
+
+      {successMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => { setSuccessMsg(null); onClose() }} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Request Sent</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{successMsg}</p>
+            <button onClick={() => { setSuccessMsg(null); onClose() }} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

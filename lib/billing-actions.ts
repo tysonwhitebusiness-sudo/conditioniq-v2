@@ -109,5 +109,5 @@ export async function getCompaniesWithPendingRequests(): Promise<string[]> {
     .from('plan_change_requests')
     .select('company_id')
     .eq('status', 'pending')
-  return [...new Set((data ?? []).map(r => r.company_id as string))]
+  return Array.from(new Set((data ?? []).map(r => r.company_id as string)))
 }

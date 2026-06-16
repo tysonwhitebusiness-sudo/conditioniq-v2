@@ -104,13 +104,31 @@ export async function getLotSpots(
     .from('lot_vehicle_assignments')
     .select(`
       id, spot_id, vehicle_id, assigned_at, assigned_by,
-      vehicle:storage_vehicles(id, vin, year, make, model, lifecycle_status, arrived_at, released_at, checkin_inspection_id, latest_score, daily_rate, monthly_rate, billing_type)
+      vehicle:storage_vehicles(id, vin, year, make, model, lifecycle_status, arrived_at, released_at, checkin_inspection_id, latest_score, daily_rate, monthly_rate, billing_type, latest_inspection_id)
     `)
     .in('spot_id', spots.map(s => s.id))
     .is('unassigned_at', null)
 
   const bySpot: Record<string, ActiveAssignment> = {}
   for (const a of (assignments ?? [])) bySpot[a.spot_id] = a as unknown as ActiveAssignment
+
+  // Mark vehicles with an active inspection for the indicator overlay
+  const latestInspIds = Object.values(bySpot)
+    .map((a: any) => a.vehicle?.latest_inspection_id)
+    .filter(Boolean)
+  if (latestInspIds.length > 0) {
+    const { data: activeInspections } = await supabase
+      .from('vehicle_inspections')
+      .select('id')
+      .in('id', latestInspIds)
+      .in('status', ['in_progress', 'started'])
+    const activeIds = new Set((activeInspections ?? []).map((i: any) => i.id))
+    for (const a of Object.values(bySpot) as any[]) {
+      if (a.vehicle?.latest_inspection_id && activeIds.has(a.vehicle.latest_inspection_id)) {
+        a.vehicle._inspecting = true
+      }
+    }
+  }
 
   return spots.map(s => ({ ...s, active_assignment: bySpot[s.id] ?? null }))
 }

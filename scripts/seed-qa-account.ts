@@ -62,7 +62,7 @@ const SAMPLE_VEHICLES = [
     year: '2022',
     make: 'Ford',
     model: 'F-150',
-    lifecycle_status: 'in_progress',
+    lifecycle_status: 'on_lot',
     arrived_at: daysAgo(7),
     daily_rate: 12.00,
     billing_type: 'daily',

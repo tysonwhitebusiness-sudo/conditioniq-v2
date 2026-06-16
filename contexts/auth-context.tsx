@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
 import { getUserCompanyRole } from '@/lib/auth-server-actions'
+import type { RawCompanyRole } from '@/lib/roles'
 
 interface UserProfile {
   id: string
@@ -40,8 +41,9 @@ interface AuthContextValue {
   setImpersonatedCompany: (c: Company | null) => void
   effectiveCompany: Company | null
   platformRole: PlatformRole
-  companyRole: CompanyRole | null
-  isOwnerUser: boolean  // kept for backward compat — true when platformRole === 'super_admin'
+  companyRole: CompanyRole | null  // 'admin' | 'inspector' — 'owner' is normalized to 'admin'
+  isCompanyOwner: boolean          // true when company_members.role === 'owner'
+  isOwnerUser: boolean             // kept for backward compat — true when platformRole === 'super_admin'
   loading: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -56,6 +58,7 @@ export const AuthContext = createContext<AuthContextValue>({
   effectiveCompany: null,
   platformRole: 'user',
   companyRole: null,
+  isCompanyOwner: false,
   isOwnerUser: false,
   loading: true,
   signOut: async () => {},
@@ -68,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
   const [companyRole, setCompanyRole] = useState<CompanyRole | null>(null)
+  const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [impersonatedCompany, setImpersonatedCompany] = useState<Company | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -81,15 +85,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(profile ?? null)
 
     if (profile?.company_id) {
-      const [compRes, memberRole] = await Promise.all([
+      const [compRes, rawRole] = await Promise.all([
         supabase.from('companies').select('*').eq('id', profile.company_id).single(),
         getUserCompanyRole(u.id, profile.company_id),
       ])
       setCompany(compRes.data ?? null)
-      setCompanyRole(memberRole)
+      // Normalize 'owner' → 'admin' so all existing feature gates work without changes.
+      // Use isCompanyOwner to distinguish the account owner in UI.
+      const normalizedRole: CompanyRole | null = rawRole === 'owner' ? 'admin' : (rawRole as CompanyRole | null)
+      setCompanyRole(normalizedRole)
+      setIsCompanyOwner(rawRole === 'owner')
     } else {
       setCompany(null)
       setCompanyRole(null)
+      setIsCompanyOwner(false)
     }
   }, [supabase])
 
@@ -111,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserProfile(null)
         setCompany(null)
         setCompanyRole(null)
+        setIsCompanyOwner(false)
         setImpersonatedCompany(null)
         setLoading(false)
       }
@@ -141,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       effectiveCompany,
       platformRole,
       companyRole,
+      isCompanyOwner,
       isOwnerUser,
       loading,
       signOut,
@@ -181,7 +192,7 @@ export function createFakeAuthContext(opts?: {
     impersonatedCompany: null, setImpersonatedCompany: () => {},
     effectiveCompany: fakeCompany,
     platformRole: 'user', companyRole: null,
-    isOwnerUser: false, loading: false,
+    isCompanyOwner: false, isOwnerUser: false, loading: false,
     signOut: async () => {}, refreshProfile: async () => {},
     ...overrides,
   }

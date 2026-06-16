@@ -77,7 +77,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const available = total - occupied
 
   // Billing calculations
-  const defaults = companyDefaults ?? {}
+  const defaults = (companyDefaults ?? {}) as NonNullable<typeof companyDefaults>
   const defaultDailyRate = defaults.default_daily_rate ?? null
 
   // Sum daily accrual across occupied vehicles

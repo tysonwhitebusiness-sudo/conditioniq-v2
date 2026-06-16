@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getPlan } from '@/lib/pricing'
+import { captureHighSeverityError } from '@/lib/sentry'
 
 export interface UsageState {
   used: number
@@ -42,6 +43,26 @@ export async function checkUsageState(companyId: string): Promise<UsageState> {
   }
 }
 
+export async function checkExistingInspection(
+  companyId: string,
+  vin: string
+): Promise<{ inspectionId: string; startedAt: string } | null> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('vehicle_inspections')
+    .select('id, initiated_at')
+    .eq('company_id', companyId)
+    .eq('vin', vin.trim().toUpperCase())
+    .eq('status', 'in_progress')
+    .order('initiated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!data) return null
+  return { inspectionId: data.id, startedAt: data.initiated_at }
+}
+
 export async function initiateInspection({
   companyId,
   inspectorId,
@@ -68,7 +89,7 @@ export async function initiateInspection({
       usage_status: 'initiated',
       initiated_at: now,
       last_active_at: now,
-      is_overage: isOverage,
+      is_overage: false,
       device_id: deviceId ?? null,
       ...(initialData ?? {}),
     })
@@ -76,11 +97,6 @@ export async function initiateInspection({
     .single()
 
   if (error || !inspection) throw new Error(error?.message ?? 'Failed to create inspection')
-
-  await supabase
-    .from('companies')
-    .update({ reports_used: (usageState.used ?? 0) + 1 })
-    .eq('id', companyId)
 
   // Sync to storage — never blocks the inspection flow
   if (initialData?.vin) {
@@ -92,9 +108,9 @@ export async function initiateInspection({
       .eq('vin', vinKey)
       .maybeSingle()
     if (existingVeh) {
-      supabase.from('storage_vehicles').update({ lifecycle_status: 'in_progress', status: 'pending_inspection', updated_at: new Date().toISOString() }).eq('id', existingVeh.id).then(() => {})
+      supabase.from('storage_vehicles').update({ status: 'pending_inspection', latest_inspection_id: inspection.id, updated_at: new Date().toISOString() }).eq('id', existingVeh.id).then(() => {})
     } else {
-      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'in_progress', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).then(() => {})
+      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'on_lot', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).then(() => {})
     }
   }
 
@@ -103,9 +119,43 @@ export async function initiateInspection({
 
 export async function completeInspection(inspectionId: string): Promise<void> {
   const supabase = createClient()
+  try {
+    const { data: inspection, error: updateError } = await supabase
+      .from('vehicle_inspections')
+      .update({ usage_status: 'completed', status: 'completed' })
+      .eq('id', inspectionId)
+      .select('company_id')
+      .single()
+
+    if (updateError) throw updateError
+
+    if (inspection?.company_id) {
+      const companyId = inspection.company_id
+      const { data: company } = await supabase
+        .from('companies')
+        .select('reports_used, subscription_tier')
+        .eq('id', companyId)
+        .single()
+      const preIncrementUsed = company?.reports_used ?? 0
+      const plan = getPlan(company?.subscription_tier)
+      const isOverage = preIncrementUsed >= plan.reportsIncluded
+      const [{ error: billingError }] = await Promise.all([
+        supabase.from('companies').update({ reports_used: preIncrementUsed + 1 }).eq('id', companyId),
+        supabase.from('vehicle_inspections').update({ is_overage: isOverage }).eq('id', inspectionId),
+      ])
+      if (billingError) throw billingError
+    }
+  } catch (err) {
+    captureHighSeverityError(err, { flow: 'completeInspection', inspectionId })
+    throw err
+  }
+}
+
+export async function abandonInspection(inspectionId: string): Promise<void> {
+  const supabase = createClient()
   await supabase
     .from('vehicle_inspections')
-    .update({ usage_status: 'completed', status: 'completed' })
+    .update({ usage_status: 'abandoned', status: 'abandoned' })
     .eq('id', inspectionId)
 }
 
@@ -145,7 +195,6 @@ export async function initiateFMCInspection({
   vin: string
 }): Promise<{ inspectionId: string }> {
   const supabase = createClient()
-  const usageState = await checkUsageState(companyId)
 
   const { data: inspection, error } = await supabase
     .from('vehicle_inspections')
@@ -154,7 +203,7 @@ export async function initiateFMCInspection({
       status: 'in_progress',
       usage_status: 'initiated',
       initiated_at: new Date().toISOString(),
-      is_overage: usageState.isOverage,
+      is_overage: false,
       vin,
     })
     .select('id')
@@ -162,16 +211,10 @@ export async function initiateFMCInspection({
 
   if (error || !inspection) throw new Error(error?.message ?? 'Failed to create FMC inspection')
 
-  await Promise.all([
-    supabase
-      .from('companies')
-      .update({ reports_used: usageState.used + 1 })
-      .eq('id', companyId),
-    supabase
-      .from('fmc_inspection_requests')
-      .update({ status: 'in_progress', inspection_started_at: new Date().toISOString(), report_id: inspection.id })
-      .eq('id', requestId),
-  ])
+  await supabase
+    .from('fmc_inspection_requests')
+    .update({ status: 'in_progress', inspection_started_at: new Date().toISOString(), report_id: inspection.id })
+    .eq('id', requestId)
 
   return { inspectionId: inspection.id }
 }
@@ -190,16 +233,40 @@ export async function completeFMCInspection({
   const supabase = createClient()
   const now = new Date().toISOString()
 
-  await Promise.all([
+  const [inspectionResult] = await Promise.all([
     supabase
       .from('vehicle_inspections')
       .update({ usage_status: 'completed', status: 'completed' })
-      .eq('id', inspectionId),
+      .eq('id', inspectionId)
+      .select('company_id')
+      .single(),
     supabase
       .from('fmc_inspection_requests')
       .update({ status: 'completed', completed_at: now })
       .eq('id', requestId),
   ])
+
+  if (inspectionResult.data?.company_id) {
+    try {
+      const companyId = inspectionResult.data.company_id
+      const { data: company } = await supabase
+        .from('companies')
+        .select('reports_used, subscription_tier')
+        .eq('id', companyId)
+        .single()
+      const preIncrementUsed = company?.reports_used ?? 0
+      const plan = getPlan(company?.subscription_tier)
+      const isOverage = preIncrementUsed >= plan.reportsIncluded
+      const [{ error: billingError }] = await Promise.all([
+        supabase.from('companies').update({ reports_used: preIncrementUsed + 1 }).eq('id', companyId),
+        supabase.from('vehicle_inspections').update({ is_overage: isOverage }).eq('id', inspectionId),
+      ])
+      if (billingError) throw billingError
+    } catch (err) {
+      captureHighSeverityError(err, { flow: 'completeFMCInspection', inspectionId })
+      throw err
+    }
+  }
 
   const { data: existing } = await supabase
     .from('fmc_vehicle_inventory')
@@ -236,16 +303,6 @@ export async function initiateInspectionRequest({
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const supabase = createAdminClient()
 
-    const { data: company } = await supabase
-      .from('companies')
-      .select('reports_used, reports_included, subscription_tier')
-      .eq('id', companyId)
-      .single()
-    const usageState = {
-      used: company?.reports_used ?? 0,
-      isOverage: company ? (company.reports_used ?? 0) >= (company.reports_included ?? 0) : false,
-    }
-
     const { data: inspection, error } = await supabase
       .from('vehicle_inspections')
       .insert({
@@ -253,7 +310,7 @@ export async function initiateInspectionRequest({
         status: 'in_progress',
         usage_status: 'initiated',
         initiated_at: new Date().toISOString(),
-        is_overage: usageState.isOverage,
+        is_overage: false,
         ...(vin ? { vin } : {}),
       })
       .select('id')
@@ -266,28 +323,22 @@ export async function initiateInspectionRequest({
 
     const vinKey = vin?.trim() || null
 
-    await Promise.all([
-      supabase
-        .from('companies')
-        .update({ reports_used: usageState.used + 1 })
-        .eq('id', companyId),
-      supabase
-        .from('inspection_requests')
-        .update({ used_at: new Date().toISOString() })
-        .eq('id', requestId),
-    ])
+    await supabase
+      .from('inspection_requests')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', requestId)
 
     if (vinKey) {
       const now = new Date().toISOString()
-      const { data: existing } = await supabase
+      const { data: existingVeh } = await supabase
         .from('storage_vehicles')
         .select('id, status')
         .eq('company_id', companyId)
         .eq('vin', vinKey)
         .maybeSingle()
-      if (existing) {
-        if (existing.status === 'active') {
-          await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existing.id)
+      if (existingVeh) {
+        if (existingVeh.status === 'active') {
+          await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existingVeh.id)
         }
       } else {
         await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).then(() => {}, () => {})
@@ -315,7 +366,7 @@ export async function getMonthlyUsageCount(companyId: string): Promise<number> {
     .from('vehicle_inspections')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
-    .in('usage_status', ['initiated', 'completed'])
+    .in('usage_status', ['completed'])
     .gte('initiated_at', cycleStart)
 
   return count ?? 0

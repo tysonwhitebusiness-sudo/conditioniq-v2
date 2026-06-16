@@ -9,7 +9,6 @@ export type LotGridMode = 'view' | 'setup'
 export const SPOT_COLOR: Record<string, string> = {
   pending_arrival: '#94A3B8',
   on_lot:          '#00B4D8',
-  in_progress:     '#8B5CF6',
   one_off:         '#F97316',
   releasing:       '#F4A62A',
   released:        '#10B981',
@@ -125,6 +124,8 @@ export default function LotGrid({
   const aspectRatio = isMobile ? '75%' : '56.25%'
 
   return (
+    <>
+    <style>{`@keyframes lot-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
     <div
       style={{ position: 'relative', width: '100%', overflow: 'hidden', touchAction: 'none' }}
       onTouchStart={mode === 'view' ? handleTouchStart : undefined}
@@ -234,6 +235,7 @@ export default function LotGrid({
 
       {spots.map(spot => {
         const status = spot.active_assignment?.vehicle?.lifecycle_status
+        const isInspecting = (spot.active_assignment?.vehicle as any)?._inspecting === true
         const bg = spot.custom_color ?? (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
         const isSelected = selectedSpotId === spot.id
         const label2 = spot.active_assignment?.vehicle
@@ -277,6 +279,9 @@ export default function LotGrid({
                 {label2}
               </span>
             )}
+            {isInspecting && (
+              <span title="Inspection in progress" style={{ position: 'absolute', top: 3, right: 3, width: 7, height: 7, borderRadius: 4, background: '#F59E0B', animation: 'lot-pulse 1.5s ease-in-out infinite' }} />
+            )}
           </div>
         )
       })}
@@ -289,5 +294,6 @@ export default function LotGrid({
       >Reset zoom</button>
     )}
     </div>
+    </>
   )
 }

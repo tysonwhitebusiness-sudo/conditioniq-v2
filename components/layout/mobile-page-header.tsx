@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, DollarSign, Palette, Users, Shield, User, LogOut } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { Car, CreditCard, DollarSign, Palette, Users, Shield, User, LogOut, ChevronLeft } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -16,8 +16,10 @@ export default function MobilePageHeader() {
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  const pathname = usePathname()
   const isAdmin = isOwnerUser || companyRole === 'admin'
   const isSuperAdmin = isOwnerUser && platformRole === 'super_admin'
+  const isSettingsSubPage = pathname.startsWith('/settings/')
 
   useEffect(() => {
     if (!open) return
@@ -63,15 +65,25 @@ export default function MobilePageHeader() {
       position: 'relative',
       zIndex: 50,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Car size={17} color="#FFFFFF" />
+      {isSettingsSubPage ? (
+        <button
+          onClick={() => router.push('/settings')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', color: '#00B4D8' }}
+        >
+          <ChevronLeft size={18} color="#00B4D8" />
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#00B4D8' }}>Settings</span>
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Car size={17} color="#FFFFFF" />
+          </div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF', margin: 0, lineHeight: 1.2 }}>Condition IQ</p>
+            <p style={{ fontSize: 11, color: '#00B4D8', margin: 0, lineHeight: 1 }}>{effectiveCompany?.name ?? '—'}</p>
+          </div>
         </div>
-        <div>
-          <p style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF', margin: 0, lineHeight: 1.2 }}>Condition IQ</p>
-          <p style={{ fontSize: 11, color: '#00B4D8', margin: 0, lineHeight: 1 }}>{effectiveCompany?.name ?? '—'}</p>
-        </div>
-      </div>
+      )}
 
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
@@ -101,7 +113,7 @@ export default function MobilePageHeader() {
 
             {/* Nav items */}
             <div style={{ paddingTop: 4, paddingBottom: 4 }}>
-              <button onClick={() => nav('/profile')} style={itemStyle}>
+              <button onClick={() => nav('/settings/profile')} style={itemStyle}>
                 {iconBox('#F0F4F8', <User size={15} color="#4A5568" />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Profile</span>
               </button>

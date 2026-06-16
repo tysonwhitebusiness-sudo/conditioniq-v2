@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -50,6 +50,7 @@ export default function DesktopSidebar({
   const isFMC = effectiveCompany?.account_type === 'fmc'
   const lotMapEnabled = useFeatureFlag('lot_map')
   const whiteLabelEnabled = useFeatureFlag('white_label')
+  const settingsOpen = pathname.startsWith('/settings')
   const reportsUsed = effectiveCompany?.reports_used ?? 0
   const reportsTotal = effectiveCompany?.reports_included ?? 10
   const usagePct = Math.min(100, reportsTotal > 0 ? (reportsUsed / reportsTotal) * 100 : 0)
@@ -134,6 +135,19 @@ export default function DesktopSidebar({
     fontFamily: 'inherit',
   })
 
+  const subItemStyle = (active: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '7px 8px 7px 10px',
+    borderRadius: 6, margin: '1px 0',
+    cursor: isInspecting ? 'default' : 'pointer',
+    background: active ? 'rgba(0,180,216,0.10)' : 'transparent',
+    color: isInspecting ? 'rgba(255,255,255,0.3)' : active ? '#00B4D8' : 'rgba(255,255,255,0.55)',
+    border: 'none', fontSize: 13, fontWeight: active ? 600 : 400,
+    width: '100%', textAlign: 'left' as const, outline: 'none',
+    transition: 'background 150ms ease, color 150ms ease',
+    fontFamily: 'inherit',
+  })
+
   const sectionLabel: React.CSSProperties = {
     fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.3)', padding: '16px 12px 6px',
@@ -199,24 +213,9 @@ export default function DesktopSidebar({
           )}
 
           <div style={divider()} />
-          <button onClick={() => !isInspecting && router.push('/settings/billing')} title="Billing" style={collapsedItemStyle(pathname === '/settings/billing')}>
-            <CreditCard size={18} />
+          <button onClick={() => !isInspecting && router.push('/settings')} title="Settings" style={collapsedItemStyle(pathname.startsWith('/settings'))}>
+            <Settings size={18} />
           </button>
-          {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
-            <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} title="Lot Billing" style={collapsedItemStyle(pathname === '/settings/lot-billing')}>
-              <DollarSign size={18} />
-            </button>
-          )}
-          {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
-            <button onClick={() => !isInspecting && router.push('/settings/branding')} title="Branding" style={collapsedItemStyle(pathname === '/settings/branding')}>
-              <Palette size={18} />
-            </button>
-          )}
-          {(isOwnerUser || companyRole === 'admin') && (
-            <button onClick={() => !isInspecting && router.push('/settings/members')} title="Team Members" style={collapsedItemStyle(pathname === '/settings/members')}>
-              <Users size={18} />
-            </button>
-          )}
           {isOwnerUser && (
             <button onClick={() => !isInspecting && router.push('/admin/overview')} title="Admin Center" style={collapsedItemStyle(pathname.startsWith('/admin'))}>
               <Shield size={18} />
@@ -249,27 +248,35 @@ export default function DesktopSidebar({
           )}
 
           <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '12px 0' }} />
-          <button onClick={() => !isInspecting && router.push('/settings/billing')} style={expandedItemStyle(pathname === '/settings/billing')}>
-            <CreditCard size={18} />
-            <span>Billing</span>
+          <button onClick={() => !isInspecting && router.push('/settings')} style={expandedItemStyle(pathname === '/settings')}>
+            <Settings size={18} />
+            <span style={{ flex: 1 }}>Settings</span>
+            <ChevronDown size={13} style={{ transform: settingsOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms', opacity: 0.35, flexShrink: 0 }} />
           </button>
-          {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
-            <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} style={expandedItemStyle(pathname === '/settings/lot-billing')}>
-              <DollarSign size={18} />
-              <span>Lot Billing</span>
-            </button>
-          )}
-          {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
-            <button onClick={() => !isInspecting && router.push('/settings/branding')} style={expandedItemStyle(pathname === '/settings/branding')}>
-              <Palette size={18} />
-              <span>Branding</span>
-            </button>
-          )}
-          {(isOwnerUser || companyRole === 'admin') && (
-            <button onClick={() => !isInspecting && router.push('/settings/members')} style={expandedItemStyle(pathname === '/settings/members')}>
-              <Users size={18} />
-              <span>Team Members</span>
-            </button>
+          {settingsOpen && (
+            <div style={{ marginLeft: 16, borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 4, marginBottom: 2 }}>
+              <button onClick={() => !isInspecting && router.push('/settings/profile')} style={subItemStyle(pathname === '/settings/profile')}>
+                <User size={14} /><span>Profile</span>
+              </button>
+              <button onClick={() => !isInspecting && router.push('/settings/billing')} style={subItemStyle(pathname === '/settings/billing')}>
+                <CreditCard size={14} /><span>Billing & Plan</span>
+              </button>
+              {(isOwnerUser || companyRole === 'admin') && (
+                <button onClick={() => !isInspecting && router.push('/settings/members')} style={subItemStyle(pathname === '/settings/members')}>
+                  <Users size={14} /><span>Team Members</span>
+                </button>
+              )}
+              {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
+                <button onClick={() => !isInspecting && router.push('/settings/branding')} style={subItemStyle(pathname === '/settings/branding')}>
+                  <Palette size={14} /><span>Branding</span>
+                </button>
+              )}
+              {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
+                <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} style={subItemStyle(pathname === '/settings/lot-billing')}>
+                  <DollarSign size={14} /><span>Lot Billing</span>
+                </button>
+              )}
+            </div>
           )}
           {isOwnerUser && (
             <button onClick={() => !isInspecting && router.push('/admin/overview')} style={expandedItemStyle(pathname.startsWith('/admin'))}>

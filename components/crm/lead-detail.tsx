@@ -6,7 +6,7 @@ import {
   getCRMLead, addCRMNote, updateLeadStatus, updateLeadField,
   logLinkedInRequest, deleteCRMNote,
 } from '@/lib/crm-actions'
-import { ArrowLeft, Mail, Phone, Linkedin, MapPin, Building, Briefcase, Calendar, Edit2, Check, X, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Mail, Phone, Link2, MapPin, Building, Briefcase, Calendar, Edit2, Check, X, Trash2, Plus } from 'lucide-react'
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   new:            { label: 'New',            bg: '#F0F4F8', color: '#4A5568' },
@@ -193,7 +193,7 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
                       {touch ? (
                         <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>
                           Sent {new Date(touch.sent_at as string).toLocaleDateString()}
-                          {touch.replied && <span style={{ color: '#10B981', fontWeight: 700 }}> · Replied!</span>}
+                          {Boolean(touch.replied) && <span style={{ color: '#10B981', fontWeight: 700 }}> · Replied!</span>}
                         </p>
                       ) : (
                         <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>Not sent yet</p>
@@ -216,7 +216,7 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
             <SH>LinkedIn</SH>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: '#E8F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Linkedin size={18} color="#0077B5" />
+                <Link2 size={18} color="#0077B5" />
               </div>
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#0D1B2A' }}>LinkedIn DM</p>

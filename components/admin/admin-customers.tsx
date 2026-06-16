@@ -20,7 +20,7 @@ const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  queued: '#94A3B8', pending_arrival: '#94A3B8', on_lot: '#00B4D8', in_progress: '#8B5CF6', one_off: '#F97316', released: '#10B981',
+  queued: '#94A3B8', pending_arrival: '#94A3B8', on_lot: '#00B4D8', one_off: '#F97316', released: '#10B981',
 }
 
 const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
@@ -271,7 +271,7 @@ export default function AdminCustomers() {
 
               {/* Ghost Mode */}
               <button
-                onClick={() => { setImpersonatedCompany(selected as Parameters<typeof setImpersonatedCompany>[0]); setSelected(null) }}
+                onClick={() => { setImpersonatedCompany(selected as unknown as Parameters<typeof setImpersonatedCompany>[0]); setSelected(null) }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 0', background: '#7C3AED', color: '#FFF', borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}
               >
                 <Ghost size={16} /> Enter Ghost Mode
@@ -479,7 +479,7 @@ export default function AdminCustomers() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${STATUS_COLORS[st] ?? '#94A3B8'}20`, color: STATUS_COLORS[st] ?? '#94A3B8' }}>{st}</span>
-                        {ins.vehicle_score && <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>{ins.vehicle_score as number}</span>}
+                        {Boolean(ins.vehicle_score) && <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>{ins.vehicle_score as number}</span>}
                       </div>
                     </div>
                   )

@@ -6,7 +6,10 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction } from '@/lib/inspection-server-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume } from '@/lib/inspection-server-actions'
+import { checkUsageState, checkExistingInspection, abandonInspection, type UsageState } from '@/lib/usage-actions'
+import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
+import { type StepId } from '@/components/inspection-wizard/inspection-wizard'
 import { calculateVehicleBilling, type BillingType } from '@/lib/lot-actions'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
@@ -104,6 +107,24 @@ function extractPhotos(insp: any): { url: string; label: string; date: string }[
   return out
 }
 
+const RESUME_STEP_ORDER: Array<{ dataKey: string; nextStep: StepId }> = [
+  { dataKey: 'engine_data',           nextStep: 'review' },
+  { dataKey: 'interior_data',         nextStep: 'engine' },
+  { dataKey: 'exterior_data',         nextStep: 'interior' },
+  { dataKey: 'documentation_data',    nextStep: 'exterior' },
+  { dataKey: 'vehicle_function_data', nextStep: 'documentation' },
+  { dataKey: 'keys_data',             nextStep: 'function' },
+  { dataKey: 'bol_data',              nextStep: 'keys' },
+  { dataKey: 'vehicleInfo',           nextStep: 'bol' },
+]
+function inferResumeStep(row: Record<string, any>): StepId {
+  for (const { dataKey, nextStep } of RESUME_STEP_ORDER) {
+    const val = row[dataKey]
+    if (val && typeof val === 'object' && Object.keys(val).length > 0) return nextStep
+  }
+  return 'vehicle-info'
+}
+
 // ── Section card wrapper ───────────────────────────────────────────────────────
 
 function SectionCard({ title, count, action, children }: {
@@ -186,10 +207,18 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   // Status action state
   const [confirmRelease, setConfirmRelease] = useState(false)
   const [actionSaving, setActionSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [showZeroInvoiceWarning, setShowZeroInvoiceWarning] = useState(false)
 
   // Wizard
   const [appStep, setAppStep] = useState<AppStep>('view')
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
+  const [usageState, setUsageState] = useState<UsageState | null>(null)
+  const [showUsageModal, setShowUsageModal] = useState(false)
+  const [initiatingInspection, setInitiatingInspection] = useState(false)
+  const [resumeInspection, setResumeInspection] = useState<{ inspectionId: string; startedAt: string } | null>(null)
+  const [wizardInitialData, setWizardInitialData] = useState<Record<string, any> | undefined>(undefined)
+  const [wizardInitialStep, setWizardInitialStep] = useState<StepId | undefined>(undefined)
 
   // ── Fetch inspections via server action (bypasses RLS, handles company_id mismatches)
   const fetchInspections = useCallback(async (vin: string, knownIds?: string[]) => {
@@ -198,7 +227,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       const rows = knownIds?.length
         ? await fetchInspectionsByIds(knownIds)
         : await fetchInspectionsByVin(companyId, vin)
-      const inspectorIds = [...new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id))]
+      const inspectorIds = Array.from(new Set(rows.filter(r => r.inspector_id).map(r => r.inspector_id)))
       const nameMap = await fetchInspectorNames(inspectorIds)
       setInspections(rows.map(r => ({ ...r, inspector: { full_name: r.inspector_id ? (nameMap[r.inspector_id] ?? 'Unknown') : null } })))
     } catch (e) {
@@ -222,7 +251,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setRawNotes(data?.notes ?? null)
     setLoadingVehicle(false)
     if (data) {
-      const ids = [...new Set([data.checkin_inspection_id, data.checkout_inspection_id, ...(data.inspection_ids ?? [])].filter(Boolean))]
+      const ids = Array.from(new Set([data.checkin_inspection_id, data.checkout_inspection_id, ...(data.inspection_ids ?? [])].filter(Boolean)))
       fetchInspections(data.vin ?? '', ids.length ? ids : undefined)
     }
   }, [companyId, params.vehicleId, fetchInspections])
@@ -280,18 +309,86 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const handleStart = async () => {
     if (!effectiveCompany || !user || !vehicle) return
     try {
+      const vehicleStatus = effectiveStatus(vehicle)
+      const isVehicleInProgress = vehicleStatus === 'in_progress' || vehicleStatus === 'releasing'
+      if (isVehicleInProgress && vehicle.vin) {
+        const existing = await checkExistingInspection(effectiveCompany.id, vehicle.vin)
+        if (existing) {
+          setResumeInspection(existing)
+          return
+        }
+      }
+      const usage = await checkUsageState(effectiveCompany.id)
+      setUsageState(usage)
+      setShowUsageModal(true)
+    } catch (e: any) {
+      setErrorMsg('Failed to check usage: ' + e.message)
+    }
+  }
+
+  const handleResumeExisting = async () => {
+    if (!resumeInspection) return
+    try {
+      const row = await loadInspectionForResume(resumeInspection.inspectionId)
+      if (row) {
+        setWizardInitialData({
+          vehicleInfo: row.vehicleInfo ?? {},
+          bol_data: row.bol_data ?? {},
+          keys_data: row.keys_data ?? {},
+          vehicle_function_data: row.vehicle_function_data ?? {},
+          documentation_data: row.documentation_data ?? {},
+          exterior_data: row.exterior_data ?? {},
+          interior_data: row.interior_data ?? {},
+          engine_data: row.engine_data ?? {},
+        })
+        setWizardInitialStep(inferResumeStep(row))
+      }
+      setCurrentInspectionId(resumeInspection.inspectionId)
+      setResumeInspection(null)
+      setAppStep('inspecting')
+    } catch (e: any) {
+      setErrorMsg('Failed to resume: ' + e.message)
+    }
+  }
+
+  const handleStartFreshFromResume = async () => {
+    if (!resumeInspection || !effectiveCompany) return
+    try {
+      await abandonInspection(resumeInspection.inspectionId)
+      setResumeInspection(null)
+      const usage = await checkUsageState(effectiveCompany.id)
+      setUsageState(usage)
+      setShowUsageModal(true)
+    } catch (e: any) {
+      setErrorMsg('Failed to start fresh: ' + e.message)
+    }
+  }
+
+  const handleConfirmStart = async () => {
+    if (!effectiveCompany || !user || !vehicle) return
+    setInitiatingInspection(true)
+    try {
       const [{ getDeviceId }, { initiateInspection }] = await Promise.all([
         import('@/lib/device-id'),
         import('@/lib/usage-actions'),
       ])
       const { inspectionId } = await initiateInspection({
-        companyId: effectiveCompany.id, inspectorId: user.id,
+        companyId: effectiveCompany.id,
+        inspectorId: user.id,
         initialData: { vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model },
         deviceId: getDeviceId(),
       })
+      setShowUsageModal(false)
+      setUsageState(null)
+      setWizardInitialData(undefined)
+      setWizardInitialStep(undefined)
       setCurrentInspectionId(inspectionId)
       setAppStep('inspecting')
-    } catch (e: any) { alert('Failed to start: ' + e.message) }
+    } catch (e: any) {
+      setErrorMsg('Failed to start: ' + e.message)
+    } finally {
+      setInitiatingInspection(false)
+    }
   }
 
   const handleMarkOnLot = async () => {
@@ -348,7 +445,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       companyBillingDefaults ?? {},
     )
     if (billingResult.rate === null || billingResult.accruedAmount === null) {
-      alert('Please set a rate before generating an invoice.')
+      setErrorMsg('Please set a rate before generating an invoice.')
       return
     }
     setGeneratingInvoice(true)
@@ -384,7 +481,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       setInvoiceNotes('')
       setInvoiceDueDate('')
     } catch (e: any) {
-      alert('Failed to generate invoice: ' + e.message)
+      setErrorMsg('Failed to generate invoice: ' + e.message)
     } finally {
       setGeneratingInvoice(false)
     }
@@ -400,7 +497,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         import('@/lib/pdf-generator'),
       ])
       await generateInspectionPDF(data, calculateVehicleScore(data), data.signature_url ?? '')
-    } catch (e: any) { alert('PDF failed: ' + e.message) }
+    } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
   }
 
   // ── Wizard mode
@@ -408,10 +505,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     return (
       <InspectionWizard
         inspectionId={currentInspectionId}
-        initialData={{ vehicleInfo: { vin: vehicle?.vin, year: vehicle?.year, make: vehicle?.make, model: vehicle?.model } }}
+        initialData={wizardInitialData ?? { vehicleInfo: { vin: vehicle?.vin, year: vehicle?.year, make: vehicle?.make, model: vehicle?.model } }}
+        initialStep={wizardInitialStep}
         inspectorId={user?.id}
         onComplete={handleWizardComplete}
-        onCancel={() => { setAppStep('view'); setCurrentInspectionId(null) }}
+        onCancel={() => { setAppStep('view'); setCurrentInspectionId(null); setWizardInitialData(undefined); setWizardInitialStep(undefined) }}
       />
     )
   }
@@ -615,7 +713,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                       }
                       // No stored report — generate from saved inspection data
                       const full = await fetchFullInspectionAction(insp.id)
-                      if (!full) { alert('Inspection data not found'); return }
+                      if (!full) { setErrorMsg('Inspection data not found'); return }
                       const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
                         import('@/lib/vehicle-score'),
                         import('@/lib/pdf-generator'),
@@ -758,9 +856,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               </button>
               <button onClick={() => {
                 if (billingResult.accruedAmount !== null && Number(billingResult.accruedAmount) === 0) {
-                  if (!window.confirm('This vehicle has accrued $0.00. Generate a $0 invoice anyway?')) return
+                  setShowZeroInvoiceWarning(true)
+                } else {
+                  setShowInvoiceModal(true)
                 }
-                setShowInvoiceModal(true)
               }}
                 style={{ height: 42, padding: '0 16px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Generate Invoice
@@ -904,6 +1003,64 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
       <BottomNav />
     </div>
+
+    {/* Resume inspection prompt */}
+    {resumeInspection && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setResumeInspection(null)} />
+        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: '0 0 8px' }}>Resume Inspection?</h2>
+          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+            An inspection for this vehicle is already in progress (started {new Date(resumeInspection.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}). Resume to continue where you left off, or start fresh.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button onClick={handleResumeExisting}
+              style={{ height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Resume
+            </button>
+            <button onClick={handleStartFreshFromResume}
+              style={{ height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Usage confirmation */}
+    {showUsageModal && usageState && (
+      <UsageConfirmationModal
+        usageState={usageState}
+        onConfirm={handleConfirmStart}
+        onCancel={() => { setShowUsageModal(false); setUsageState(null) }}
+        loading={initiatingInspection}
+      />
+    )}
+
+    {errorMsg && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
+          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+          <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+        </div>
+      </div>
+    )}
+
+    {showZeroInvoiceWarning && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowZeroInvoiceWarning(false)} />
+        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>$0 Invoice</h3>
+          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>This vehicle has accrued $0.00. Generate a $0 invoice anyway?</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowZeroInvoiceWarning(false)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={() => { setShowZeroInvoiceWarning(false); setShowInvoiceModal(true) }} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Generate Anyway</button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Billing saved toast */}
     {billingSaved && (

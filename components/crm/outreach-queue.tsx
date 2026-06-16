@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getQueueLeads, updateLeadPin, markEmailSent, getTodayGoals, incrementDailyGoal, addCRMNote, logLinkedInRequest } from '@/lib/crm-actions'
 import { sendEmail } from '@/lib/send-email'
-import { Pin, SkipForward, Mail, Check, X, Wand2, RefreshCw, ChevronDown, Linkedin, Filter, Zap } from 'lucide-react'
+import { Pin, SkipForward, Mail, Check, X, Wand2, RefreshCw, ChevronDown, Link2, Filter, Zap } from 'lucide-react'
 
 const PRIORITY_CFG: Record<string, { label: string; bg: string; color: string }> = {
   P0: { label: 'P0', bg: '#FEE2E2', color: '#DC2626' },
@@ -301,7 +301,7 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
       <div style={{ borderTop: '1px solid #F0F4F8', paddingTop: 12 }}>
         <button onClick={() => setDmOpen(o => !o)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#0D1B2A', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
-          <Linkedin size={14} color="#0077B5" /> LinkedIn DM <ChevronDown size={13} color="#94A3B8" style={{ transform: dmOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }} />
+          <Link2 size={14} color="#0077B5" /> LinkedIn DM <ChevronDown size={13} color="#94A3B8" style={{ transform: dmOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }} />
         </button>
         {dmOpen && (
           <div style={{ marginTop: 10 }}>

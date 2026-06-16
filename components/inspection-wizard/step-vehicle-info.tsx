@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Car, ChevronDown, ChevronUp, Check, Loader2 } from 'lucide-react'
+import { Car, ChevronDown, ChevronUp, Check, Loader2, Lock } from 'lucide-react'
 import { decodeVINAction, type VINDecodeResult } from '@/lib/vin-actions'
 import PhotoField from '@/components/ui/photo-field'
 import StepOpener from './step-opener'
@@ -42,6 +42,7 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
 
   const vin = data.vin ?? ''
   const isVinComplete = vin.length === 17
+  const isVinLocked = Boolean(data._vinLocked) && isVinComplete
   const inspectionType: InspectionType = data.inspectionType ?? 'standard'
   const hasPhoto = !!data.baselinePhoto
   const canAdvance = isVinComplete && hasPhoto
@@ -119,7 +120,8 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
           <div style={{ position: 'relative', marginBottom: 4 }}>
             <input
               value={vin}
-              onChange={e => handleVinChange(e.target.value)}
+              onChange={isVinLocked ? undefined : e => handleVinChange(e.target.value)}
+              readOnly={isVinLocked}
               placeholder="Enter 17-character VIN"
               className="step-input"
               style={{
@@ -130,24 +132,36 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
                 borderColor: isVinComplete ? '#10B981' : undefined,
                 paddingRight: 44,
                 boxSizing: 'border-box',
+                background: isVinLocked ? '#F5F8FA' : undefined,
+                color: isVinLocked ? '#4A5568' : undefined,
+                cursor: isVinLocked ? 'default' : undefined,
               }}
               maxLength={17}
               autoCapitalize="characters"
             />
             <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-              {decoding && <Loader2 size={16} color="#00B4D8" style={{ animation: 'spin 0.8s linear infinite' }} />}
-              {!decoding && isVinComplete && !decodeError && <Check size={16} color="#10B981" />}
+              {isVinLocked && <Lock size={14} color="#94A3B8" />}
+              {!isVinLocked && decoding && <Loader2 size={16} color="#00B4D8" style={{ animation: 'spin 0.8s linear infinite' }} />}
+              {!isVinLocked && !decoding && isVinComplete && !decodeError && <Check size={16} color="#10B981" />}
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
             <div style={{ flex: 1 }}>
-              {vinAttempted && !isVinComplete && (
-                <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>
-                  VIN must be 17 characters.
+              {isVinLocked ? (
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Lock size={11} />VIN set by dispatch
                 </p>
-              )}
-              {decodeError && (
-                <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{decodeError}</p>
+              ) : (
+                <>
+                  {vinAttempted && !isVinComplete && (
+                    <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>
+                      VIN must be 17 characters.
+                    </p>
+                  )}
+                  {decodeError && (
+                    <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{decodeError}</p>
+                  )}
+                </>
               )}
               {advancedInfo && !decodeError && (
                 <p style={{ fontSize: 12, color: '#10B981', margin: 0 }}>
@@ -155,18 +169,20 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
                 </p>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {isVinComplete && (
-                <button
-                  type="button"
-                  onClick={() => autoDecode(vin)}
-                  disabled={decoding}
-                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: decoding ? 'default' : 'pointer', fontFamily: 'inherit', opacity: decoding ? 0.6 : 1 }}>
-                  {decoding ? 'Decoding…' : 'Decode'}
-                </button>
-              )}
-              <span style={{ fontSize: 12, color: '#94A3B8' }}>{vin.length}/17</span>
-            </div>
+            {!isVinLocked && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isVinComplete && (
+                  <button
+                    type="button"
+                    onClick={() => autoDecode(vin)}
+                    disabled={decoding}
+                    style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: decoding ? 'default' : 'pointer', fontFamily: 'inherit', opacity: decoding ? 0.6 : 1 }}>
+                    {decoding ? 'Decoding…' : 'Decode'}
+                  </button>
+                )}
+                <span style={{ fontSize: 12, color: '#94A3B8' }}>{vin.length}/17</span>
+              </div>
+            )}
           </div>
         </div>
 

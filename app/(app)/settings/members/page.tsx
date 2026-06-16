@@ -23,6 +23,8 @@ export default function MembersPage() {
   const [members, setMembers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!companyId) return
@@ -36,15 +38,15 @@ export default function MembersPage() {
   const handleRoleChange = async (memberId: string, role: 'admin' | 'inspector') => {
     setUpdating(memberId)
     try { await updateCompanyMemberRole(memberId, role); await load() }
-    catch (e: any) { alert(e.message) }
+    catch (e: any) { setErrorMsg(e.message) }
     finally { setUpdating(null) }
   }
 
-  const handleRemove = async (memberId: string) => {
-    if (!confirm('Remove this member?')) return
+  const doRemove = async (memberId: string) => {
+    setConfirmRemoveId(null)
     setUpdating(memberId)
     try { await removeCompanyMember(memberId); await load() }
-    catch (e: any) { alert(e.message) }
+    catch (e: any) { setErrorMsg(e.message) }
     finally { setUpdating(null) }
   }
 
@@ -132,7 +134,7 @@ export default function MembersPage() {
                         <option value="admin">Admin</option>
                       </select>
                       <button
-                        onClick={() => handleRemove(m.id)}
+                        onClick={() => setConfirmRemoveId(m.id)}
                         style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                         <Trash2 size={13} color="#EF4444" />
                       </button>
@@ -145,6 +147,31 @@ export default function MembersPage() {
         </div>
         <BottomNav />
       </div>
+
+      {confirmRemoveId && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setConfirmRemoveId(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Remove Member</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to remove this member from your team?</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setConfirmRemoveId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => doRemove(confirmRemoveId)} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

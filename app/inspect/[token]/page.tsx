@@ -4,15 +4,18 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { createFakeAuthContext, AuthContext } from '@/contexts/auth-context'
-import { initiateInspectionRequest } from '@/lib/usage-actions'
-import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
+import { initiateInspectionRequest, checkUsageState, checkExistingInspection, type UsageState } from '@/lib/usage-actions'
+import InspectionWizard, { type StepId } from '@/components/inspection-wizard/inspection-wizard'
+import { loadInspectionForResume } from '@/lib/inspection-server-actions'
 import SharedInspectionView from '@/components/shared-inspection-view'
+import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
 import { getInspectionRequestByToken } from '@/lib/inspection-server-actions'
 import { XCircle, Clock, CheckCircle, Car } from 'lucide-react'
 
 type PageStatus =
   | 'loading'
   | 'intake'       // inspection_requests token — show intake form
+  | 'confirm'      // usage confirmation modal
   | 'starting'     // creating inspection row
   | 'inspecting'   // wizard active
   | 'done'         // inspector finished
@@ -31,6 +34,25 @@ interface InspectionRequest {
   used_at?: string | null
 }
 
+const RESUME_STEP_ORDER: Array<{ dataKey: string; nextStep: StepId }> = [
+  { dataKey: 'engine_data',           nextStep: 'review' },
+  { dataKey: 'interior_data',         nextStep: 'engine' },
+  { dataKey: 'exterior_data',         nextStep: 'interior' },
+  { dataKey: 'documentation_data',    nextStep: 'exterior' },
+  { dataKey: 'vehicle_function_data', nextStep: 'documentation' },
+  { dataKey: 'keys_data',             nextStep: 'function' },
+  { dataKey: 'bol_data',              nextStep: 'keys' },
+  { dataKey: 'vehicleInfo',           nextStep: 'bol' },
+]
+
+function inferDispatchResumeStep(row: Record<string, any>): StepId {
+  for (const { dataKey, nextStep } of RESUME_STEP_ORDER) {
+    const val = row[dataKey]
+    if (val && typeof val === 'object' && Object.keys(val).length > 0) return nextStep
+  }
+  return 'vehicle-info'
+}
+
 export default function InspectTokenPage() {
   const params = useParams()
   const token = params.token as string
@@ -42,6 +64,10 @@ export default function InspectTokenPage() {
   const [inspectorName, setInspectorName] = useState('')
   const [inspectionId, setInspectionId] = useState<string | null>(null)
   const [startError, setStartError] = useState('')
+  const [usageState, setUsageState] = useState<UsageState | null>(null)
+  const [existingInspection, setExistingInspection] = useState<{ inspectionId: string; startedAt: string } | null>(null)
+  const [resumedData, setResumedData] = useState<Record<string, any> | null>(null)
+  const [resumedStep, setResumedStep] = useState<StepId | undefined>(undefined)
 
   useEffect(() => {
     async function validate() {
@@ -69,6 +95,30 @@ export default function InspectTokenPage() {
     validate()
   }, [token])
 
+  async function ensureAuth() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      const { error: anonErr } = await supabase.auth.signInAnonymously()
+      if (anonErr) throw anonErr
+    }
+  }
+
+  async function doInitiate() {
+    if (!request) return
+    const result = await initiateInspectionRequest({
+      requestId: request.id,
+      companyId: request.company_id,
+      vin: request.vin ?? undefined,
+    })
+    if (result.error) {
+      setStartError(result.error)
+      setStatus('intake')
+      return
+    }
+    setInspectionId(result.inspectionId)
+    setStatus('inspecting')
+  }
+
   async function handleStart() {
     if (!request || !inspectorName.trim()) return
     setStatus('starting')
@@ -76,24 +126,70 @@ export default function InspectTokenPage() {
     try {
       // Skip anonymous sign-in if already authenticated (prevents overwriting an admin session
       // when they open their own inspect link in the same browser to test it)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        const { error: anonErr } = await supabase.auth.signInAnonymously()
-        if (anonErr) throw anonErr
+      await ensureAuth()
+
+      // Check for an existing in-progress inspection for this VIN
+      if (request.vin) {
+        const existing = await checkExistingInspection(request.company_id, request.vin)
+        if (existing) {
+          setExistingInspection(existing)
+          setStatus('intake')
+          return
+        }
       }
 
-      const result = await initiateInspectionRequest({
-        requestId: request.id,
-        companyId: request.company_id,
-        vin: request.vin ?? undefined,
-      })
-      if (result.error) {
-        setStartError(result.error)
-        setStatus('intake')
-        return
-      }
-      setInspectionId(result.inspectionId)
-      setStatus('inspecting')
+      // Show usage confirmation before creating the row
+      const usage = await checkUsageState(request.company_id)
+      setUsageState(usage)
+      setStatus('confirm')
+    } catch (e: any) {
+      setStartError(e.message ?? 'Failed to start inspection')
+      setStatus('intake')
+    }
+  }
+
+  async function handleConfirmStart() {
+    if (!request) return
+    setStatus('starting')
+    try {
+      await doInitiate()
+    } catch (e: any) {
+      setStartError(e.message ?? 'Failed to start inspection')
+      setStatus('intake')
+    }
+  }
+
+  async function handleResumeExisting() {
+    if (!existingInspection || !request) return
+    setStatus('starting')
+    const row = await loadInspectionForResume(existingInspection.inspectionId)
+    const initialData = row ? {
+      vehicleInfo: { ...(row.vehicleInfo ?? {}), _vinLocked: !!request.vin },
+      bol_data: row.bol_data ?? {},
+      keys_data: row.keys_data ?? {},
+      vehicle_function_data: row.vehicle_function_data ?? {},
+      documentation_data: row.documentation_data ?? {},
+      exterior_data: row.exterior_data ?? {},
+      interior_data: row.interior_data ?? {},
+      engine_data: row.engine_data ?? {},
+    } : (request.vin ? { vehicleInfo: { vin: request.vin, _vinLocked: true } } : undefined)
+    setResumedData(initialData ?? null)
+    setResumedStep(row ? inferDispatchResumeStep(row) : undefined)
+    setInspectionId(existingInspection.inspectionId)
+    setExistingInspection(null)
+    setStatus('inspecting')
+  }
+
+  async function handleStartFreshDispatch() {
+    if (!existingInspection || !request) return
+    setStatus('starting')
+    try {
+      const { abandonInspection } = await import('@/lib/usage-actions')
+      await abandonInspection(existingInspection.inspectionId)
+      setExistingInspection(null)
+      const usage = await checkUsageState(request.company_id)
+      setUsageState(usage)
+      setStatus('confirm')
     } catch (e: any) {
       setStartError(e.message ?? 'Failed to start inspection')
       setStatus('intake')
@@ -121,6 +217,17 @@ export default function InspectTokenPage() {
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
+    )
+  }
+
+  // ── Usage confirmation ───────────────────────────────────────────────────
+  if (status === 'confirm' && usageState) {
+    return (
+      <UsageConfirmationModal
+        usageState={usageState}
+        onConfirm={handleConfirmStart}
+        onCancel={() => setStatus('intake')}
+      />
     )
   }
 
@@ -209,6 +316,8 @@ export default function InspectTokenPage() {
       <AuthContext.Provider value={fakeContext}>
         <InspectionWizard
           inspectionId={inspectionId}
+          initialData={resumedData ?? (request.vin ? { vehicleInfo: { vin: request.vin, _vinLocked: true } } : undefined)}
+          initialStep={resumedStep}
           onComplete={handleComplete}
           isRemote
         />
@@ -219,6 +328,28 @@ export default function InspectTokenPage() {
   // ── Intake form (status === 'intake') ────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      {existingInspection && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(13,27,42,0.65)', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 360, boxShadow: '0 20px 60px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px' }}>Inspection In Progress</h3>
+            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+              An inspection for this vehicle is already in progress{existingInspection ? ` (started ${new Date(existingInspection.startedAt).toLocaleDateString()})` : ''}. Resume to continue where you left off, or start fresh.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={handleResumeExisting}
+                style={{ height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Resume Inspection
+              </button>
+              <button
+                onClick={handleStartFreshDispatch}
+                style={{ height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Start Fresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ width: '100%', maxWidth: 400 }}>
 
         {/* Header */}

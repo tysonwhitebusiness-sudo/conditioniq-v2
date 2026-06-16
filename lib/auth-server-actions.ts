@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { CompanyRole } from '@/lib/roles'
+import type { RawCompanyRole } from '@/lib/roles'
 
 /**
  * Fetch the authenticated user's role within a company, bypassing RLS.
@@ -11,7 +11,7 @@ import type { CompanyRole } from '@/lib/roles'
 export async function getUserCompanyRole(
   userId: string,
   companyId: string,
-): Promise<CompanyRole | null> {
+): Promise<RawCompanyRole | null> {
   if (!userId || !companyId) return null
   const supabase = createAdminClient()
   const { data } = await supabase
@@ -20,5 +20,5 @@ export async function getUserCompanyRole(
     .eq('user_id', userId)
     .eq('company_id', companyId)
     .maybeSingle()
-  return (data?.role as CompanyRole) ?? null
+  return (data?.role as RawCompanyRole) ?? null
 }

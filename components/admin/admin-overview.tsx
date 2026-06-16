@@ -87,7 +87,7 @@ export default function AdminOverview() {
             <BarChart data={mrrHistory} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={52} />
-              <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, 'MRR']} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
+              <Tooltip formatter={(v) => typeof v === 'number' ? [`$${v.toLocaleString()}`, 'MRR'] as [string, string] : ''} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
               <Bar dataKey="mrr" fill="#00B4D8" activeBar={{ fill: '#0097B2' }} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

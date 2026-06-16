@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
 
 // ── Super admin: list all users ───────────────────────────────────────────────
@@ -66,6 +67,10 @@ export async function addCompanyMember(
 }
 
 export async function updateCompanyMemberRole(memberId: string, role: CompanyRole) {
+  const admin = createAdminClient()
+  const { data: current } = await admin.from('company_members').select('role').eq('id', memberId).maybeSingle()
+  if (current?.role === 'owner') throw new Error('The account owner role cannot be changed.')
+
   const supabase = createClient()
   const { error } = await supabase
     .from('company_members')
@@ -75,6 +80,10 @@ export async function updateCompanyMemberRole(memberId: string, role: CompanyRol
 }
 
 export async function removeCompanyMember(memberId: string) {
+  const admin = createAdminClient()
+  const { data: current } = await admin.from('company_members').select('role').eq('id', memberId).maybeSingle()
+  if (current?.role === 'owner') throw new Error('The account owner cannot be removed.')
+
   const supabase = createClient()
   const { error } = await supabase
     .from('company_members')

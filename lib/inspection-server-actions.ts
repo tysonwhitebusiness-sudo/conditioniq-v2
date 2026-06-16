@@ -72,17 +72,17 @@ export async function updateVehicleLifecycleStatusAction(
   if (inspectionType === 'check_in') {
     updates.checkin_inspection_id = inspectionId
     updates.status = 'inspected'
-    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival', 'in_progress'].includes(vehicle.lifecycle_status)) {
+    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival'].includes(vehicle.lifecycle_status)) {
       updates.lifecycle_status = 'on_lot'
     }
   } else if (inspectionType === 'check_out') {
     updates.checkout_inspection_id = inspectionId
-    if (['in_progress'].includes(vehicle.lifecycle_status)) {
+    if (['on_lot'].includes(vehicle.lifecycle_status)) {
       updates.lifecycle_status = 'releasing'
     }
   } else {
     const cur = vehicle.lifecycle_status
-    if (!cur || ['queued', 'pending_arrival', 'in_progress'].includes(cur)) {
+    if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
       updates.lifecycle_status = 'one_off'
     }
   }
@@ -108,6 +108,17 @@ export async function fetchFullInspectionAction(inspectionId: string): Promise<R
     .eq('id', inspectionId)
     .single()
   if (error) { console.error('[fetchFullInspection]', error); return null }
+  return data
+}
+
+export async function loadInspectionForResume(inspectionId: string): Promise<Record<string, any> | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('vehicle_inspections')
+    .select('vehicleInfo, bol_data, keys_data, vehicle_function_data, documentation_data, exterior_data, interior_data, engine_data')
+    .eq('id', inspectionId)
+    .single()
+  if (error) { console.error('[loadInspectionForResume]', error); return null }
   return data
 }
 

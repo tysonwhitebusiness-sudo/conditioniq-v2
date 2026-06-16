@@ -47,11 +47,11 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
         <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', margin: '0 0 4px', lineHeight: 1.5 }}>
           {isOverage
             ? `You've used all ${usageState.included} reports this month.`
-            : `This will use 1 report from your ${usageState.planName} plan.`}
+            : `Completing this inspection will use 1 report from your ${usageState.planName} plan.`}
         </p>
         {isOverage && (
           <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
-            This inspection will be billed as an overage report.
+            Completing this inspection will be billed as an overage at ${usageState.overageRate.toFixed(2)}.
           </p>
         )}
 
@@ -107,7 +107,7 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
         }}>
           <Clock size={15} color="#94A3B8" style={{ flexShrink: 0, marginTop: 1 }} />
           <p style={{ fontSize: 13, color: '#4A5568', margin: 0, lineHeight: 1.5 }}>
-            You have <strong style={{ color: '#0D1B2A' }}>24 hours</strong> to complete this inspection. If left inactive, it will auto-complete and the report will be locked.
+            You have <strong style={{ color: '#0D1B2A' }}>24 hours</strong> to complete this inspection. If left inactive, it will be auto-cancelled at no charge.
           </p>
         </div>
 

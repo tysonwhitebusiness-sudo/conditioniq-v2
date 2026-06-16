@@ -20,6 +20,7 @@ export interface BulkVehicle {
   billing_type: string | null
   daily_rate: number | null
   monthly_rate: number | null
+  sub_client_name: string | null
   _status: string
 }
 
@@ -62,7 +63,6 @@ function vehicleLabel(r: { year: number | null; make: string | null; model: stri
 
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
   pending_arrival: { label: 'PENDING', bg: '#F0F4F8', color: '#4A5568' },
-  in_progress:    { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E' },
   on_lot:         { label: 'ON LOT', bg: '#E0F7FC', color: '#0097B2' },
   releasing:      { label: 'RELEASING', bg: '#FEF3C7', color: '#92400E' },
   released:       { label: 'RELEASED', bg: '#D1FAE5', color: '#065F46' },
@@ -181,6 +181,20 @@ export default function BulkBillingModal({
     () => rateResolvedRows.some(r => r.rate === null || isNaN(r.rate as number)),
     [rateResolvedRows],
   )
+
+  // Derive shared sub-client across active vehicles for Bill To auto-population
+  const subClientInfo = useMemo(() => {
+    const names = activeVehicles.map(v => v.sub_client_name).filter((n): n is string => !!n)
+    if (names.length === 0) return { value: '', hint: '' }
+    const unique = new Set(names)
+    if (unique.size === 1) return { value: names[0], hint: '' }
+    return { value: '', hint: 'Multiple clients selected — enter a Bill To name manually.' }
+  }, [activeVehicles])
+
+  // Auto-populate Bill To Name when entering step 5 (only if not already set by user)
+  useEffect(() => {
+    if (step === 5) setBillToName(prev => prev || subClientInfo.value)
+  }, [step, subClientInfo.value])
 
   // ── Navigation guards ──────────────────────────────────────────────────────
 
@@ -517,6 +531,9 @@ export default function BulkBillingModal({
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Name <span style={{ color: '#EF4444' }}>*</span></label>
                     <input value={billToName} onChange={e => setBillToName(e.target.value)} placeholder="Company or person name"
                       style={{ width: '100%', height: 40, border: `1.5px solid ${!billToName.trim() ? '#FCA5A5' : '#E1E8F0'}`, borderRadius: 9, padding: '0 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                    {subClientInfo.hint && (
+                      <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0', fontStyle: 'italic' }}>{subClientInfo.hint}</p>
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Contact (optional)</label>

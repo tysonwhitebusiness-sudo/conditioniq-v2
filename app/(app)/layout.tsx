@@ -6,6 +6,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import DesktopSidebar from '@/components/layout/desktop-sidebar'
 import DesktopTopBar from '@/components/layout/desktop-topbar'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
+import FeedbackButton from '@/components/ui/feedback-button'
 
 const PAGE_TITLES: Record<string, string> = {
   '/vehicles': 'Vehicles',
@@ -24,6 +25,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/customers': 'Customers',
   '/admin/crm': 'CRM',
   '/admin/users': 'Users & Roles',
+  '/settings': 'Settings',
+  '/settings/profile': 'Profile',
+  '/settings/billing': 'Billing & Plan',
+  '/settings/branding': 'Branding',
+  '/settings/lot-billing': 'Lot Billing',
   '/settings/members': 'Team Members',
   '/lot': 'Lot Map',
 }
@@ -37,7 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pageTitle = Object.entries(PAGE_TITLES).find(([k]) => pathname === k || pathname.startsWith(k + '/'))?.[1] ?? 'Condition IQ'
   const sidebarWidth = sidebarCollapsed ? 64 : 256
 
-  if (!isDesktop) return <>{children}</>
+  if (!isDesktop) return <>{children}<FeedbackButton /></>
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4F8' }}>
@@ -53,6 +59,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <StartInspectionSheet open={showStartSheet} onClose={() => setShowStartSheet(false)} />
+      <FeedbackButton />
     </div>
   )
 }

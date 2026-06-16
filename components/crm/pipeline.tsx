@@ -121,7 +121,7 @@ export default function Pipeline() {
 
   const load = useCallback(async () => {
     const data = await getPipelineLeads()
-    setLeads((data as PipelineLead[]) ?? [])
+    setLeads((data as unknown as PipelineLead[]) ?? [])
     setLoading(false)
   }, [])
 

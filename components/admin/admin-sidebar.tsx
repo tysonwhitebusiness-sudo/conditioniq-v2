@@ -2,12 +2,13 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
-import { Car, BarChart2, Users, Target, List, UserCheck, Columns2, ChevronLeft, ShieldCheck, LogOut } from 'lucide-react'
+import { Car, BarChart2, Users, Target, List, UserCheck, Columns2, ChevronLeft, ShieldCheck, LogOut, MessageSquare } from 'lucide-react'
 
 const OPS_ITEMS = [
-  { href: '/admin/overview',  label: 'Overview',       icon: BarChart2  },
-  { href: '/admin/customers', label: 'Customers',      icon: Users      },
-  { href: '/admin/users',     label: 'Users & Roles',  icon: ShieldCheck },
+  { href: '/admin/overview',  label: 'Overview',       icon: BarChart2    },
+  { href: '/admin/customers', label: 'Customers',      icon: Users        },
+  { href: '/admin/users',     label: 'Users & Roles',  icon: ShieldCheck  },
+  { href: '/admin/feedback',  label: 'Feedback',       icon: MessageSquare },
 ]
 
 const CRM_ITEMS = [

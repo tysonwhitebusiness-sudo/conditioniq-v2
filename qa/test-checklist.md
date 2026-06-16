@@ -107,15 +107,15 @@ Mark each item `[x]` when verified. Note failures with a short description inlin
 
 - [x] `/lot` page loads (requires `lot_map` flag — enabled for QA account)
 - [x] Summary bar shows Total Spots, Occupied, Available counts
-- [ ] **Accruing/day** chip (green) shows sum of active vehicle daily rates — **NOT TESTED:** no spots configured, cannot test
+- [x] **Accruing/day** chip (green) shows sum of active vehicle daily rates — **FIX CONFIRMED (v3):** After assigning a vehicle with $20/day rate, green "Accruing $20/day" chip appeared in lot summary bar.
 - [x] **Empty cost/day** chip (amber) shows opportunity cost for empty spots ($0.00 shown correctly when no spots)
-- [ ] On mobile, billing figures appear as compact text below spot counts — **NOT TESTED:** no spots configured
-- [ ] Clicking an empty spot opens the Assign Vehicle modal — **NOT TESTED:** no spots configured
-- [ ] Assigning a vehicle to a spot updates the grid and occupied count — **NOT TESTED**
-- [ ] Clicking an occupied spot opens the Vehicle Detail slide-over — **NOT TESTED**
-- [ ] Unassigning a vehicle from the slide-over frees the spot — **NOT TESTED**
-- [ ] "Edit Layout" button (admin only) opens the lot setup overlay — **FAIL (v2, still broken):** Re-tested again after v2 deploy — Edit Layout button absent from DOM in both desktop (1512px) and mobile (390px) viewports. Full body text search and React fiber inspection confirm button never renders. "No spots configured yet. Ask an admin to set up the lot layout." remains the only content. Fix ineffective for admin role.
-- [ ] In setup mode, spots can be added, moved, resized, and deleted — **NOT TESTED:** Edit Layout missing
+- [ ] On mobile, billing figures appear as compact text below spot counts — **NOT TESTED**
+- [x] Clicking an empty spot opens the Assign Vehicle modal — **FIX CONFIRMED (v3):** Clicking empty spot A1 opened "Assign Vehicle to A1" modal with vehicle search.
+- [x] Assigning a vehicle to a spot updates the grid and occupied count — **FIX CONFIRMED (v3):** Assigned 2020 Nissan Altima; grid updated to show occupied (teal) spot, occupied count incremented.
+- [x] Clicking an occupied spot opens the Vehicle Detail slide-over — **FIX CONFIRMED (v3):** Clicking occupied spot opened slide-over with vehicle name, VIN, status, days on lot, and accrued billing.
+- [x] Unassigning a vehicle from the slide-over frees the spot — **FIX CONFIRMED (v3):** "Unassign from Spot" in slide-over showed confirmation dialog; confirming freed the spot and updated counts.
+- [x] "Edit Layout" button (admin only) opens the lot setup overlay — **FIX CONFIRMED (v3):** "Edit Layout" button now visible and rendered for admin. Clicking opens SVG canvas editor with Spot/Select/Done tools.
+- [x] In setup mode, spots can be added, moved, resized, and deleted — **FIX CONFIRMED (v3):** Placed 3 spots (A1, A2, A3) via PointerEvent dispatch on canvas parent; spots auto-labeled sequentially; "Done" committed layout; spots confirmed in grid.
 - [x] Legend displays all status colors (Empty, Pending Arrival, On Lot, In Progress, One-Off, Releasing, Released)
 
 ---
@@ -124,9 +124,9 @@ Mark each item `[x]` when verified. Note failures with a short description inlin
 
 - [x] `/settings/lot-billing` loads for admin users with `lot_map` flag enabled — **FIX CONFIRMED:** route now loads "Lot Billing Defaults" page (previously redirected to home)
 - [x] Current default daily rate and monthly rate load from company settings — shows $8 daily, $200 monthly on load
-- [ ] Changing daily rate input and saving persists the new value (visible on reload) — **FAIL (v2, still broken):** changed to $12, "✓ Saved" shown, reverted to $8 on reload. Save still does not persist to backend.
-- [ ] Changing monthly rate and saving persists — **FAIL (v2, still broken):** changed to $250, "✓ Saved" shown, reverted to $200 on reload.
-- [ ] Billing type toggle (Daily / Monthly) saves as company default — **FAIL (v2, still broken):** toggled to Monthly, saved, reverted to Daily on reload.
+- [x] Changing daily rate input and saving persists the new value (visible on reload) — **FIX CONFIRMED (v3):** set to $20, saved, hard-reloaded → $20 persisted.
+- [x] Changing monthly rate and saving persists — **FIX CONFIRMED (v3):** set to $300, saved, hard-reloaded → $300 persisted.
+- [x] Billing type toggle (Daily / Monthly) saves as company default — **FIX CONFIRMED (v3):** toggled to Monthly, saved, hard-reloaded → Monthly persisted.
 - [x] "Saved" flash appears in green after a successful save — button changes to green "✓ Saved" with checkmark (visible, no scroll bug)
 - [ ] Non-admin users cannot access this page (redirected) — **NOT TESTED**
 
@@ -145,13 +145,13 @@ Mark each item `[x]` when verified. Note failures with a short description inlin
 
 ## 10. White Label / Branding
 
-- [ ] `/settings/branding` loads for admin users with `white_label` flag enabled — **FAIL (v2, still broken):** route consistently redirects to `/` (home) for the admin QA account with `white_label` flag enabled. Re-tested after v2 deploy — same redirect behavior. Route does not exist or flag-gate is incorrectly redirecting. Screenshot: `screenshots/12-team-members-no-invite.png`
-- [ ] Current logo displays if one has been uploaded (or shows "No logo uploaded") — **NOT TESTABLE:** page inaccessible
-- [ ] Drag-and-drop or click upload zone accepts PNG, JPEG, WebP, SVG up to 5MB — **NOT TESTABLE:** page inaccessible
-- [ ] After upload, new logo appears immediately in the preview — **NOT TESTABLE**
-- [ ] "Remove" button removes the logo and clears the preview — **NOT TESTABLE**
-- [ ] Generating a new inspection PDF after uploading logo shows the logo in the report header (instead of "CONDITION IQ" text) — **NOT TESTABLE**
-- [ ] Non-admin users cannot access branding page — **NOT TESTABLE**
+- [x] `/settings/branding` loads for admin users with `white_label` flag enabled — **FIX CONFIRMED (v3):** Page now loads "Branding" with logo upload zone; no redirect.
+- [x] Current logo displays if one has been uploaded (or shows "No logo uploaded") — **PASS:** "No logo uploaded yet" placeholder shown on fresh load.
+- [x] Drag-and-drop or click upload zone accepts PNG, JPEG, WebP, SVG up to 5MB — **FIX CONFIRMED (v3):** Uploaded test PNG via file input + "Upload Logo" button; logo preview appeared immediately.
+- [x] After upload, new logo appears immediately in the preview — **FIX CONFIRMED (v3):** Preview image rendered after upload.
+- [x] "Remove" button removes the logo and clears the preview — **FIX CONFIRMED (v3):** Clicking Remove Logo cleared the preview back to "No logo uploaded yet".
+- [ ] Generating a new inspection PDF after uploading logo shows the logo in the report header (instead of "CONDITION IQ" text) — **NOT TESTED**
+- [ ] Non-admin users cannot access branding page — **NOT TESTED**
 
 ---
 
@@ -170,7 +170,7 @@ Mark each item `[x]` when verified. Note failures with a short description inlin
 
 - [x] `/settings/members` loads for admin users with `team_members` flag enabled — **PASS:** route loads "Team Members" page
 - [x] Existing team members list correctly (name, email, role) — **PASS (empty state):** "QA Test Storage · 0 members / No members yet." renders correctly
-- [ ] Inviting a new member by email sends invite or creates a placeholder — **FAIL (v2, still broken):** no invite button, email input, or any invite UI present on the page. Re-tested after v2 deploy — page still shows only empty state text. Screenshot: `screenshots/12-team-members-no-invite.png`
+- [ ] Inviting a new member by email sends invite or creates a placeholder — **FAIL (v3, still broken):** no invite button, email input, or self-serve invite UI present. Page shows only empty state and an "Email CIQ Team" mailto link (team@conditioniq.app). No self-serve member invite mechanism exists. Screenshot: `screenshots/12-team-members-no-invite-v3.png`
 - [ ] Changing a member's role (admin ↔ inspector) saves and takes effect — **NOT TESTABLE:** no members to modify, no UI to add them
 - [ ] Removing a member removes them from the list — **NOT TESTABLE:** same reason
 - [ ] Non-admin users cannot access this page — **NOT TESTED**
@@ -221,9 +221,9 @@ Mark each item `[x]` when verified. Note failures with a short description inlin
 ## 16. Edge Cases & Error States
 
 - [x] Navigating to a vehicle ID that doesn't exist shows a 404 or graceful error — **PASS:** `/inventory/00000000-0000-0000-0000-000000000000` renders "Vehicle not found." with "Back to Vehicles" link; no crash
-- [ ] Opening the inspection wizard with no VIN and leaving VIN blank — validation prevents submission — **PARTIAL (v2, still partial):** "Add New Vehicle" dialog disables the Continue button when VIN < 17 chars. No red inline error message appears on blur, tab, or submit attempt. Button-disabled state is the only feedback. Re-tested v2: still no inline error text; error message expected per spec is absent.
+- [ ] Opening the inspection wizard with no VIN and leaving VIN blank — validation prevents submission — **PARTIAL (v3, still partial):** "Add New Vehicle" dialog disables the Continue button when VIN < 17 chars. No red inline error message appears on blur, tab, or submit attempt. Button-disabled state is the only feedback. Re-tested v3: still no inline error text; "VIN must be 17 characters." error message expected per spec is absent. Screenshot: `screenshots/16-blank-vin-no-error-v3.png`
 - [x] Camera permission denied in inspection → upload fallback UI appears — **PASS:** All camera screens in wizard (baseline, exterior, interior damage) have an "Upload" file input in the camera overlay; confirmed across multiple steps
 - [ ] Uploading a logo file over 5MB shows a size error — **NOT TESTABLE:** `/settings/branding` is inaccessible (redirects to home)
 - [ ] Uploading a non-image file to branding → rejected — **NOT TESTABLE:** same reason
-- [ ] Invoice PDF generation when no rate is set — graceful failure or warning — **FAIL (v2, still broken):** Generating an invoice with $0.00 total proceeds without any warning, confirmation dialog, or block. Re-tested v2: set rate to $0, clicked Generate Invoice; modal opened immediately with "Total: $0.00" — no guard, no confirmation step. $0 invoice created silently.
+- [ ] Invoice PDF generation when no rate is set — graceful failure or warning — **INCONCLUSIVE (v3):** Clicking "Generate Invoice" with $0.00 accrued consistently freezes the Chrome renderer for 30-45+ seconds — a new regression not present in v2. Unable to observe whether a confirmation dialog appears during the freeze. After renderer recovery, page returns to normal billing state with no modal visible. The renderer freeze itself is a blocking UX regression. Screenshot: `screenshots/16-zero-invoice-freeze-v3.png`
 - [ ] Offline / slow network — app shows loading states, not blank screens — **NOT TESTED**

@@ -1,0 +1,44 @@
+[
+  {
+    "date": "2026-06-16",
+    "version": "v2.9",
+    "title": "Error Monitoring & In-App Feedback",
+    "description": "Sentry error monitoring is now active across all runtimes. High-severity issues in billing and auth flows trigger immediate alerts. A floating feedback button lets anyone report bugs, request features, or ask questions without leaving the app.",
+    "tag": "New"
+  },
+  {
+    "date": "2026-06-12",
+    "version": "v2.8",
+    "title": "Usage Tracking Overhaul",
+    "description": "Reports are now counted at completion rather than at start, so cancelled or abandoned inspections never consume a report slot. Inspections left inactive for 24 hours are automatically cancelled at no charge. All inspection entry points now show a usage confirmation before creating a record.",
+    "tag": "Improved"
+  },
+  {
+    "date": "2026-05-28",
+    "version": "v2.7",
+    "title": "Bulk Billing & Lot Invoicing",
+    "description": "Generate invoices for individual vehicles or in bulk straight from the vehicle list. Invoices are stored as PDFs and tracked per vehicle. Default daily and monthly storage rates can be set company-wide and overridden per vehicle.",
+    "tag": "New"
+  },
+  {
+    "date": "2026-05-14",
+    "version": "v2.6",
+    "title": "Lot Map & Visual Storage Management",
+    "description": "Drag-and-drop lot layout lets you map your physical storage grid and assign vehicles to spaces. Color-coded occupancy at a glance, with quick access to vehicle details and inspection history directly from the lot view.",
+    "tag": "New"
+  },
+  {
+    "date": "2026-04-30",
+    "version": "v2.5",
+    "title": "White Label PDF Reports",
+    "description": "Upload your company logo and it appears on every generated inspection report. Available on Growth and Pro plans.",
+    "tag": "New"
+  },
+  {
+    "date": "2026-04-10",
+    "version": "v2.4",
+    "title": "Camera-First Damage Capture",
+    "description": "Damage items can now be logged with a photo taken directly in the inspection flow. Each item includes location, severity, and an optional note — all embedded in the final PDF report.",
+    "tag": "Improved"
+  }
+]

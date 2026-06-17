@@ -77,13 +77,15 @@ export async function updateVehicleLifecycleStatusAction(
     }
   } else if (inspectionType === 'check_out') {
     updates.checkout_inspection_id = inspectionId
-    if (['on_lot'].includes(vehicle.lifecycle_status)) {
-      updates.lifecycle_status = 'releasing'
+    if (vehicle.lifecycle_status === 'on_lot') {
+      updates.lifecycle_status = 'pending_pickup'
+    } else if (vehicle.lifecycle_status === 'pending_pickup') {
+      updates.lifecycle_status = 'picked_up'
     }
   } else {
     const cur = vehicle.lifecycle_status
     if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
-      updates.lifecycle_status = 'one_off'
+      updates.lifecycle_status = 'completed'
     }
   }
 

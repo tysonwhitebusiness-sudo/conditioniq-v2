@@ -69,8 +69,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="text-center pb-8 text-blue-300 text-sm">
-        © 2025 Condition IQ · <a href="mailto:hello@conditioniq.app" className="underline">hello@conditioniq.app</a>
+      <footer className="text-center pb-8 text-blue-300 text-sm space-y-1">
+        <div>© 2025 Condition IQ · <a href="mailto:hello@conditioniq.app" className="underline">hello@conditioniq.app</a></div>
+        <div><Link href="/changelog" className="underline opacity-60 hover:opacity-100">What's New</Link></div>
       </footer>
     </div>
   )

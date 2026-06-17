@@ -21,39 +21,42 @@ import BulkBillingModal, { type BulkVehicle } from '@/components/billing/bulk-bi
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'pending_arrival' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
+type LifecycleStatus = 'pending_arrival' | 'on_lot' | 'pending_pickup' | 'picked_up' | 'completed'
 type AppStep = 'browse' | 'inspecting'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function effectiveStatus(v: any): LifecycleStatus {
-  if (v.lifecycle_status) return v.lifecycle_status as LifecycleStatus
+  const ls = v.lifecycle_status as string | null | undefined
+  if (ls && !['in_progress', 'releasing', 'released', 'one_off'].includes(ls)) return ls as LifecycleStatus
+  if (ls === 'releasing') return 'pending_pickup'
+  if (ls === 'released') return 'picked_up'
+  if (ls === 'one_off') return 'completed'
   switch (v.status) {
-    case 'released': return 'released'
-    case 'releasing': return 'releasing'
-    case 'inspected': return 'on_lot'
-    case 'pending_inspection': return 'in_progress'
-    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
-    default: return 'pending_arrival'
+    case 'released':           return 'picked_up'
+    case 'releasing':          return 'pending_pickup'
+    case 'inspected':          return 'on_lot'
+    case 'pending_inspection': return 'pending_arrival'
+    case 'active':             return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
+    default:                   return 'pending_arrival'
   }
 }
 
 const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8', color: '#4A5568' },
-  in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E', pulse: true },
-  on_lot:      { label: 'ON LOT',      bg: '#E0F7FC', color: '#0097B2' },
-  releasing:   { label: 'RELEASING',   bg: '#FEF3C7', color: '#92400E' },
-  released:    { label: 'RELEASED',    bg: '#D1FAE5', color: '#065F46' },
-  one_off:     { label: 'ONE-OFF',     bg: '#F0F4F8', color: '#4A5568' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8',  color: '#4A5568' },
+  on_lot:          { label: 'ON LOT',          bg: '#E0F7FC',  color: '#0097B2' },
+  pending_pickup:  { label: 'PENDING PICKUP',  bg: '#FEF3C7',  color: '#92400E', pulse: true },
+  picked_up:       { label: 'PICKED UP',       bg: '#D1FAE5',  color: '#065F46' },
+  completed:       { label: 'COMPLETED',       bg: '#F3E8FF',  color: '#7E22CE' },
 }
 
 const STATUS_BORDER: Record<LifecycleStatus, string> = {
-  pending_arrival: '#94A3B8', in_progress: '#F59E0B', on_lot: '#00B4D8',
-  releasing: '#F59E0B', released: '#10B981', one_off: '#94A3B8',
+  pending_arrival: '#94A3B8', on_lot: '#00B4D8',
+  pending_pickup: '#F59E0B', picked_up: '#10B981', completed: '#9333EA',
 }
 
 const STATUS_SORT: Record<string, number> = {
-  pending_arrival: 0, on_lot: 1, in_progress: 1, one_off: 2, released: 3, releasing: 4,
+  pending_arrival: 0, on_lot: 1, pending_pickup: 2, picked_up: 3, completed: 4,
 }
 
 const INSP_BADGE: Record<string, { label: string; bg: string; color: string }> = {
@@ -63,7 +66,7 @@ const INSP_BADGE: Record<string, { label: string; bg: string; color: string }> =
 }
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null, status: LifecycleStatus): number | null {
-  if (status === 'one_off') return null
+  if (status === 'completed') return null
   const end = releasedAt ? new Date(releasedAt) : new Date()
   return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
 }
@@ -439,12 +442,12 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'all',         label: 'All' },
-  { id: 'on_lot',      label: 'On Lot' },
+  { id: 'all',            label: 'All' },
   { id: 'pending_arrival', label: 'Pending Arrival' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'released',    label: 'Released' },
-  { id: 'one_off',     label: 'One-Off' },
+  { id: 'on_lot',         label: 'On Lot' },
+  { id: 'pending_pickup', label: 'Pending Pickup' },
+  { id: 'picked_up',      label: 'Picked Up' },
+  { id: 'completed',      label: 'Completed' },
 ]
 
 const RESUME_STEP_ORDER: Array<{ dataKey: string; nextStep: StepId }> = [
@@ -501,6 +504,7 @@ export default function VehiclesPage() {
 
   // Bulk billing
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
   const [showBulkBilling, setShowBulkBilling] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -584,16 +588,16 @@ export default function VehiclesPage() {
 
   const counts: Record<string, number> = {
     all: allTagged.length,
-    on_lot: allTagged.filter(v => v._status === 'on_lot').length,
     pending_arrival: allTagged.filter(v => v._status === 'pending_arrival').length,
-    in_progress: allTagged.filter(v => v._status === 'in_progress').length,
-    released: allTagged.filter(v => v._status === 'released').length,
-    one_off: allTagged.filter(v => v._status === 'one_off').length,
+    on_lot: allTagged.filter(v => v._status === 'on_lot').length,
+    pending_pickup: allTagged.filter(v => v._status === 'pending_pickup').length,
+    picked_up: allTagged.filter(v => v._status === 'picked_up').length,
+    completed: allTagged.filter(v => v._status === 'completed').length,
   }
 
-  const statsOnLot = allTagged.filter(v => ['pending_arrival', 'in_progress', 'on_lot', 'releasing'].includes(v._status)).length
-  const statsUninspected = allTagged.filter(v => ['pending_arrival', 'in_progress', 'on_lot', 'releasing'].includes(v._status) && !v.latest_inspection_id).length
-  const statsReleasedMonth = allTagged.filter(v => v._status === 'released' && v.released_at >= monthStart).length
+  const statsOnLot = allTagged.filter(v => ['pending_arrival', 'on_lot', 'pending_pickup'].includes(v._status)).length
+  const statsUninspected = allTagged.filter(v => ['pending_arrival', 'on_lot', 'pending_pickup'].includes(v._status) && !v.latest_inspection_id).length
+  const statsReleasedMonth = allTagged.filter(v => v._status === 'picked_up' && v.released_at >= monthStart).length
   const existingVins = new Set(vehicles.map(v => v.vin?.toUpperCase() ?? ''))
 
   // Start inspection
@@ -670,7 +674,7 @@ export default function VehiclesPage() {
           { label: 'Total on System', value: allTagged.length,    color: '#0D1B2A' },
           { label: 'On Lot',          value: statsOnLot,           color: '#0097B2' },
           { label: 'Uninspected',     value: statsUninspected,     color: '#D97706' },
-          { label: 'Released / Mo.',  value: statsReleasedMonth,   color: '#059669' },
+          { label: 'Picked Up / Mo.',  value: statsReleasedMonth,   color: '#059669' },
         ].map(s => (
           <div key={s.label} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 14, padding: '14px 18px' }}>
             <p style={{ fontSize: 12, color: '#94A3B8', margin: '0 0 4px', fontWeight: 500 }}>{s.label}</p>
@@ -765,7 +769,7 @@ export default function VehiclesPage() {
                       style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F4A62A' }} />
                   </th>
                 )}
-                {['Vehicle', 'Status', 'Days', 'Released', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
+                {['Vehicle', 'Status', 'Days', 'Picked Up', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -839,12 +843,11 @@ export default function VehiclesPage() {
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                           {v._status === 'pending_arrival' && <>
                             <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
-                            <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>
+                            {dispatchEnabled && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
                           </>}
-                          {v._status === 'in_progress' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                          {v._status === 'on_lot' && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
-                          {v._status === 'releasing' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                          {(v._status === 'released' || v._status === 'one_off') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
+                          {v._status === 'on_lot' && dispatchEnabled && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
+                          {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
+                          {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                           <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                           {/* Kebab */}
                           <div style={{ position: 'relative' }}>
@@ -854,7 +857,7 @@ export default function VehiclesPage() {
                             </button>
                             {openKebab === v.id && (
                               <div style={{ position: 'absolute', right: 0, top: 32, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 150, padding: '4px 0' }}>
-                                {v._status !== 'released' && (
+                                {v._status !== 'picked_up' && v._status !== 'completed' && (
                                   <button onClick={() => { handleStart(v); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
                                 )}
                                 <button onClick={() => { setConfirmDeleteId(v.id); setOpenKebab(null) }}
@@ -903,9 +906,9 @@ export default function VehiclesPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                       {v._status === 'pending_arrival' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
-                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
-                      {(v._status === 'in_progress' || v._status === 'releasing') && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                      {(v._status === 'released' || v._status === 'one_off') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
+                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && dispatchEnabled && <button onClick={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Dispatch</button>}
+                      {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
+                      {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                       <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                     </div>
                   </div>

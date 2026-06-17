@@ -195,7 +195,7 @@ export async function getAvailableVehicles(companyId: string): Promise<Available
     .from('storage_vehicles')
     .select('id, vin, year, make, model, lifecycle_status')
     .eq('company_id', companyId)
-    .neq('lifecycle_status', 'released')
+    .not('lifecycle_status', 'in', '(picked_up,completed)')
     .order('arrived_at', { ascending: false })
 
   if (!vehicles?.length) return []

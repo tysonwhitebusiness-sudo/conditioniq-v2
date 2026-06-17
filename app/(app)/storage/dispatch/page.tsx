@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { useRouter } from 'next/navigation'
 import { getActiveDispatches, dispatchStatus } from '@/lib/storage-actions'
 import { Clock, CheckCircle, AlertTriangle, Send, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
 function Skeleton({ h = 40, r = 8 }: { h?: number; r?: number }) {
   return <div style={{ height: h, borderRadius: r, background: '#F0F4F8', animation: 'pulse 1.5s ease infinite' }} />
@@ -64,7 +66,13 @@ function timeRemaining(expiresAt: string): string {
 export default function StorageDispatchPage() {
   const { effectiveCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
+  const router = useRouter()
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const companyId = effectiveCompany?.id ?? ''
+
+  useEffect(() => {
+    if (dispatchEnabled === false) router.replace('/')
+  }, [dispatchEnabled, router])
 
   const [dispatches, setDispatches] = useState<any[]>([])
   const [loading, setLoading] = useState(true)

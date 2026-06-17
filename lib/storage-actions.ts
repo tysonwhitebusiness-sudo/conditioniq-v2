@@ -527,7 +527,7 @@ export async function updateVehicleLifecycleStatus(
   } else {
     const cur = vehicle.lifecycle_status
     if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
-      updates.lifecycle_status = 'one_off'
+      updates.lifecycle_status = 'completed'
     }
   }
 
@@ -607,11 +607,19 @@ export async function releaseVehicle(vehicleId: string): Promise<void> {
   const supabase = createClient()
   const now = new Date()
   await supabase.from('storage_vehicles').update({
-    lifecycle_status: 'released',
+    lifecycle_status: 'picked_up',
     status: 'released',
     released_at: now.toISOString(),
     released_date: now.toISOString().split('T')[0],
     updated_at: now.toISOString(),
+  }).eq('id', vehicleId)
+}
+
+export async function markVehiclePendingPickup(vehicleId: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('storage_vehicles').update({
+    lifecycle_status: 'pending_pickup',
+    updated_at: new Date().toISOString(),
   }).eq('id', vehicleId)
 }
 

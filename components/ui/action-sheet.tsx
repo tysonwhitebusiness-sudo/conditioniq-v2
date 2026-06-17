@@ -8,9 +8,10 @@ interface ActionSheetProps {
   onClose: () => void
   onStartInspection: () => void
   onSendToInspector: () => void
+  showDispatch?: boolean
 }
 
-export default function ActionSheet({ open, onClose, onStartInspection, onSendToInspector }: ActionSheetProps) {
+export default function ActionSheet({ open, onClose, onStartInspection, onSendToInspector, showDispatch = true }: ActionSheetProps) {
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -68,23 +69,25 @@ export default function ActionSheet({ open, onClose, onStartInspection, onSendTo
             <ChevronRight size={16} color="#94A3B8" />
           </button>
 
-          <button
-            onClick={() => { onClose(); onSendToInspector() }}
-            style={{
-              width: '100%', height: 72, display: 'flex', alignItems: 'center', gap: 16,
-              padding: '0 16px', background: '#F0F4F8', border: 'none', cursor: 'pointer',
-              borderRadius: 16, textAlign: 'left',
-            }}
-          >
-            <div style={{ width: 44, height: 44, borderRadius: 22, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Send size={20} color="white" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', margin: 0, lineHeight: 1.2 }}>Send to Inspector</p>
-              <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, marginTop: 2 }}>Generate a link for someone else</p>
-            </div>
-            <ChevronRight size={16} color="#94A3B8" />
-          </button>
+          {showDispatch && (
+            <button
+              onClick={() => { onClose(); onSendToInspector() }}
+              style={{
+                width: '100%', height: 72, display: 'flex', alignItems: 'center', gap: 16,
+                padding: '0 16px', background: '#F0F4F8', border: 'none', cursor: 'pointer',
+                borderRadius: 16, textAlign: 'left',
+              }}
+            >
+              <div style={{ width: 44, height: 44, borderRadius: 22, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Send size={20} color="white" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', margin: 0, lineHeight: 1.2 }}>Send to Inspector</p>
+                <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, marginTop: 2 }}>Generate a link for someone else</p>
+              </div>
+              <ChevronRight size={16} color="#94A3B8" />
+            </button>
+          )}
         </div>
 
         {/* Cancel */}

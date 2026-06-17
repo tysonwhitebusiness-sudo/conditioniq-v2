@@ -1,29 +1,26 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Car, Plus, FileText, ChevronRight, Loader2, Search, ArrowLeft } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import { Car, Send, ChevronRight, Loader2, ArrowLeft } from 'lucide-react'
 
-type Option = null | 'new' | 'oneoff' | 'pick'
+type Step = 'menu' | 'start'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
 
-function daysOnLot(arrivedAt: string | null): number | null {
-  if (!arrivedAt) return null
-  return Math.max(0, Math.floor((Date.now() - new Date(arrivedAt).getTime()) / 86400000))
-}
-
 export default function StartInspectionSheet({ open, onClose }: Props) {
   const router = useRouter()
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const [option, setOption] = useState<Option>(null)
+  const dispatchEnabled = useFeatureFlag('dispatch')
+
+  const [step, setStep] = useState<Step>('menu')
   const [vin, setVin] = useState('')
   const [year, setYear] = useState('')
   const [make, setMake] = useState('')
@@ -32,12 +29,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
   const [starting, setStarting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [resumeData, setResumeData] = useState<{ inspectionId: string; startedAt: string } | null>(null)
-  const [pendingStart, setPendingStart] = useState<{ type: 'standard' | 'one_off'; vd?: { vin: string; year?: string; make?: string; model?: string } } | null>(null)
-
-  // Pick from Vehicles state
-  const [vehicles, setVehicles] = useState<any[]>([])
-  const [vehiclesLoading, setVehiclesLoading] = useState(false)
-  const [search, setSearch] = useState('')
+  const [pendingStart, setPendingStart] = useState<{ vin: string; year: string; make: string; model: string } | null>(null)
 
   const cleanVin = vin.trim().toUpperCase()
 
@@ -55,36 +47,20 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
     else { setYear(''); setMake(''); setModel('') }
   }, [cleanVin])
 
-  const loadVehicles = useCallback(async () => {
-    if (!effectiveCompany?.id) return
-    setVehiclesLoading(true)
-    try {
-      const { data } = await createClient()
-        .from('storage_vehicles')
-        .select('id, vin, year, make, model, lifecycle_status, status, arrived_at')
-        .eq('company_id', effectiveCompany.id)
-        .not('lifecycle_status', 'in', '(released,one_off)')
-        .order('arrived_at', { ascending: false })
-        .limit(100)
-      setVehicles(data ?? [])
-    } finally { setVehiclesLoading(false) }
-  }, [effectiveCompany?.id])
-
-  useEffect(() => {
-    if (option === 'pick') loadVehicles()
-  }, [option])
+  // When dispatch is disabled skip the menu and show VIN form directly
+  const showMenu = !!dispatchEnabled && step === 'menu'
+  const showVinForm = !dispatchEnabled || step === 'start'
 
   const reset = () => {
-    setOption(null)
+    setStep('menu')
     setVin(''); setYear(''); setMake(''); setModel('')
-    setSearch('')
     setResumeData(null)
     setPendingStart(null)
   }
 
   const close = () => { reset(); onClose() }
 
-  const proceedWithStart = async (type: 'standard' | 'one_off', vd?: { vin: string; year?: string; make?: string; model?: string }) => {
+  const proceedWithStart = async (vd?: { vin: string; year?: string; make?: string; model?: string }) => {
     if (!effectiveCompany || !user) return
     const { initiateInspection } = await import('@/lib/usage-actions')
     const { getDeviceId } = await import('@/lib/device-id')
@@ -93,7 +69,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
       const { addVehicleToSystem } = await import('@/lib/storage-actions')
       await addVehicleToSystem(effectiveCompany.id, {
         vin: vd.vin, year: vd.year, make: vd.make, model: vd.model,
-        lifecycleStatus: type === 'one_off' ? 'one_off' : 'on_lot',
+        lifecycleStatus: 'on_lot',
       }).catch(() => {})
     }
 
@@ -109,24 +85,24 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
     router.push('/vehicles')
   }
 
-  const startInspection = async (type: 'standard' | 'one_off', vehicleData?: { vin: string; year?: string; make?: string; model?: string }) => {
+  const startInspection = async () => {
     if (!effectiveCompany || !user) return
     setStarting(true)
     try {
-      const vd = vehicleData ?? (cleanVin ? { vin: cleanVin, year, make, model } : undefined)
+      const vd = cleanVin ? { vin: cleanVin, year, make, model } : undefined
 
-      if (vd?.vin && type !== 'one_off') {
+      if (vd?.vin) {
         const { checkExistingInspection } = await import('@/lib/usage-actions')
         const existing = await checkExistingInspection(effectiveCompany.id, vd.vin)
         if (existing) {
           setResumeData(existing)
-          setPendingStart({ type, vd })
+          setPendingStart(vd)
           setStarting(false)
           return
         }
       }
 
-      await proceedWithStart(type, vd)
+      await proceedWithStart(vd)
     } catch (e: any) {
       setErrorMsg('Failed to start: ' + e.message)
     } finally { setStarting(false) }
@@ -147,37 +123,30 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
     try {
       const { abandonInspection } = await import('@/lib/usage-actions')
       await abandonInspection(resumeData.inspectionId)
-      const { type, vd } = pendingStart
+      const vd = pendingStart
       setResumeData(null)
       setPendingStart(null)
-      await proceedWithStart(type, vd)
+      await proceedWithStart(vd)
     } catch (e: any) {
       setErrorMsg('Failed to start: ' + e.message)
     } finally { setStarting(false) }
   }
 
+  const handleDispatch = () => {
+    close()
+    router.push('/storage/dispatch')
+  }
+
   if (!open) return null
 
-  const isInline = option === 'new' || option === 'oneoff'
-  const canStart = !starting && (option === 'oneoff' || cleanVin.length === 17)
-
-  const filteredVehicles = vehicles.filter(v => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return (
-      (v.vin && v.vin.toLowerCase().includes(q)) ||
-      (v.make && v.make.toLowerCase().includes(q)) ||
-      (v.model && v.model.toLowerCase().includes(q)) ||
-      (v.year && v.year.toString().includes(q))
-    )
-  })
+  const canStart = !starting && cleanVin.length === 17
 
   const sheetStyle: React.CSSProperties = isDesktop
     ? {
         position: 'fixed', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
         zIndex: 201, background: '#FFFFFF', borderRadius: 20,
-        width: 480, maxHeight: '85vh', overflowY: 'auto',
+        width: 420, maxHeight: '85vh', overflowY: 'auto',
         boxShadow: '0 20px 60px rgba(13,27,42,0.2)',
       }
     : {
@@ -198,10 +167,9 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
         )}
 
         <div style={{ padding: '20px 20px 4px' }}>
-          {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            {(isInline || option === 'pick') ? (
-              <button onClick={reset}
+            {showVinForm && !!dispatchEnabled ? (
+              <button onClick={() => setStep('menu')}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00B4D8', fontSize: 13, fontFamily: 'inherit', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <ArrowLeft size={14} /> Back
               </button>
@@ -210,113 +178,40 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
             <div style={{ width: 48 }} />
           </div>
 
-          {/* Option menu */}
-          {!isInline && option !== 'pick' && (
+          {/* Two-option menu — Growth+ only */}
+          {showMenu && (
             <>
-              <button onClick={() => setOption('pick')}
+              <button onClick={() => setStep('start')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '16px 14px', borderRadius: 14, border: '1.5px solid #E1E8F0', background: '#FFFFFF', cursor: 'pointer', marginBottom: 10, textAlign: 'left', fontFamily: 'inherit' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 22, background: '#0D1B2A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 22, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Car size={20} color="#FFFFFF" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Pick from Vehicles</p>
-                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Select an existing vehicle to inspect</p>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Start Inspection</p>
+                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Run an inspection yourself</p>
                 </div>
                 <ChevronRight size={18} color="#CBD5E1" />
               </button>
 
-              <button onClick={() => setOption('new')}
+              <button onClick={handleDispatch}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '16px 14px', borderRadius: 14, border: '1.5px solid #E1E8F0', background: '#FFFFFF', cursor: 'pointer', marginBottom: 10, textAlign: 'left', fontFamily: 'inherit' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 22, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Plus size={20} color="#FFFFFF" />
+                <div style={{ width: 44, height: 44, borderRadius: 22, background: '#0D1B2A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Send size={20} color="#FFFFFF" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Add New Vehicle</p>
-                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Enter VIN and start immediately</p>
-                </div>
-                <ChevronRight size={18} color="#CBD5E1" />
-              </button>
-
-              <button onClick={() => setOption('oneoff')}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '16px 14px', borderRadius: 14, border: '1.5px solid #E1E8F0', background: '#FFFFFF', cursor: 'pointer', marginBottom: 10, textAlign: 'left', fontFamily: 'inherit' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 22, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <FileText size={20} color="#FFFFFF" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>One-Off Report</p>
-                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Quick report, no storage tracking</p>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Dispatch</p>
+                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Send to a remote inspector</p>
                 </div>
                 <ChevronRight size={18} color="#CBD5E1" />
               </button>
             </>
           )}
 
-          {/* Pick from Vehicles — inline list */}
-          {option === 'pick' && (
-            <div>
-              {/* Search */}
-              <div style={{ position: 'relative', marginBottom: 12 }}>
-                <Search size={15} color="#94A3B8" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search VIN, make, or model…"
-                  style={{ width: '100%', height: 42, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px 0 36px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              {vehiclesLoading ? (
-                <div style={{ padding: '24px 0', display: 'flex', justifyContent: 'center' }}>
-                  <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
-                </div>
-              ) : filteredVehicles.length === 0 ? (
-                <div style={{ padding: '24px 0', textAlign: 'center' }}>
-                  <Car size={28} color="#E1E8F0" style={{ margin: '0 auto 8px', display: 'block' }} />
-                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>
-                    {search ? 'No vehicles match your search' : 'No inspectable vehicles found'}
-                  </p>
-                </div>
-              ) : (
-                <div style={{ maxHeight: isDesktop ? '40vh' : '45vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {filteredVehicles.map(v => {
-                    const title = [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unknown Vehicle'
-                    const days = daysOnLot(v.arrived_at)
-                    return (
-                      <button
-                        key={v.id}
-                        disabled={starting}
-                        onClick={() => startInspection('standard', { vin: v.vin, year: v.year, make: v.make, model: v.model })}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FAFAFA', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
-                          <p style={{ fontSize: 12, fontFamily: 'monospace', color: '#94A3B8', margin: 0 }}>{v.vin || '—'}</p>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                          {days !== null && <span style={{ fontSize: 11, fontWeight: 700, color: days < 30 ? '#059669' : '#D97706' }}>{days}d</span>}
-                          <ChevronRight size={14} color="#CBD5E1" />
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-
-              {starting && (
-                <div style={{ padding: '16px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Loader2 size={16} color="#00B4D8" style={{ animation: 'spin 0.8s linear infinite' }} />
-                  <span style={{ fontSize: 13, color: '#94A3B8' }}>Starting inspection…</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Add New Vehicle / One-Off inline form */}
-          {isInline && (
+          {/* VIN entry form */}
+          {showVinForm && (
             <div>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-                  VIN {option === 'new' ? '*' : '(optional)'}
-                </label>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>VIN *</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     value={vin}
@@ -344,7 +239,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
               )}
 
               <button
-                onClick={() => startInspection(option === 'oneoff' ? 'one_off' : 'standard')}
+                onClick={startInspection}
                 disabled={!canStart}
                 style={{
                   width: '100%', height: 52, borderRadius: 14, border: 'none',
@@ -379,15 +274,11 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
               An inspection for this vehicle is already in progress{resumeData ? ` (started ${new Date(resumeData.startedAt).toLocaleDateString()})` : ''}. Resume to continue where you left off, or start fresh.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                onClick={handleResume}
-                disabled={starting}
+              <button onClick={handleResume} disabled={starting}
                 style={{ height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: starting ? 0.6 : 1 }}>
                 Resume Inspection
               </button>
-              <button
-                onClick={handleStartFresh}
-                disabled={starting}
+              <button onClick={handleStartFresh} disabled={starting}
                 style={{ height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: starting ? 0.6 : 1 }}>
                 {starting ? 'Starting…' : 'Start Fresh'}
               </button>

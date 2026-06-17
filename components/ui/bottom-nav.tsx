@@ -28,13 +28,15 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
   const router = useRouter()
   const [showStartSheet, setShowStartSheet] = useState(false)
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const dispatchEnabled = useFeatureFlag('dispatch')
 
   if (isDesktop) return null
 
   const LEFT_TABS = BASE_LEFT_TABS
-  const RIGHT_TABS = lotMapEnabled
-    ? [{ id: 'lot', icon: LayoutGrid, label: 'Lot', route: '/lot' }, ...BASE_RIGHT_TABS]
-    : BASE_RIGHT_TABS
+  const RIGHT_TABS = [
+    ...(lotMapEnabled ? [{ id: 'lot', icon: LayoutGrid, label: 'Lot', route: '/lot' }] : []),
+    ...(dispatchEnabled ? BASE_RIGHT_TABS : []),
+  ]
 
   const isActive = (route: string) =>
     route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/')
@@ -70,10 +72,13 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
         boxShadow: '0 -2px 12px rgba(13,27,42,0.15)',
       }}>
         <div style={{ display: 'flex', height: 64, position: 'relative' }}>
-          {LEFT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+          {/* Left tabs — flex group so they share space evenly */}
+          <div style={{ flex: 1, display: 'flex' }}>
+            {LEFT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+          </div>
 
-          {/* Center amber + button */}
-          <div style={{ flex: 1, position: 'relative' }}>
+          {/* Center FAB — fixed width so it's always at the exact midpoint */}
+          <div style={{ width: 72, flexShrink: 0, position: 'relative' }}>
             <button
               onClick={handleCenter}
               style={{
@@ -90,7 +95,10 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
             </button>
           </div>
 
-          {RIGHT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+          {/* Right tabs — flex group so they share space evenly */}
+          <div style={{ flex: 1, display: 'flex' }}>
+            {RIGHT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+          </div>
         </div>
       </div>
 

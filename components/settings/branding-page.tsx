@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { createLogoUploadUrl, saveLogoPath, removeLogo, getLogoSignedUrl } from '@/lib/branding-actions'
+import { createLogoUploadUrl, saveLogoPath, removeLogo, getLogoSignedUrl, saveBusinessName } from '@/lib/branding-actions'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { ArrowLeft, Upload, X, Image as ImageIcon, Check } from 'lucide-react'
+import { ArrowLeft, Upload, X, Image as ImageIcon, Check, Building2 } from 'lucide-react'
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_SIZE_MB = 5
@@ -28,12 +28,15 @@ export default function BrandingPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [businessName, setBusinessName] = useState('')
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameSaved, setNameSaved] = useState(false)
 
   useEffect(() => {
     if (!effectiveCompany?.id) return
     createClient()
       .from('companies')
-      .select('logo_url')
+      .select('logo_url, name')
       .eq('id', effectiveCompany.id)
       .single()
       .then(async ({ data }) => {
@@ -42,6 +45,7 @@ export default function BrandingPage() {
           const url = await getLogoSignedUrl(data.logo_url)
           if (url) setCurrentLogoUrl(url)
         }
+        if (data?.name) setBusinessName(data.name)
         setLoading(false)
       })
   }, [effectiveCompany?.id])
@@ -108,6 +112,16 @@ export default function BrandingPage() {
     setRemoving(false)
   }
 
+  const handleSaveName = async () => {
+    if (!effectiveCompany?.id || !businessName.trim()) return
+    setNameSaving(true)
+    try {
+      await saveBusinessName(effectiveCompany.id, businessName.trim())
+      setNameSaved(true)
+      setTimeout(() => setNameSaved(false), 2500)
+    } finally { setNameSaving(false) }
+  }
+
   return (
     <>
       {!isDesktop && <MobilePageHeader />}
@@ -158,6 +172,29 @@ export default function BrandingPage() {
                   <p style={{ fontSize: 13, margin: 0 }}>No logo uploaded. Reports will show "Condition IQ" branding.</p>
                 </div>
               )}
+            </div>
+
+            {/* Business Name */}
+            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Business Name on Reports</p>
+              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 12px', lineHeight: 1.5 }}>
+                Appears alongside your logo on PDF reports and invoices.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+                  <Building2 size={15} color="#94A3B8" style={{ position: 'absolute', left: 12, flexShrink: 0 }} />
+                  <input
+                    value={businessName}
+                    onChange={e => setBusinessName(e.target.value)}
+                    placeholder="Your Company Name"
+                    style={{ width: '100%', height: 44, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px 0 36px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <button onClick={handleSaveName} disabled={nameSaving || !businessName.trim()}
+                  style={{ height: 44, padding: '0 18px', borderRadius: 10, border: 'none', background: nameSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: nameSaving || !businessName.trim() ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: nameSaving || !businessName.trim() ? 0.6 : 1, transition: 'background 300ms ease', flexShrink: 0 }}>
+                  {nameSaved ? <><Check size={14} />Saved!</> : nameSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
 
             {/* Upload */}

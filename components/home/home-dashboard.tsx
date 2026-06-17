@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { checkUsageState } from '@/lib/usage-actions'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StatusBadge, { ScoreBadge } from '@/components/ui/status-badge'
+import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { Car, ChevronRight, AlertTriangle, X, Loader2 } from 'lucide-react'
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
   onGoToQueue?: () => void
 }
 
-type VehicleStatus = 'pending_arrival' | 'on_lot' | 'released'
+type VehicleStatus = 'pending_arrival' | 'on_lot' | 'picked_up'
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null) {
   if (!arrivedAt) return null
@@ -27,8 +28,8 @@ function daysOnLot(arrivedAt: string, releasedAt: string | null) {
 function effectiveStatus(v: any): VehicleStatus | null {
   const s = v.lifecycle_status || v.status
   if (s === 'queued' || s === 'pending_arrival' || s === 'pending_inspection') return 'pending_arrival'
-  if (s === 'on_lot' || s === 'inspected' || s === 'releasing') return 'on_lot'
-  if (s === 'released') return 'released'
+  if (s === 'on_lot' || s === 'inspected' || s === 'releasing' || s === 'pending_pickup') return 'on_lot'
+  if (s === 'released' || s === 'picked_up') return 'picked_up'
   return null
 }
 
@@ -79,7 +80,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
   const [statsLoading, setStatsLoading] = useState(true)
   const [queuedCount, setQueuedCount] = useState(0)
   const [onLotCount, setOnLotCount] = useState(0)
-  const [releasedCount, setReleasedCount] = useState(0)
+  const [pickedUpCount, setPickedUpCount] = useState(0)
   const [selectedStatus, setSelectedStatus] = useState<VehicleStatus>('on_lot')
 
   const [vehiclesLoading, setVehiclesLoading] = useState(false)
@@ -92,7 +93,6 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
   const supabase = createClient()
 
   const name = userProfile?.full_name ?? user?.email ?? 'Inspector'
-  const initials = name.charAt(0).toUpperCase()
   const usagePct = usageState ? Math.min(100, usageState.percentUsed) : 0
   const isUnlimited = (usageState?.included ?? 0) >= 9999
   const barColor = usagePct >= 100 ? '#EF4444' : usagePct >= 80 ? '#F59E0B' : '#00B4D8'
@@ -135,9 +135,9 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
         const s = effectiveStatus(v)
         if (s === 'pending_arrival') q++
         else if (s === 'on_lot') o++
-        else if (s === 'released') r++
+        else if (s === 'picked_up') r++
       }
-      setQueuedCount(q); setOnLotCount(o); setReleasedCount(r)
+      setQueuedCount(q); setOnLotCount(o); setPickedUpCount(r)
       setUsageState(uRes)
       setExpiringCount(exRes.error ? 0 : (exRes.count ?? 0))
     } finally {
@@ -172,31 +172,13 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
   const STAT_COLORS: Record<VehicleStatus, string> = {
     pending_arrival: '#4A5568',
     on_lot: '#00B4D8',
-    released: '#10B981',
+    picked_up: '#10B981',
   }
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4F8', paddingBottom: isDesktop ? 0 : 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
 
-      {/* Mobile header */}
-      {!isDesktop && (
-        <div style={{ background: '#0D1B2A', paddingTop: 48, paddingBottom: 20, paddingLeft: 16, paddingRight: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Car size={18} color="#FFFFFF" />
-              </div>
-              <div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#FFFFFF', margin: 0, lineHeight: 1.2 }}>Condition IQ</p>
-                <p style={{ fontSize: 12, color: '#00B4D8', margin: 0 }}>{effectiveCompany?.name ?? '—'}</p>
-              </div>
-            </div>
-            <div style={{ width: 36, height: 36, borderRadius: 18, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 14 }}>{initials}</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {!isDesktop && <MobilePageHeader />}
 
       {/* Expiry warning */}
       {expiringCount > 0 && !warningDismissed && (
@@ -246,11 +228,11 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
               loading={statsLoading}
             />
             <StatCard
-              value={releasedCount}
-              label="Released"
-              selected={selectedStatus === 'released'}
-              accent={STAT_COLORS.released}
-              onClick={() => handleSelectStatus('released')}
+              value={pickedUpCount}
+              label="Picked Up"
+              selected={selectedStatus === 'picked_up'}
+              accent={STAT_COLORS.picked_up}
+              onClick={() => handleSelectStatus('picked_up')}
               loading={statsLoading}
             />
           </div>
@@ -293,7 +275,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: 0 }}>
-                {selectedStatus === 'pending_arrival' ? 'Pending Arrival Vehicles' : selectedStatus === 'on_lot' ? 'Vehicles On Lot' : 'Released Vehicles'}
+                {selectedStatus === 'pending_arrival' ? 'Pending Arrival Vehicles' : selectedStatus === 'on_lot' ? 'Vehicles On Lot' : 'Picked Up Vehicles'}
               </p>
               {!vehiclesLoading && (
                 <span style={{ fontSize: 11, fontWeight: 700, background: '#F0F4F8', color: '#4A5568', padding: '1px 7px', borderRadius: 8 }}>
@@ -318,7 +300,7 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
               <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: '40px 20px', textAlign: 'center' }}>
                 <Car size={36} color="#E1E8F0" style={{ margin: '0 auto 10px', display: 'block' }} />
                 <p style={{ fontSize: 14, fontWeight: 600, color: '#94A3B8', margin: 0 }}>
-                  No {selectedStatus === 'pending_arrival' ? 'pending arrival' : selectedStatus === 'on_lot' ? 'on-lot' : 'released'} vehicles
+                  No {selectedStatus === 'pending_arrival' ? 'pending arrival' : selectedStatus === 'on_lot' ? 'on-lot' : 'picked up'} vehicles
                 </p>
               </div>
             ) : (

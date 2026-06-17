@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 
-export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map' | 'white_label'
+export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map' | 'white_label' | 'dispatch'
 
 export interface FeatureFlag {
   feature_key: FeatureKey
@@ -18,23 +18,29 @@ const DEFAULTS: FeatureFlags = {
   team_members:      { feature_key: 'team_members',      enabled: true,  config: {} },
   lot_map:           { feature_key: 'lot_map',           enabled: false, config: {} },
   white_label:       { feature_key: 'white_label',       enabled: true,  config: {} },
+  dispatch:          { feature_key: 'dispatch',          enabled: true,  config: {} },
 }
+
+// Starter-tier plans get dispatch disabled by default; Growth+ get it enabled.
+const STARTER_PLANS = new Set(['starter', 'legacy_starter'])
 
 export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> {
   if (!companyId) return { ...DEFAULTS }
   const supabase = createClient()
-  const { data } = await supabase
-    .from('company_feature_flags')
-    .select('feature_key, enabled, config')
-    .eq('company_id', companyId)
+  const [{ data: flagData }, { data: company }] = await Promise.all([
+    supabase.from('company_feature_flags').select('feature_key, enabled, config').eq('company_id', companyId),
+    supabase.from('companies').select('subscription_tier').eq('id', companyId).single(),
+  ])
+  const tier = (company?.subscription_tier ?? '') as string
   const flags: FeatureFlags = {
     send_to_inspector: { ...DEFAULTS.send_to_inspector },
     locations:         { ...DEFAULTS.locations },
     team_members:      { ...DEFAULTS.team_members },
     lot_map:           { ...DEFAULTS.lot_map },
     white_label:       { ...DEFAULTS.white_label },
+    dispatch:          { feature_key: 'dispatch', enabled: !STARTER_PLANS.has(tier), config: {} },
   }
-  for (const row of (data ?? [])) {
+  for (const row of (flagData ?? [])) {
     const key = row.feature_key as FeatureKey
     if (key in flags) {
       flags[key] = { feature_key: key, enabled: row.enabled, config: (row.config as Record<string, unknown>) ?? {} }

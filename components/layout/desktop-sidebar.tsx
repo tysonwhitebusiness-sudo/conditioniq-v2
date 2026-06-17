@@ -50,6 +50,7 @@ export default function DesktopSidebar({
   const isFMC = effectiveCompany?.account_type === 'fmc'
   const lotMapEnabled = useFeatureFlag('lot_map')
   const whiteLabelEnabled = useFeatureFlag('white_label')
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const settingsOpen = pathname.startsWith('/settings')
   const reportsUsed = effectiveCompany?.reports_used ?? 0
   const reportsTotal = effectiveCompany?.reports_included ?? 10
@@ -75,7 +76,7 @@ export default function DesktopSidebar({
   const inspItems: NavItem[] = [
     { id: 'start', label: 'Start Inspection', icon: <Play size={18} />, type: 'action' as const },
     { id: 'vehicles', label: 'Vehicles', icon: <Car size={18} />, type: 'route', route: '/vehicles' },
-    { id: 'dispatch', label: 'Dispatch', icon: <Send size={18} />, type: 'route', route: '/storage/dispatch' },
+    ...(dispatchEnabled ? [{ id: 'dispatch', label: 'Dispatch', icon: <Send size={18} />, type: 'route' as const, route: '/storage/dispatch' }] : []),
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
     ...(lotMapEnabled ? [{ id: 'lot', label: 'Lot', icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' }] : []),
   ]

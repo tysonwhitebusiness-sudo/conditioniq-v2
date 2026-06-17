@@ -88,9 +88,14 @@ function ReportPage({ vin, date, pageNum, totalPages, logoUrl, companyName, chil
     <Page size="A4" style={s.page}>
       <View style={s.pageHeader}>
         <View style={s.headerLeft}>
-          {logoUrl
-            ? <Image src={logoUrl} style={{ height: 20, maxWidth: 100, objectFit: 'contain' }} />
-            : <Text style={s.headerBrand}>{companyName ?? 'CONDITION IQ'}</Text>}
+          {logoUrl ? (
+            <>
+              <Image src={logoUrl} style={{ height: 20, maxWidth: 80, objectFit: 'contain' }} />
+              {companyName && <><View style={s.headerDiv} /><Text style={s.headerBrand}>{companyName}</Text></>}
+            </>
+          ) : (
+            <Text style={s.headerBrand}>{companyName ?? 'CONDITION IQ'}</Text>
+          )}
           <View style={s.headerDiv} />
           <Text style={s.headerSub}>VEHICLE CONDITION REPORT</Text>
         </View>

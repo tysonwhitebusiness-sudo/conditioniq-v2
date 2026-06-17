@@ -9,9 +9,9 @@ export type LotGridMode = 'view' | 'setup'
 export const SPOT_COLOR: Record<string, string> = {
   pending_arrival: '#94A3B8',
   on_lot:          '#00B4D8',
-  one_off:         '#F97316',
-  releasing:       '#F4A62A',
-  released:        '#10B981',
+  pending_pickup:  '#F4A62A',
+  picked_up:       '#10B981',
+  completed:       '#9333EA',
 }
 export const EMPTY_COLOR = '#E1E8F0'
 

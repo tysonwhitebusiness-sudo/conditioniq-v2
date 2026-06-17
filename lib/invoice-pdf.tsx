@@ -67,9 +67,14 @@ export default function InvoicePDF({ data }: { data: InvoicePDFData }) {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            {data.logoUrl
-              ? <Image src={data.logoUrl} style={{ height: 40, maxWidth: 160, objectFit: 'contain' }} />
-              : <Text style={styles.companyName}>{data.companyName}</Text>}
+            {data.logoUrl ? (
+              <>
+                <Image src={data.logoUrl} style={{ height: 36, maxWidth: 140, objectFit: 'contain', marginBottom: data.companyName ? 6 : 0 }} />
+                {data.companyName && <Text style={[styles.companyName, { fontSize: 13 }]}>{data.companyName}</Text>}
+              </>
+            ) : (
+              <Text style={styles.companyName}>{data.companyName}</Text>
+            )}
           </View>
           <View>
             <Text style={styles.invoiceLabel}>INVOICE</Text>

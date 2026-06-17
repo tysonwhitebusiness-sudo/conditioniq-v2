@@ -70,3 +70,8 @@ export async function getLogoSignedUrl(path: string): Promise<string | null> {
   if (error) return null
   return data.signedUrl
 }
+
+export async function saveBusinessName(companyId: string, name: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('companies').update({ name }).eq('id', companyId)
+}

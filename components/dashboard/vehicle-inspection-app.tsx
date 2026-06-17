@@ -18,6 +18,7 @@ import SendToInspectorSheet from '@/components/ui/send-to-inspector-sheet'
 import { checkUsageState, initiateInspection } from '@/lib/usage-actions'
 import { getDeviceId } from '@/lib/device-id'
 import { checkAndAutoCompleteExpired } from '@/lib/auto-complete'
+import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import type { UsageState } from '@/lib/usage-actions'
 
 type AppStep = 'browse' | 'inspecting' | 'completed'
@@ -35,6 +36,7 @@ const DESKTOP_PAGE_TITLES: Record<NavTab, string> = {
 export default function VehicleInspectionApp() {
   const { user, effectiveCompany, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const searchParams = useSearchParams()
   const [navTab, setNavTab] = useState<NavTab>((searchParams.get('tab') as NavTab) ?? 'home')
   const [appStep, setAppStep] = useState<AppStep>('browse')
@@ -345,6 +347,7 @@ export default function VehicleInspectionApp() {
           onClose={() => setShowActionSheet(false)}
           onStartInspection={() => handleStartInspection()}
           onSendToInspector={handleSendToInspector}
+          showDispatch={!!dispatchEnabled}
         />
         {sharedModals}
       </div>

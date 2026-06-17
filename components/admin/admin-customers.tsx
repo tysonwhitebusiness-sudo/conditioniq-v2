@@ -20,7 +20,8 @@ const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  queued: '#94A3B8', pending_arrival: '#94A3B8', on_lot: '#00B4D8', one_off: '#F97316', released: '#10B981',
+  queued: '#94A3B8', pending_arrival: '#94A3B8', on_lot: '#00B4D8',
+  pending_pickup: '#F59E0B', picked_up: '#10B981', completed: '#9333EA',
 }
 
 const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
@@ -29,6 +30,7 @@ const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
   { key: 'team_members',      label: 'Team Members'        },
   { key: 'lot_map',           label: 'Lot Map'             },
   { key: 'white_label',       label: 'White Label PDF'     },
+  { key: 'dispatch',          label: 'Dispatch'            },
 ]
 
 const TIERS = ['demo', 'legacy_starter', 'starter', 'growth', 'pro', 'enterprise']

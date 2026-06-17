@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { releaseVehicle, markVehicleOnLot } from '@/lib/storage-actions'
+import { releaseVehicle, markVehicleOnLot, markVehiclePendingPickup } from '@/lib/storage-actions'
 import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume } from '@/lib/inspection-server-actions'
 import { checkUsageState, checkExistingInspection, abandonInspection, type UsageState } from '@/lib/usage-actions'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
@@ -22,34 +22,37 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'pending_arrival' | 'in_progress' | 'on_lot' | 'releasing' | 'released' | 'one_off'
+type LifecycleStatus = 'pending_arrival' | 'on_lot' | 'pending_pickup' | 'picked_up' | 'completed'
 type AppStep = 'view' | 'inspecting'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function effectiveStatus(v: any): LifecycleStatus {
-  if (v.lifecycle_status) return v.lifecycle_status as LifecycleStatus
+  const ls = v.lifecycle_status as string | null | undefined
+  if (ls && !['in_progress', 'releasing', 'released', 'one_off'].includes(ls)) return ls as LifecycleStatus
+  if (ls === 'releasing') return 'pending_pickup'
+  if (ls === 'released') return 'picked_up'
+  if (ls === 'one_off') return 'completed'
   switch (v.status) {
-    case 'released': return 'released'
-    case 'releasing': return 'releasing'
-    case 'inspected': return 'on_lot'
-    case 'pending_inspection': return 'in_progress'
-    case 'active': return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
-    default: return 'pending_arrival'
+    case 'released':           return 'picked_up'
+    case 'releasing':          return 'pending_pickup'
+    case 'inspected':          return 'on_lot'
+    case 'pending_inspection': return 'pending_arrival'
+    case 'active':             return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
+    default:                   return 'pending_arrival'
   }
 }
 
 const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8', color: '#4A5568' },
-  in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E', pulse: true },
-  on_lot:      { label: 'ON LOT',      bg: '#E0F7FC', color: '#0097B2' },
-  releasing:   { label: 'RELEASING',   bg: '#FEF3C7', color: '#92400E' },
-  released:    { label: 'RELEASED',    bg: '#D1FAE5', color: '#065F46' },
-  one_off:     { label: 'ONE-OFF',     bg: '#F0F4F8', color: '#4A5568' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8',  color: '#4A5568' },
+  on_lot:          { label: 'ON LOT',          bg: '#E0F7FC',  color: '#0097B2' },
+  pending_pickup:  { label: 'PENDING PICKUP',  bg: '#FEF3C7',  color: '#92400E', pulse: true },
+  picked_up:       { label: 'PICKED UP',       bg: '#D1FAE5',  color: '#065F46' },
+  completed:       { label: 'COMPLETED',       bg: '#F3E8FF',  color: '#7E22CE' },
 }
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null, status: LifecycleStatus): number | null {
-  if (status === 'one_off') return null
+  if (status === 'completed') return null
   if (!arrivedAt) return null
   const end = releasedAt ? new Date(releasedAt) : new Date()
   return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
@@ -169,6 +172,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const companyId = effectiveCompany?.id ?? ''
   const isFMC = effectiveCompany?.account_type === 'fmc'
 
@@ -310,7 +314,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     if (!effectiveCompany || !user || !vehicle) return
     try {
       const vehicleStatus = effectiveStatus(vehicle)
-      const isVehicleInProgress = vehicleStatus === 'in_progress' || vehicleStatus === 'releasing'
+      const isVehicleInProgress = vehicleStatus === 'pending_pickup'
       if (isVehicleInProgress && vehicle.vin) {
         const existing = await checkExistingInspection(effectiveCompany.id, vehicle.vin)
         if (existing) {
@@ -395,6 +399,14 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     if (!vehicle) return
     setActionSaving(true)
     await markVehicleOnLot(vehicle.id)
+    await fetchVehicle()
+    setActionSaving(false)
+  }
+
+  const handleMarkPendingPickup = async () => {
+    if (!vehicle) return
+    setActionSaving(true)
+    await markVehiclePendingPickup(vehicle.id)
     await fetchVehicle()
     setActionSaving(false)
   }
@@ -542,9 +554,9 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const vehicleTitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unknown Vehicle'
   const parsedNotes = parseNotes(rawNotes)
 
-  const canStart = ['pending_arrival', 'on_lot', 'in_progress', 'releasing'].includes(status)
-  const canDispatch = ['pending_arrival', 'on_lot', 'in_progress'].includes(status)
-  const isResume = status === 'in_progress' || status === 'releasing'
+  const canStart = ['pending_arrival', 'on_lot', 'pending_pickup'].includes(status)
+  const canDispatch = ['pending_arrival', 'on_lot'].includes(status)
+  const isResume = status === 'pending_pickup'
 
   return (
     <>
@@ -624,7 +636,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </div>
         ) : (
           <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Released Date</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Picked Up</p>
             {(vehicle.released_date || vehicle.released_at) ? (
               <p style={{ fontSize: 14, fontWeight: 600, color: '#10B981', margin: 0 }}>
                 {new Date(vehicle.released_date ?? vehicle.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -637,7 +649,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       </div>
 
       {/* ── Action buttons ──────────────────────────────────────────────────── */}
-      {(canStart || canDispatch || status === 'pending_arrival' || status === 'on_lot' || status === 'in_progress') && (
+      {(canStart || canDispatch || status === 'pending_arrival' || status === 'on_lot' || status === 'pending_pickup') && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           {canStart && (
             <button onClick={handleStart}
@@ -645,7 +657,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               <Play size={15} />{isResume ? 'Resume Inspection' : 'Start Inspection'}
             </button>
           )}
-          {canDispatch && (
+          {canDispatch && dispatchEnabled && (
             <button onClick={() => router.push(`/storage/dispatch?vin=${vehicle.vin}`)}
               style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Send size={15} />Dispatch
@@ -657,10 +669,16 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               <CheckCircle size={15} />Mark as On Lot
             </button>
           )}
-          {(status === 'on_lot' || status === 'in_progress') && (
+          {status === 'on_lot' && (
+            <button onClick={handleMarkPendingPickup} disabled={actionSaving}
+              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#F59E0B', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
+              <LogOut size={15} />Mark Pending Pickup
+            </button>
+          )}
+          {status === 'pending_pickup' && (
             <button onClick={() => setConfirmRelease(true)} disabled={actionSaving}
               style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
-              <LogOut size={15} />Release Vehicle
+              <CheckCircle size={15} />Mark Picked Up
             </button>
           )}
         </div>
@@ -975,17 +993,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         )
       })()}
 
-      {/* Release confirmation modal */}
+      {/* Mark Picked Up confirmation modal */}
       {confirmRelease && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setConfirmRelease(false)} />
           <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
             <div style={{ width: 52, height: 52, borderRadius: 26, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <LogOut size={24} color="#10B981" />
+              <CheckCircle size={24} color="#10B981" />
             </div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', textAlign: 'center', margin: '0 0 8px' }}>Release Vehicle?</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', textAlign: 'center', margin: '0 0 8px' }}>Mark as Picked Up?</h2>
             <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', lineHeight: 1.6, margin: '0 0 24px' }}>
-              Are you sure you want to release this vehicle? This cannot be undone.
+              This records the pickup date and marks the vehicle as picked up. This cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setConfirmRelease(false)}
@@ -994,7 +1012,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               </button>
               <button onClick={handleRelease} disabled={actionSaving}
                 style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: actionSaving ? 0.7 : 1 }}>
-                {actionSaving ? 'Releasing…' : 'Yes, Release'}
+                {actionSaving ? 'Marking…' : 'Mark Picked Up'}
               </button>
             </div>
           </div>

@@ -29,6 +29,7 @@ const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
   { key: 'locations',         label: 'Locations'          },
   { key: 'team_members',      label: 'Team Members'        },
   { key: 'lot_map',           label: 'Lot Map'             },
+  { key: 'lot_billing',       label: 'Lot Billing'         },
   { key: 'white_label',       label: 'White Label PDF'     },
   { key: 'dispatch',          label: 'Dispatch'            },
 ]
@@ -350,7 +351,7 @@ export default function AdminCustomers() {
                   <p style={{ fontSize: 13, color: '#94A3B8', margin: '12px 0 0' }}>Loading...</p>
                 ) : CORE_FLAG_DEFS.map(f => {
                   const flag = flags[f.key]
-                  const isOn = flag?.enabled ?? (f.key !== 'lot_map')
+                  const isOn = flag?.enabled ?? (f.key !== 'lot_map' && f.key !== 'lot_billing')
                   const cap = (flag?.config?.cap as number) ?? planCap ?? 3
                   return (
                     <div key={f.key}>

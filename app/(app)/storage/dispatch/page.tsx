@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { useRouter } from 'next/navigation'
 import { getActiveDispatches, dispatchStatus } from '@/lib/storage-actions'
-import { Clock, CheckCircle, AlertTriangle, Send, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react'
+import { Clock, CheckCircle, AlertTriangle, Send, Copy, Check, ExternalLink, RefreshCw, Lock } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -66,13 +65,8 @@ function timeRemaining(expiresAt: string): string {
 export default function StorageDispatchPage() {
   const { effectiveCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const router = useRouter()
   const dispatchEnabled = useFeatureFlag('dispatch')
   const companyId = effectiveCompany?.id ?? ''
-
-  useEffect(() => {
-    if (dispatchEnabled === false) router.replace('/')
-  }, [dispatchEnabled, router])
 
   const [dispatches, setDispatches] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,6 +104,22 @@ export default function StorageDispatchPage() {
     setShowSendSheet(false)
     setResendSheet({ open: false })
     load()
+  }
+
+  if (dispatchEnabled === false) {
+    return (
+      <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <Lock size={28} color="#94A3B8" />
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
+          Dispatch is not enabled for your account.
+        </h2>
+        <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
+          Contact us to get access.
+        </p>
+      </div>
+    )
   }
 
   return (

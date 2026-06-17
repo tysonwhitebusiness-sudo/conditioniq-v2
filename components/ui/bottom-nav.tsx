@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, Send, LayoutGrid, DollarSign } from 'lucide-react'
+import { Home, Car, Plus, LayoutGrid, DollarSign, Lock } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -14,30 +14,15 @@ interface BottomNavProps {
   onStartPress?: () => void
 }
 
-const BASE_LEFT_TABS = [
-  { id: 'home',     icon: Home, label: 'Home',     route: '/' },
-  { id: 'vehicles', icon: Car,  label: 'Vehicles', route: '/vehicles' },
-]
-const BASE_RIGHT_TABS = [
-  { id: 'dispatch', icon: Send, label: 'Dispatch', route: '/storage/dispatch' },
-]
-
 export default function BottomNav({ onStartPress }: BottomNavProps) {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const pathname = usePathname()
   const router = useRouter()
   const [showStartSheet, setShowStartSheet] = useState(false)
   const lotMapEnabled = useFeatureFlag('lot_map')
-  const dispatchEnabled = useFeatureFlag('dispatch')
+  const lotBillingEnabled = useFeatureFlag('lot_billing')
 
   if (isDesktop) return null
-
-  const LEFT_TABS = BASE_LEFT_TABS
-  const RIGHT_TABS = [
-    ...(lotMapEnabled ? [{ id: 'lot', icon: LayoutGrid, label: 'Lot', route: '/lot' }] : []),
-    ...(lotMapEnabled ? [{ id: 'lot-billing', icon: DollarSign, label: 'Lot Billing', route: '/lot-billing' }] : []),
-    ...(dispatchEnabled ? BASE_RIGHT_TABS : []),
-  ]
 
   const isActive = (route: string) =>
     route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/')
@@ -47,7 +32,7 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
     else setShowStartSheet(true)
   }
 
-  const tabBtn = (id: string, Icon: any, label: string, route: string) => {
+  const tabBtn = (id: string, Icon: React.ElementType, label: string, route: string, locked = false) => {
     const active = isActive(route)
     return (
       <button key={id} onClick={() => router.push(route)}
@@ -56,8 +41,13 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
           background: 'none', border: 'none', cursor: 'pointer', padding: 0,
         }}>
-        <Icon size={22} color={active ? '#00B4D8' : 'rgba(255,255,255,0.4)'} strokeWidth={active ? 2.5 : 2} />
-        <span style={{ fontSize: 10, fontWeight: 600, color: active ? '#00B4D8' : 'rgba(255,255,255,0.4)', lineHeight: 1 }}>
+        <div style={{ position: 'relative', display: 'inline-flex' }}>
+          <Icon size={22} color={locked ? 'rgba(255,255,255,0.25)' : active ? '#00B4D8' : 'rgba(255,255,255,0.4)'} strokeWidth={active && !locked ? 2.5 : 2} />
+          {locked && (
+            <Lock size={10} color="rgba(255,255,255,0.45)" style={{ position: 'absolute', bottom: -2, right: -3 }} />
+          )}
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 600, color: locked ? 'rgba(255,255,255,0.25)' : active ? '#00B4D8' : 'rgba(255,255,255,0.4)', lineHeight: 1 }}>
           {label}
         </span>
       </button>
@@ -73,12 +63,13 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
         boxShadow: '0 -2px 12px rgba(13,27,42,0.15)',
       }}>
         <div style={{ display: 'flex', height: 64, position: 'relative' }}>
-          {/* Left tabs — flex group so they share space evenly */}
+          {/* Left tabs */}
           <div style={{ flex: 1, display: 'flex' }}>
-            {LEFT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+            {tabBtn('home', Home, 'Home', '/')}
+            {tabBtn('vehicles', Car, 'Vehicles', '/vehicles')}
           </div>
 
-          {/* Center FAB — fixed width so it's always at the exact midpoint */}
+          {/* Center FAB */}
           <div style={{ width: 72, flexShrink: 0, position: 'relative' }}>
             <button
               onClick={handleCenter}
@@ -96,9 +87,10 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
             </button>
           </div>
 
-          {/* Right tabs — flex group so they share space evenly */}
+          {/* Right tabs — fixed: Lot + Lot Billing */}
           <div style={{ flex: 1, display: 'flex' }}>
-            {RIGHT_TABS.map(({ id, icon, label, route }) => tabBtn(id, icon, label, route))}
+            {tabBtn('lot', LayoutGrid, 'Lot', '/lot', lotMapEnabled === false)}
+            {tabBtn('lot-billing', DollarSign, 'Lot Billing', '/lot-billing', lotBillingEnabled === false)}
           </div>
         </div>
       </div>

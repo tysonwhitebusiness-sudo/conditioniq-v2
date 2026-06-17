@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import BrandingPage from '@/components/settings/branding-page'
+import { Lock } from 'lucide-react'
 
 export default function BrandingSettingsPage() {
   const { user, loading, isOwnerUser, companyRole } = useAuth()
@@ -18,8 +19,19 @@ export default function BrandingSettingsPage() {
 
   if (loading || !user) return null
   if (whiteLabelEnabled === false) {
-    router.replace('/')
-    return null
+    return (
+      <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <Lock size={28} color="#94A3B8" />
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
+          White Label / Branding is not enabled for your account.
+        </h2>
+        <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
+          Contact us to get access.
+        </p>
+      </div>
+    )
   }
   return <BrandingPage />
 }

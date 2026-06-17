@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -49,6 +49,7 @@ export default function DesktopSidebar({
 
   const isFMC = effectiveCompany?.account_type === 'fmc'
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const lotBillingEnabled = useFeatureFlag('lot_billing')
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const dispatchEnabled = useFeatureFlag('dispatch')
   const settingsOpen = pathname.startsWith('/settings')
@@ -74,13 +75,19 @@ export default function DesktopSidebar({
   }
 
   const inspItems: NavItem[] = [
-    { id: 'start', label: 'Start Inspection', icon: <Play size={18} />, type: 'action' as const },
-    { id: 'vehicles', label: 'Vehicles', icon: <Car size={18} />, type: 'route', route: '/vehicles' },
-    ...(dispatchEnabled ? [{ id: 'dispatch', label: 'Dispatch', icon: <Send size={18} />, type: 'route' as const, route: '/storage/dispatch' }] : []),
+    { id: 'start',       label: 'Start Inspection', icon: <Play size={18} />,      type: 'action' as const },
+    { id: 'vehicles',    label: 'Vehicles',          icon: <Car size={18} />,       type: 'route', route: '/vehicles' },
+    { id: 'dispatch',    label: 'Dispatch',           icon: <Send size={18} />,      type: 'route' as const, route: '/storage/dispatch' },
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
-    ...(lotMapEnabled ? [{ id: 'lot', label: 'Lot', icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' }] : []),
-    ...(lotMapEnabled ? [{ id: 'lot-billing', label: 'Lot Billing', icon: <DollarSign size={18} />, type: 'route' as const, route: '/lot-billing' }] : []),
+    { id: 'lot',         label: 'Lot',               icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' },
+    { id: 'lot-billing', label: 'Lot Billing',       icon: <DollarSign size={18} />, type: 'route' as const, route: '/lot-billing' },
   ]
+
+  const itemLocked: Record<string, boolean> = {
+    dispatch:    dispatchEnabled === false,
+    lot:         lotMapEnabled === false,
+    'lot-billing': lotBillingEnabled === false,
+  }
 
   const storageItems: NavItem[] = []
 
@@ -197,11 +204,17 @@ export default function DesktopSidebar({
       {collapsed ? (
         <div style={{ flex: 1, paddingTop: 8, paddingBottom: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={divider('4px 0 6px')} />
-          {inspItems.map(item => (
-            <button key={item.id} onClick={() => handleClick(item)} title={item.label} style={collapsedItemStyle(isActive(item))}>
-              {item.icon}
-            </button>
-          ))}
+          {inspItems.map(item => {
+            const locked = itemLocked[item.id] ?? false
+            return (
+              <button key={item.id} onClick={() => handleClick(item)} title={item.label + (locked ? ' (locked)' : '')} style={collapsedItemStyle(isActive(item))}>
+                <div style={{ position: 'relative', display: 'inline-flex' }}>
+                  {item.icon}
+                  {locked && <Lock size={8} color="rgba(255,255,255,0.45)" style={{ position: 'absolute', bottom: -2, right: -3 }} />}
+                </div>
+              </button>
+            )
+          })}
 
           {isFMC && (
             <>
@@ -227,15 +240,19 @@ export default function DesktopSidebar({
       ) : (
         <div style={{ flex: 1, padding: '8px 8px', overflowY: 'auto' }}>
           <p style={sectionLabel}>Inspections</p>
-          {inspItems.map(item => (
-            <button key={item.id} onClick={() => handleClick(item)} style={expandedItemStyle(isActive(item))}>
-              {item.icon}
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.id === 'start' && (
-                <span style={{ fontSize: 9, fontWeight: 800, background: '#F4A62A', color: '#0D1B2A', borderRadius: 6, padding: '2px 6px', letterSpacing: '0.04em' }}>NEW</span>
-              )}
-            </button>
-          ))}
+          {inspItems.map(item => {
+            const locked = itemLocked[item.id] ?? false
+            return (
+              <button key={item.id} onClick={() => handleClick(item)} style={expandedItemStyle(isActive(item))}>
+                {item.icon}
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {item.id === 'start' && (
+                  <span style={{ fontSize: 9, fontWeight: 800, background: '#F4A62A', color: '#0D1B2A', borderRadius: 6, padding: '2px 6px', letterSpacing: '0.04em' }}>NEW</span>
+                )}
+                {locked && <Lock size={12} color="rgba(255,255,255,0.3)" />}
+              </button>
+            )
+          })}
 
           {isFMC && (
             <>
@@ -268,9 +285,10 @@ export default function DesktopSidebar({
                   <Users size={14} /><span>Team Members</span>
                 </button>
               )}
-              {(isOwnerUser || companyRole === 'admin') && whiteLabelEnabled && (
+              {(isOwnerUser || companyRole === 'admin') && (
                 <button onClick={() => !isInspecting && router.push('/settings/branding')} style={subItemStyle(pathname === '/settings/branding')}>
-                  <Palette size={14} /><span>Branding</span>
+                  <Palette size={14} /><span style={{ flex: 1 }}>Branding</span>
+                  {whiteLabelEnabled === false && <Lock size={10} color="rgba(255,255,255,0.3)" />}
                 </button>
               )}
 

@@ -17,7 +17,7 @@ import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import {
   ArrowLeft, Play, Send, ExternalLink, Download,
-  Camera, Loader2, X, CheckCircle, LogOut, DollarSign,
+  Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Lock,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -657,10 +657,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               <Play size={15} />{isResume ? 'Resume Inspection' : 'Start Inspection'}
             </button>
           )}
-          {canDispatch && dispatchEnabled && (
-            <button onClick={() => router.push(`/storage/dispatch?vin=${vehicle.vin}`)}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Send size={15} />Dispatch
+          {canDispatch && (
+            <button onClick={() => router.push(dispatchEnabled ? `/storage/dispatch?vin=${vehicle.vin}` : '/storage/dispatch')}
+              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: dispatchEnabled === false ? 0.6 : 1 }}>
+              {dispatchEnabled === false ? <Lock size={15} /> : <Send size={15} />}Dispatch
             </button>
           )}
           {status === 'pending_arrival' && (

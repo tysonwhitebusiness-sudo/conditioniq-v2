@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings } from 'lucide-react'
+import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings, Lock, Send } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -12,6 +12,7 @@ export default function MobilePageHeader() {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
   const whiteLabelEnabled = useFeatureFlag('white_label')
+  const dispatchEnabled = useFeatureFlag('dispatch')
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -127,10 +128,17 @@ export default function MobilePageHeader() {
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Billing & Plan</span>
               </button>
 
-              {isAdmin && whiteLabelEnabled && (
+              <button onClick={() => nav('/storage/dispatch')} style={itemStyle}>
+                {iconBox(dispatchEnabled === false ? '#F0F4F8' : '#E0F7FC', <Send size={15} color={dispatchEnabled === false ? '#94A3B8' : '#0097B2'} />)}
+                <span style={{ fontSize: 14, fontWeight: 500, color: dispatchEnabled === false ? '#94A3B8' : '#0D1B2A', flex: 1 }}>Dispatch</span>
+                {dispatchEnabled === false && <Lock size={13} color="#CBD5E1" style={{ flexShrink: 0 }} />}
+              </button>
+
+              {isAdmin && (
                 <button onClick={() => nav('/settings/branding')} style={itemStyle}>
                   {iconBox('#EDE9FE', <Palette size={15} color="#7C3AED" />)}
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Branding</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: whiteLabelEnabled === false ? '#94A3B8' : '#0D1B2A', flex: 1 }}>Branding</span>
+                  {whiteLabelEnabled === false && <Lock size={13} color="#CBD5E1" style={{ flexShrink: 0 }} />}
                 </button>
               )}
 

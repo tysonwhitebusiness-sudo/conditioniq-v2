@@ -80,13 +80,15 @@ const s = StyleSheet.create({
 
 // ── Reusable components ────────────────────────────────────────────────────
 
-function ReportPage({ vin, date, pageNum, totalPages, logoUrl, companyName, children }: {
+function ReportPage({ vin, date, pageNum, totalPages, logoUrl, companyName, brandHeaderColor, brandAccentColor, children }: {
   vin: string; date: string; pageNum: number; totalPages: number
-  logoUrl?: string | null; companyName?: string | null; children: React.ReactNode
+  logoUrl?: string | null; companyName?: string | null
+  brandHeaderColor?: string | null; brandAccentColor?: string | null
+  children: React.ReactNode
 }) {
   return (
     <Page size="A4" style={s.page}>
-      <View style={s.pageHeader}>
+      <View style={[s.pageHeader, brandHeaderColor ? { backgroundColor: brandHeaderColor } : {}]}>
         <View style={s.headerLeft}>
           {logoUrl ? (
             <>
@@ -101,9 +103,9 @@ function ReportPage({ vin, date, pageNum, totalPages, logoUrl, companyName, chil
         </View>
         <Text style={s.headerVin}>VIN: {vin}</Text>
       </View>
-      <View style={s.accentLine} />
+      <View style={[s.accentLine, brandAccentColor ? { backgroundColor: brandAccentColor } : {}]} />
       <View style={s.content}>{children}</View>
-      <View style={s.pageFooter}>
+      <View style={[s.pageFooter, brandHeaderColor ? { backgroundColor: brandHeaderColor } : {}]}>
         <Text style={s.footerLeft}>VIN: {vin} | {fmtDate(date)}</Text>
         <Text style={s.footerCenter}>Page {pageNum} of {totalPages}</Text>
         <Text style={s.footerRight}>Not a guarantee of mechanical fitness.</Text>
@@ -373,9 +375,11 @@ interface ReportProps {
   photos?: Record<string, string>
   logoUrl?: string | null
   companyName?: string | null
+  brandHeaderColor?: string | null
+  brandAccentColor?: string | null
 }
 
-export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {}, logoUrl, companyName }: ReportProps) {
+export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {}, logoUrl, companyName, brandHeaderColor, brandAccentColor }: ReportProps) {
   const vi   = inspectionData.vehicleInfo ?? {}
   const bol  = inspectionData.bol_data ?? {}
   const keys = inspectionData.keys_data ?? {}
@@ -438,7 +442,7 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
   const pgEngine        = hasExtOverflow ? 7 : 6
   const pgCert          = totalPages
 
-  const base = { vin, date, totalPages, logoUrl, companyName }
+  const base = { vin, date, totalPages, logoUrl, companyName, brandHeaderColor, brandAccentColor }
 
   // NHTSA-sourced fields
   const nhtsaBodyClass = vi.bodyClass  ?? vi.body_class  ?? ''

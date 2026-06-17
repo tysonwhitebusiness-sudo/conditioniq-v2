@@ -26,15 +26,19 @@ export async function generateAndSaveInvoice(
   const { createInvoiceUploadUrl, saveLotInvoice, getInvoiceSignedUrl } = await import('./invoice-actions')
   const { createClient } = await import('./supabase/client')
 
-  // Fetch logo for white label
+  // Fetch logo + brand colors for white label
   let logoUrl: string | null = null
+  let brandHeaderColor: string | null = null
+  let brandAccentColor: string | null = null
   try {
     const { getCompanyLogo } = await import('./branding-actions')
     const branding = await getCompanyLogo(data.companyId)
     logoUrl = branding.logoUrl
+    brandHeaderColor = branding.brandHeaderColor
+    brandAccentColor = branding.brandAccentColor
   } catch { /* non-fatal */ }
 
-  const element = React.createElement(InvoicePDF, { data: { ...data, logoUrl } }) as any
+  const element = React.createElement(InvoicePDF, { data: { ...data, logoUrl, brandHeaderColor, brandAccentColor } }) as any
   const blob = await pdf(element).toBlob()
 
   const uploadAuth = await createInvoiceUploadUrl(data.companyId, data.invoiceNumber)

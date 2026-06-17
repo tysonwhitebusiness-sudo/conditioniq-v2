@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { createLogoUploadUrl, saveLogoPath, removeLogo, getLogoSignedUrl, saveBusinessName } from '@/lib/branding-actions'
+import { createLogoUploadUrl, saveLogoPath, removeLogo, getLogoSignedUrl, saveBusinessName, saveBrandColors } from '@/lib/branding-actions'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { ArrowLeft, Upload, X, Image as ImageIcon, Check, Building2 } from 'lucide-react'
@@ -32,11 +32,16 @@ export default function BrandingPage() {
   const [nameSaving, setNameSaving] = useState(false)
   const [nameSaved, setNameSaved] = useState(false)
 
+  const [headerColor, setHeaderColor] = useState('#0D1B2A')
+  const [accentColor, setAccentColor] = useState('#F4A62A')
+  const [colorSaving, setColorSaving] = useState(false)
+  const [colorSaved, setColorSaved] = useState(false)
+
   useEffect(() => {
     if (!effectiveCompany?.id) return
     createClient()
       .from('companies')
-      .select('logo_url, name')
+      .select('logo_url, name, brand_header_color, brand_accent_color')
       .eq('id', effectiveCompany.id)
       .single()
       .then(async ({ data }) => {
@@ -46,6 +51,8 @@ export default function BrandingPage() {
           if (url) setCurrentLogoUrl(url)
         }
         if (data?.name) setBusinessName(data.name)
+        if (data?.brand_header_color) setHeaderColor(data.brand_header_color)
+        if (data?.brand_accent_color) setAccentColor(data.brand_accent_color)
         setLoading(false)
       })
   }, [effectiveCompany?.id])
@@ -122,6 +129,16 @@ export default function BrandingPage() {
     } finally { setNameSaving(false) }
   }
 
+  const handleSaveColors = async () => {
+    if (!effectiveCompany?.id) return
+    setColorSaving(true)
+    try {
+      await saveBrandColors(effectiveCompany.id, headerColor, accentColor)
+      setColorSaved(true)
+      setTimeout(() => setColorSaved(false), 2500)
+    } finally { setColorSaving(false) }
+  }
+
   return (
     <>
       {!isDesktop && <MobilePageHeader />}
@@ -195,6 +212,82 @@ export default function BrandingPage() {
                   {nameSaved ? <><Check size={14} />Saved!</> : nameSaving ? 'Saving…' : 'Save'}
                 </button>
               </div>
+            </div>
+
+            {/* Brand Colors */}
+            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>PDF Brand Colors</p>
+              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 16px', lineHeight: 1.5 }}>
+                Customize the header background and accent stripe on inspection reports and invoices.
+              </p>
+
+              <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+                {/* Header Color */}
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Header Background</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="color"
+                      value={headerColor}
+                      onChange={e => setHeaderColor(e.target.value)}
+                      style={{ width: 40, height: 40, borderRadius: 8, border: '1.5px solid #E1E8F0', padding: 2, cursor: 'pointer', background: 'none' }}
+                    />
+                    <input
+                      value={headerColor}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) setHeaderColor(v)
+                      }}
+                      maxLength={7}
+                      style={{ flex: 1, height: 40, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Accent Color */}
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Accent Stripe</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="color"
+                      value={accentColor}
+                      onChange={e => setAccentColor(e.target.value)}
+                      style={{ width: 40, height: 40, borderRadius: 8, border: '1.5px solid #E1E8F0', padding: 2, cursor: 'pointer', background: 'none' }}
+                    />
+                    <input
+                      value={accentColor}
+                      onChange={e => {
+                        const v = e.target.value
+                        if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) setAccentColor(v)
+                      }}
+                      maxLength={7}
+                      style={{ flex: 1, height: 40, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live preview */}
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Preview</p>
+                <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E1E8F0', width: '100%', maxWidth: 360 }}>
+                  <div style={{ backgroundColor: headerColor, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 13 }}>{businessName || 'Your Company'}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>CONDITION REPORT</span>
+                  </div>
+                  <div style={{ height: 4, backgroundColor: accentColor }} />
+                  <div style={{ background: '#F8FAFC', padding: '10px 16px' }}>
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Report content appears here…</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveColors}
+                disabled={colorSaving || headerColor.length !== 7 || accentColor.length !== 7}
+                style={{ height: 44, padding: '0 20px', borderRadius: 10, border: 'none', background: colorSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 0.6 : 1, transition: 'background 300ms ease' }}>
+                {colorSaved ? <><Check size={14} />Saved!</> : colorSaving ? 'Saving…' : 'Save Colors'}
+              </button>
             </div>
 
             {/* Upload */}

@@ -34,12 +34,16 @@ export async function generateAndSaveBulkInvoice(params: {
   // Pick a stable ID for this batch
   const batchId = params.bulkInvoiceId ?? crypto.randomUUID()
 
-  // Fetch logo for white label
+  // Fetch logo + brand colors for white label
   let logoUrl: string | null = null
+  let brandHeaderColor: string | null = null
+  let brandAccentColor: string | null = null
   try {
     const { getCompanyLogo } = await import('./branding-actions')
     const branding = await getCompanyLogo(params.companyId)
     logoUrl = branding.logoUrl
+    brandHeaderColor = branding.brandHeaderColor
+    brandAccentColor = branding.brandAccentColor
   } catch { /* non-fatal */ }
 
   const pdfData: BulkInvoicePDFData = {
@@ -48,6 +52,8 @@ export async function generateAndSaveBulkInvoice(params: {
     dueDate: params.dueDate,
     companyName: params.companyName,
     logoUrl,
+    brandHeaderColor,
+    brandAccentColor,
     billToName: params.billToName,
     billToContact: params.billToContact,
     notes: params.notes,

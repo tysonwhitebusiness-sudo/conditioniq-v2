@@ -43,6 +43,8 @@ export interface InvoicePDFData {
   dueDate?: string
   companyName: string
   logoUrl?: string | null
+  brandHeaderColor?: string | null
+  brandAccentColor?: string | null
   billToName?: string
   billToContact?: string
   vehicleYear?: string | null
@@ -84,6 +86,7 @@ export default function InvoicePDF({ data }: { data: InvoicePDFData }) {
           </View>
         </View>
 
+        <View style={{ height: 3, backgroundColor: data.brandAccentColor ?? '#F4A62A', marginBottom: 4 }} />
         <View style={styles.divider} />
 
         {/* Bill To + Vehicle Info */}
@@ -102,7 +105,7 @@ export default function InvoicePDF({ data }: { data: InvoicePDFData }) {
         </View>
 
         {/* Line Items */}
-        <View style={styles.tableHeader}>
+        <View style={[styles.tableHeader, data.brandHeaderColor ? { backgroundColor: data.brandHeaderColor } : {}]}>
           <Text style={[styles.tableHeaderText, { flex: 1 }]}>Description</Text>
           <Text style={[styles.tableHeaderText, { width: 100, textAlign: 'right' }]}>Amount</Text>
         </View>

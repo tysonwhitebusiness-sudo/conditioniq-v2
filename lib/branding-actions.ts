@@ -6,18 +6,30 @@ import { getFeatureFlags } from '@/lib/feature-flags'
 
 const BRANDING_BUCKET = 'branding'
 
-export async function getCompanyLogo(companyId: string): Promise<{ logoUrl: string | null; whiteLabelEnabled: boolean; companyName: string }> {
+export async function getCompanyLogo(companyId: string): Promise<{
+  logoUrl: string | null
+  whiteLabelEnabled: boolean
+  companyName: string
+  brandHeaderColor: string | null
+  brandAccentColor: string | null
+}> {
   const supabase = createClient()
 
   const [{ data: company }, flags] = await Promise.all([
-    supabase.from('companies').select('name, logo_url').eq('id', companyId).single(),
+    supabase.from('companies').select('name, logo_url, brand_header_color, brand_accent_color').eq('id', companyId).single(),
     getFeatureFlags(companyId),
   ])
 
   const whiteLabelEnabled = flags.white_label?.enabled ?? false
 
   if (!whiteLabelEnabled || !company?.logo_url) {
-    return { logoUrl: null, whiteLabelEnabled, companyName: company?.name ?? '' }
+    return {
+      logoUrl: null,
+      whiteLabelEnabled,
+      companyName: company?.name ?? '',
+      brandHeaderColor: whiteLabelEnabled ? (company?.brand_header_color ?? null) : null,
+      brandAccentColor: whiteLabelEnabled ? (company?.brand_accent_color ?? null) : null,
+    }
   }
 
   const admin = createAdminClient()
@@ -27,10 +39,22 @@ export async function getCompanyLogo(companyId: string): Promise<{ logoUrl: stri
 
   if (error) {
     console.error('[branding] signedUrl', error)
-    return { logoUrl: null, whiteLabelEnabled, companyName: company?.name ?? '' }
+    return {
+      logoUrl: null,
+      whiteLabelEnabled,
+      companyName: company?.name ?? '',
+      brandHeaderColor: company?.brand_header_color ?? null,
+      brandAccentColor: company?.brand_accent_color ?? null,
+    }
   }
 
-  return { logoUrl: data.signedUrl, whiteLabelEnabled, companyName: company?.name ?? '' }
+  return {
+    logoUrl: data.signedUrl,
+    whiteLabelEnabled,
+    companyName: company?.name ?? '',
+    brandHeaderColor: company?.brand_header_color ?? null,
+    brandAccentColor: company?.brand_accent_color ?? null,
+  }
 }
 
 export async function createLogoUploadUrl(companyId: string, ext: string): Promise<{ path: string; token: string } | null> {
@@ -74,4 +98,13 @@ export async function getLogoSignedUrl(path: string): Promise<string | null> {
 export async function saveBusinessName(companyId: string, name: string): Promise<void> {
   const supabase = createClient()
   await supabase.from('companies').update({ name }).eq('id', companyId)
+}
+
+export async function saveBrandColors(
+  companyId: string,
+  brandHeaderColor: string | null,
+  brandAccentColor: string | null,
+): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('companies').update({ brand_header_color: brandHeaderColor, brand_accent_color: brandAccentColor }).eq('id', companyId)
 }

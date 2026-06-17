@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 
-export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map' | 'white_label' | 'dispatch'
+export type FeatureKey = 'send_to_inspector' | 'locations' | 'team_members' | 'lot_map' | 'white_label' | 'dispatch' | 'lot_billing'
 
 export interface FeatureFlag {
   feature_key: FeatureKey
@@ -19,6 +19,7 @@ const DEFAULTS: FeatureFlags = {
   lot_map:           { feature_key: 'lot_map',           enabled: false, config: {} },
   white_label:       { feature_key: 'white_label',       enabled: true,  config: {} },
   dispatch:          { feature_key: 'dispatch',          enabled: true,  config: {} },
+  lot_billing:       { feature_key: 'lot_billing',       enabled: false, config: {} },
 }
 
 // Starter-tier plans get dispatch disabled by default; Growth+ get it enabled.
@@ -39,6 +40,7 @@ export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> 
     lot_map:           { ...DEFAULTS.lot_map },
     white_label:       { ...DEFAULTS.white_label },
     dispatch:          { feature_key: 'dispatch', enabled: !STARTER_PLANS.has(tier), config: {} },
+    lot_billing:       { ...DEFAULTS.lot_billing },
   }
   for (const row of (flagData ?? [])) {
     const key = row.feature_key as FeatureKey

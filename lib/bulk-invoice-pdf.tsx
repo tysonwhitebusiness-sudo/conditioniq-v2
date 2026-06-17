@@ -55,6 +55,8 @@ export interface BulkInvoicePDFData {
   dueDate?: string | null
   companyName: string
   logoUrl?: string | null
+  brandHeaderColor?: string | null
+  brandAccentColor?: string | null
   billToName?: string
   billToContact?: string | null
   notes?: string | null
@@ -82,6 +84,7 @@ export default function BulkInvoicePDF({ data }: { data: BulkInvoicePDFData }) {
           </View>
         </View>
 
+        <View style={{ height: 3, backgroundColor: data.brandAccentColor ?? '#F4A62A', marginBottom: 4 }} />
         <View style={styles.divider} />
 
         {/* Bill To + Summary */}
@@ -99,7 +102,7 @@ export default function BulkInvoicePDF({ data }: { data: BulkInvoicePDFData }) {
         </View>
 
         {/* Table header */}
-        <View style={styles.tableHeader}>
+        <View style={[styles.tableHeader, data.brandHeaderColor ? { backgroundColor: data.brandHeaderColor } : {}]}>
           <Text style={[styles.tableHeaderText, { width: 20 }]}>#</Text>
           <Text style={[styles.tableHeaderText, { width: 80 }]}>VIN</Text>
           <Text style={[styles.tableHeaderText, { flex: 1 }]}>Vehicle</Text>

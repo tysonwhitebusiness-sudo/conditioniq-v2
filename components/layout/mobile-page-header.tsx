@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft } from 'lucide-react'
+import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -112,6 +112,11 @@ export default function MobilePageHeader() {
 
             {/* Nav items */}
             <div style={{ paddingTop: 4, paddingBottom: 4 }}>
+              <button onClick={() => nav('/settings')} style={itemStyle}>
+                {iconBox('#F0F4F8', <Settings size={15} color="#4A5568" />)}
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Settings</span>
+              </button>
+
               <button onClick={() => nav('/settings/profile')} style={itemStyle}>
                 {iconBox('#F0F4F8', <User size={15} color="#4A5568" />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Profile</span>

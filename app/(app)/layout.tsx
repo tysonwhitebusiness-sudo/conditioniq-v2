@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings/billing': 'Billing & Plan',
   '/settings/branding': 'Branding',
   '/settings/lot-billing': 'Lot Billing',
+  '/lot-billing': 'Lot Billing',
   '/settings/members': 'Team Members',
   '/lot': 'Lot Map',
 }

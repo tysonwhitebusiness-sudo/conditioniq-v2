@@ -10,10 +10,7 @@ import {
   getBillingPageData, submitPlanChangeRequest,
   type UsageLogEntry,
 } from '@/lib/billing-actions'
-import { Check, ChevronDown, ChevronUp, X, Loader2, AlertTriangle, FileText, ExternalLink, ChevronRight, Layers } from 'lucide-react'
-import { useFeatureFlag } from '@/hooks/use-feature-flag'
-import { getCompanyInvoices, getInvoiceSignedUrl, updateInvoiceStatus, type LotInvoice } from '@/lib/invoice-actions'
-import { updateBulkInvoiceStatus, getBulkInvoiceSignedUrl } from '@/lib/bulk-invoice-actions'
+import { Check, ChevronDown, ChevronUp, X, Loader2, AlertTriangle } from 'lucide-react'
 
 // ── Plan config ────────────────────────────────────────────────────────────────
 
@@ -219,16 +216,11 @@ function UsageLog({ entries, isDesktop }: { entries: UsageLogEntry[]; isDesktop:
 export default function BillingPage() {
   const { user, effectiveCompany, companyRole, platformRole, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const lotMapEnabled = useFeatureFlag('lot_map')
 
   const [loading, setLoading] = useState(true)
   const [billingData, setBillingData] = useState<Awaited<ReturnType<typeof getBillingPageData>> | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [invoices, setInvoices] = useState<LotInvoice[]>([])
-  const [loadingInvoices, setLoadingInvoices] = useState(false)
-  const [invoicesLoaded, setInvoicesLoaded] = useState(false)
-  const [expandedBulk, setExpandedBulk] = useState<Set<string>>(new Set())
 
   const canRequest = isOwnerUser || companyRole === 'admin'
   const companyId = effectiveCompany?.id ?? ''
@@ -244,14 +236,6 @@ export default function BillingPage() {
   }, [companyId])
 
   useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (!lotMapEnabled || !companyId || invoicesLoaded) return
-    setLoadingInvoices(true)
-    getCompanyInvoices(companyId)
-      .then(data => { setInvoices(data); setInvoicesLoaded(true) })
-      .finally(() => setLoadingInvoices(false))
-  }, [lotMapEnabled, companyId, invoicesLoaded])
 
   const handleSubmitted = () => {
     setShowModal(false)
@@ -429,178 +413,6 @@ export default function BillingPage() {
               )}
             </Card>
 
-            {/* ── 5. Lot Invoices (lot_map gated) ── */}
-            {lotMapEnabled && (
-              <Card>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                  <SectionLabel>Lot Invoices</SectionLabel>
-                  {invoices.length > 0 && (
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>
-                        All-time: <strong style={{ color: '#0D1B2A' }}>${invoices.reduce((s, i) => s + (i.total_amount ?? 0), 0).toFixed(2)}</strong>
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {loadingInvoices ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-                    <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
-                  </div>
-                ) : invoices.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                    <FileText size={28} color="#E1E8F0" style={{ display: 'block', margin: '0 auto 8px' }} />
-                    <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No invoices generated yet.</p>
-                    <p style={{ fontSize: 12, color: '#CBD5E1', margin: '4px 0 0' }}>Generate invoices from the vehicle detail page.</p>
-                  </div>
-                ) : (() => {
-                    const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-                      draft: { bg: '#F0F4F8', color: '#4A5568' },
-                      sent:  { bg: '#E0F7FC', color: '#0097B2' },
-                      paid:  { bg: '#D1FAE5', color: '#065F46' },
-                    }
-
-                    // Separate bulk batches from individual invoices
-                    const bulkMap = new Map<string, LotInvoice[]>()
-                    const individual: LotInvoice[] = []
-                    for (const inv of invoices) {
-                      if (inv.bulk_invoice_id) {
-                        const group = bulkMap.get(inv.bulk_invoice_id) ?? []
-                        group.push(inv)
-                        bulkMap.set(inv.bulk_invoice_id, group)
-                      } else {
-                        individual.push(inv)
-                      }
-                    }
-
-                    // Build sorted display items (bulk groups + individuals, newest first)
-                    type DisplayItem =
-                      | { kind: 'bulk'; bulkId: string; rows: LotInvoice[] }
-                      | { kind: 'single'; inv: LotInvoice }
-
-                    const items: (DisplayItem & { sortDate: string })[] = [
-                      ...Array.from(bulkMap.entries()).map(([bulkId, rows]) => ({
-                        kind: 'bulk' as const, bulkId, rows,
-                        sortDate: rows[0]?.created_at ?? '',
-                      })),
-                      ...individual.map(inv => ({ kind: 'single' as const, inv, sortDate: inv.created_at })),
-                    ].sort((a, b) => b.sortDate.localeCompare(a.sortDate))
-
-                    return (
-                      <div>
-                        {items.map((item, i) => {
-                          if (item.kind === 'bulk') {
-                            const { bulkId, rows } = item
-                            const rep = rows[0]
-                            const total = rows.reduce((s, r) => s + (r.total_amount ?? 0), 0)
-                            const sc = STATUS_COLORS[rep.status] ?? STATUS_COLORS.draft
-                            const isExp = expandedBulk.has(bulkId)
-                            return (
-                              <div key={bulkId} style={{ borderTop: i === 0 ? 'none' : '1px solid #F0F4F8' }}>
-                                {/* Batch row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', flexWrap: 'wrap' }}>
-                                  <button onClick={() => setExpandedBulk(prev => { const n = new Set<string>(Array.from(prev)); if (n.has(bulkId)) n.delete(bulkId); else n.add(bulkId); return n })}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}>
-                                    <ChevronRight size={14} color="#94A3B8" style={{ transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }} />
-                                  </button>
-                                  <div style={{ flex: 1, minWidth: 120 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>{rep.invoice_number}</p>
-                                      <span style={{ background: '#E0F7FC', color: '#0097B2', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                        <Layers size={9} />{rows.length} vehicles
-                                      </span>
-                                    </div>
-                                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>
-                                      {new Date(rep.invoice_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </p>
-                                  </div>
-                                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>${total.toFixed(2)}</p>
-                                  <select
-                                    value={rep.status}
-                                    onChange={async e => {
-                                      const newStatus = e.target.value as 'draft' | 'sent' | 'paid'
-                                      await updateBulkInvoiceStatus(bulkId, newStatus)
-                                      setInvoices(prev => prev.map(x => x.bulk_invoice_id === bulkId ? { ...x, status: newStatus } : x))
-                                    }}
-                                    style={{ height: 30, border: `1px solid ${sc.bg}`, borderRadius: 8, background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', padding: '0 8px', cursor: 'pointer', outline: 'none' }}
-                                  >
-                                    <option value="draft">Draft</option>
-                                    <option value="sent">Sent</option>
-                                    <option value="paid">Paid</option>
-                                  </select>
-                                  {rep.storage_path && (
-                                    <button
-                                      onClick={async () => {
-                                        const url = await getBulkInvoiceSignedUrl(rep.storage_path!)
-                                        if (url) window.open(url, '_blank')
-                                      }}
-                                      style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                                      <ExternalLink size={13} color="#00B4D8" />
-                                    </button>
-                                  )}
-                                </div>
-                                {/* Expanded per-vehicle breakdown */}
-                                {isExp && (
-                                  <div style={{ marginLeft: 24, marginBottom: 10, background: '#F8FAFC', border: '1px solid #F0F4F8', borderRadius: 10, overflow: 'hidden' }}>
-                                    {rows.map((r, ri) => (
-                                      <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 12px', borderTop: ri === 0 ? 'none' : '1px solid #F0F4F8', flexWrap: 'wrap' }}>
-                                        <div style={{ flex: 1, minWidth: 100 }}>
-                                          <p style={{ fontSize: 12, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{r.vehicle_description ?? r.vehicle_vin ?? '—'}</p>
-                                          <p style={{ fontSize: 10, fontFamily: 'monospace', color: '#94A3B8', margin: '1px 0 0' }}>{r.vehicle_vin}</p>
-                                        </div>
-                                        <p style={{ fontSize: 12, color: '#4A5568', margin: 0 }}>{r.days_on_lot}d</p>
-                                        <p style={{ fontSize: 12, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>${(r.total_amount ?? 0).toFixed(2)}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          }
-
-                          // Individual invoice
-                          const inv = item.inv
-                          const sc = STATUS_COLORS[inv.status] ?? STATUS_COLORS.draft
-                          return (
-                            <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8', flexWrap: 'wrap' }}>
-                              <div style={{ flex: 1, minWidth: 120 }}>
-                                <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>{inv.invoice_number}</p>
-                                <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>
-                                  {inv.vehicle_description ?? inv.vehicle_vin ?? '—'} · {new Date(inv.invoice_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                </p>
-                              </div>
-                              <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>${(inv.total_amount ?? 0).toFixed(2)}</p>
-                              <select
-                                value={inv.status}
-                                onChange={async e => {
-                                  const newStatus = e.target.value as 'draft' | 'sent' | 'paid'
-                                  await updateInvoiceStatus(inv.id, newStatus)
-                                  setInvoices(prev => prev.map(x => x.id === inv.id ? { ...x, status: newStatus } : x))
-                                }}
-                                style={{ height: 30, border: `1px solid ${sc.bg}`, borderRadius: 8, background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', padding: '0 8px', cursor: 'pointer', outline: 'none' }}
-                              >
-                                <option value="draft">Draft</option>
-                                <option value="sent">Sent</option>
-                                <option value="paid">Paid</option>
-                              </select>
-                              {inv.storage_path && (
-                                <button
-                                  onClick={async () => {
-                                    const url = await getInvoiceSignedUrl(inv.storage_path!)
-                                    if (url) window.open(url, '_blank')
-                                  }}
-                                  style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                                  <ExternalLink size={13} color="#00B4D8" />
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })()}
-              </Card>
-            )}
 
           </div>
         )}

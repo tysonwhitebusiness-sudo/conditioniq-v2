@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, Send, LayoutGrid } from 'lucide-react'
+import { Home, Car, Plus, Send, LayoutGrid, DollarSign } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -35,6 +35,7 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
   const LEFT_TABS = BASE_LEFT_TABS
   const RIGHT_TABS = [
     ...(lotMapEnabled ? [{ id: 'lot', icon: LayoutGrid, label: 'Lot', route: '/lot' }] : []),
+    ...(lotMapEnabled ? [{ id: 'lot-billing', icon: DollarSign, label: 'Lot Billing', route: '/lot-billing' }] : []),
     ...(dispatchEnabled ? BASE_RIGHT_TABS : []),
   ]
 

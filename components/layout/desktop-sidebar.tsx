@@ -79,6 +79,7 @@ export default function DesktopSidebar({
     ...(dispatchEnabled ? [{ id: 'dispatch', label: 'Dispatch', icon: <Send size={18} />, type: 'route' as const, route: '/storage/dispatch' }] : []),
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
     ...(lotMapEnabled ? [{ id: 'lot', label: 'Lot', icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' }] : []),
+    ...(lotMapEnabled ? [{ id: 'lot-billing', label: 'Lot Billing', icon: <DollarSign size={18} />, type: 'route' as const, route: '/lot-billing' }] : []),
   ]
 
   const storageItems: NavItem[] = []
@@ -272,11 +273,7 @@ export default function DesktopSidebar({
                   <Palette size={14} /><span>Branding</span>
                 </button>
               )}
-              {(isOwnerUser || companyRole === 'admin') && lotMapEnabled && (
-                <button onClick={() => !isInspecting && router.push('/settings/lot-billing')} style={subItemStyle(pathname === '/settings/lot-billing')}>
-                  <DollarSign size={14} /><span>Lot Billing</span>
-                </button>
-              )}
+
             </div>
           )}
           {isOwnerUser && (

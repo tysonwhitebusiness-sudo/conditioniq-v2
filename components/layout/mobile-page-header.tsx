@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, DollarSign, Palette, Users, Shield, User, LogOut, ChevronLeft } from 'lucide-react'
+import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -11,7 +11,6 @@ export default function MobilePageHeader() {
   const { effectiveCompany, user, userProfile, isOwnerUser, companyRole, platformRole, signOut } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
-  const lotMapEnabled = useFeatureFlag('lot_map')
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -122,13 +121,6 @@ export default function MobilePageHeader() {
                 {iconBox('#E0F7FC', <CreditCard size={15} color="#0097B2" />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Billing & Plan</span>
               </button>
-
-              {isAdmin && lotMapEnabled && (
-                <button onClick={() => nav('/settings/lot-billing')} style={itemStyle}>
-                  {iconBox('#D1FAE5', <DollarSign size={15} color="#059669" />)}
-                  <span style={{ fontSize: 14, fontWeight: 500, color: '#0D1B2A' }}>Lot Billing</span>
-                </button>
-              )}
 
               {isAdmin && whiteLabelEnabled && (
                 <button onClick={() => nav('/settings/branding')} style={itemStyle}>

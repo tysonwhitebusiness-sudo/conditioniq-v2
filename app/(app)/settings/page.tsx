@@ -7,7 +7,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { User, CreditCard, Users, Palette, DollarSign, ChevronRight, Lock, Sparkles } from 'lucide-react'
+import { User, CreditCard, Users, Palette, ChevronRight, Lock, Sparkles } from 'lucide-react'
 
 interface SettingsCard {
   icon: React.ReactNode
@@ -22,7 +22,6 @@ export default function SettingsPage() {
   const router = useRouter()
   const { isOwnerUser, companyRole, loading } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const lotMapEnabled = useFeatureFlag('lot_map')
   const whiteLabelEnabled = useFeatureFlag('white_label')
 
   const isAdmin = isOwnerUser || companyRole === 'admin'
@@ -59,14 +58,6 @@ export default function SettingsPage() {
       lockedLabel: !isAdmin ? 'Admin access required' : 'Contact us to enable',
       route: '/settings/branding',
       accessible: isAdmin && !!whiteLabelEnabled,
-    },
-    {
-      icon: <DollarSign size={20} />,
-      title: 'Lot Billing',
-      description: 'Set default storage rates for your lot',
-      lockedLabel: !isAdmin ? 'Admin access required' : 'Contact us to enable',
-      route: '/settings/lot-billing',
-      accessible: isAdmin && !!lotMapEnabled,
     },
   ]
 

@@ -38,3 +38,5 @@ next-env.d.ts
 # Editor backup artifacts
 *.bak
 *.current
+
+.vercel

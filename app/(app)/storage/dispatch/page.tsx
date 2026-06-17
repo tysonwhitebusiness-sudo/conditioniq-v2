@@ -108,17 +108,21 @@ export default function StorageDispatchPage() {
 
   if (dispatchEnabled === false) {
     return (
-      <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-          <Lock size={28} color="#94A3B8" />
+      <>
+        {!isDesktop && <MobilePageHeader />}
+        <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Lock size={28} color="#94A3B8" />
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
+            Dispatch is not enabled for your account.
+          </h2>
+          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
+            Contact us to get access.
+          </p>
         </div>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
-          Dispatch is not enabled for your account.
-        </h2>
-        <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
-          Contact us to get access.
-        </p>
-      </div>
+        <BottomNav />
+      </>
     )
   }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car, Receipt, Lock } from 'lucide-react'
@@ -508,12 +508,13 @@ export default function VehiclesPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  const searchParams = useSearchParams()
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('add=true')) {
+    if (searchParams.get('add') === 'true') {
       setShowAddVehicle(true)
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [])
+  }, [searchParams])
 
   function toggleVehicleSelect(id: string) {
     setSelectedVehicleIds(prev => {
@@ -671,7 +672,7 @@ export default function VehiclesPage() {
   // ── Browse mode ────────────────────────────────────────────────────────────
   return (
     <>
-    <LoadingOverlay show={loading && vehicles.length === 0} fullScreen />
+    <LoadingOverlay show={loading && vehicles.length === 0 && !showAddVehicle} fullScreen />
     {!isDesktop && <MobilePageHeader />}
     <div style={{ padding: isDesktop ? '24px 28px' : '16px', paddingTop: isDesktop ? '24px' : '16px', paddingBottom: isDesktop ? undefined : 'calc(80px + env(safe-area-inset-bottom))', maxWidth: 1400, margin: '0 auto' }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.veh-row:hover{background:#F8FAFC!important}`}</style>

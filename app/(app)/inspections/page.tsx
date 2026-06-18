@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QueuePage from '@/components/queue/queue-page'
+import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import { fetchFullInspectionAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
 
@@ -47,12 +48,15 @@ function InspectionsContent() {
   }
 
   return (
-    <QueuePage
-      initialTab={tab}
-      onStartInspection={handleStartInspection}
-      onResumeInspection={handleResumeInspection}
-      onViewReport={handleViewReport}
-    />
+    <>
+      <QueuePage
+        initialTab={tab}
+        onStartInspection={handleStartInspection}
+        onResumeInspection={handleResumeInspection}
+        onViewReport={handleViewReport}
+      />
+      <BottomNav />
+    </>
   )
 }
 

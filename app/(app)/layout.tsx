@@ -33,6 +33,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/lot-billing': 'Lot Billing',
   '/settings/members': 'Team Members',
   '/lot': 'Lot Map',
+  '/inspections': 'Inspections',
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

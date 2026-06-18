@@ -14,6 +14,7 @@ export async function fetchInspectionsByIds(ids: string[]) {
     .from('vehicle_inspections')
     .select('id, created_at, updated_at, status, usage_status, inspector_id, report_url, report_generated, report_generated_at')
     .in('id', ids)
+    .in('status', ['completed', 'submitted'])
     .order('created_at', { ascending: false })
   if (error) console.error('[inspections] fetchByIds', error)
   return data ?? []
@@ -27,9 +28,39 @@ export async function fetchInspectionsByVin(companyId: string, vin: string) {
     .select('id, created_at, updated_at, status, usage_status, inspector_id, report_url, report_generated, report_generated_at')
     .eq('company_id', companyId)
     .eq('vin', vin)
+    .in('status', ['completed', 'submitted'])
     .order('created_at', { ascending: false })
   if (error) console.error('[inspections] fetchByVin', error)
   return data ?? []
+}
+
+export async function findInProgressInspection(
+  companyId: string,
+  vin: string,
+): Promise<{ id: string; created_at: string; usage_status: string | null } | null> {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('vehicle_inspections')
+    .select('id, created_at, usage_status')
+    .eq('company_id', companyId)
+    .eq('vin', vin)
+    .eq('status', 'in_progress')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
+export async function markStaleInProgressAsAbandoned(companyId: string): Promise<void> {
+  const supabase = createClient()
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('vehicle_inspections')
+    .update({ status: 'abandoned' })
+    .eq('company_id', companyId)
+    .eq('status', 'in_progress')
+    .lt('created_at', cutoff)
+  if (error) console.error('[markStale]', error)
 }
 
 export async function updateVehicleLifecycleStatusAction(

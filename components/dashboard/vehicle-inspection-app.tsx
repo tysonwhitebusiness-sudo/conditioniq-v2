@@ -308,7 +308,6 @@ export default function VehicleInspectionApp() {
           onStartInspection={() => isDesktop ? handleStartInspection() : setShowVehiclePicker(true)}
           onResumeInspection={handleResumeInspection}
           onViewReport={handleViewReport}
-          onGoToQueue={() => setNavTab('queue')}
         />
       )}
       {navTab === 'queue' && (

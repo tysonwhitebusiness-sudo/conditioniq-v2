@@ -6,8 +6,8 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
 import { releaseVehicle, markVehicleOnLot, markVehiclePendingPickup } from '@/lib/storage-actions'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume } from '@/lib/inspection-server-actions'
-import { checkUsageState, checkExistingInspection, abandonInspection, type UsageState } from '@/lib/usage-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume, findInProgressInspection, markStaleInProgressAsAbandoned } from '@/lib/inspection-server-actions'
+import { checkUsageState, abandonInspection, type UsageState } from '@/lib/usage-actions'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
 import { type StepId } from '@/components/inspection-wizard/inspection-wizard'
 import { calculateVehicleBilling, type BillingType } from '@/lib/lot-actions'
@@ -221,7 +221,9 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [usageState, setUsageState] = useState<UsageState | null>(null)
   const [showUsageModal, setShowUsageModal] = useState(false)
   const [initiatingInspection, setInitiatingInspection] = useState(false)
-  const [resumeInspection, setResumeInspection] = useState<{ inspectionId: string; startedAt: string } | null>(null)
+  const [inProgressInsp, setInProgressInsp] = useState<{ id: string; created_at: string; usage_status: string | null } | null>(null)
+  const [showResumeConfirm, setShowResumeConfirm] = useState(false)
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false)
   const [wizardInitialData, setWizardInitialData] = useState<Record<string, any> | undefined>(undefined)
   const [wizardInitialStep, setWizardInitialStep] = useState<StepId | undefined>(undefined)
 
@@ -283,6 +285,13 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setBillToContact(vehicle.bill_to_contact ?? '')
   }, [vehicle?.id])
 
+  // ── Load in-progress inspection; mark stale (>48h) ones abandoned on first load
+  useEffect(() => {
+    if (!companyId || !vehicle?.vin) return
+    markStaleInProgressAsAbandoned(companyId).catch(() => {})
+    findInProgressInspection(companyId, vehicle.vin).then(setInProgressInsp).catch(() => {})
+  }, [companyId, vehicle?.vin])
+
   // ── Lazy load photos
   const loadPhotos = async () => {
     if (!companyId || !vehicle?.vin || photosLoaded || loadingPhotos) return
@@ -313,16 +322,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   // ── Start / resume inspection
   const handleStart = async () => {
     if (!effectiveCompany || !user || !vehicle) return
+    if (inProgressInsp) {
+      setShowAbandonConfirm(true)
+      return
+    }
     try {
-      const vehicleStatus = effectiveStatus(vehicle)
-      const isVehicleInProgress = vehicleStatus === 'pending_pickup'
-      if (isVehicleInProgress && vehicle.vin) {
-        const existing = await checkExistingInspection(effectiveCompany.id, vehicle.vin)
-        if (existing) {
-          setResumeInspection(existing)
-          return
-        }
-      }
       const usage = await checkUsageState(effectiveCompany.id)
       setUsageState(usage)
       setShowUsageModal(true)
@@ -331,10 +335,13 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     }
   }
 
-  const handleResumeExisting = async () => {
-    if (!resumeInspection) return
+  const handleResumeClick = () => setShowResumeConfirm(true)
+
+  const handleConfirmResume = async () => {
+    if (!inProgressInsp) return
+    setShowResumeConfirm(false)
     try {
-      const row = await loadInspectionForResume(resumeInspection.inspectionId)
+      const row = await loadInspectionForResume(inProgressInsp.id)
       if (row) {
         setWizardInitialData({
           vehicleInfo: row.vehicleInfo ?? {},
@@ -348,24 +355,24 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         })
         setWizardInitialStep(inferResumeStep(row))
       }
-      setCurrentInspectionId(resumeInspection.inspectionId)
-      setResumeInspection(null)
+      setCurrentInspectionId(inProgressInsp.id)
       setAppStep('inspecting')
     } catch (e: any) {
       setErrorMsg('Failed to resume: ' + e.message)
     }
   }
 
-  const handleStartFreshFromResume = async () => {
-    if (!resumeInspection || !effectiveCompany) return
+  const handleConfirmAbandon = async () => {
+    if (!inProgressInsp || !effectiveCompany) return
+    setShowAbandonConfirm(false)
     try {
-      await abandonInspection(resumeInspection.inspectionId)
-      setResumeInspection(null)
+      await abandonInspection(inProgressInsp.id)
+      setInProgressInsp(null)
       const usage = await checkUsageState(effectiveCompany.id)
       setUsageState(usage)
       setShowUsageModal(true)
     } catch (e: any) {
-      setErrorMsg('Failed to start fresh: ' + e.message)
+      setErrorMsg('Failed to abandon inspection: ' + e.message)
     }
   }
 
@@ -440,6 +447,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     if (effectiveCompany?.id && vehicle?.vin) {
       await updateVehicleLifecycleStatusAction(effectiveCompany.id, vehicle.vin, data.inspectionId, data.vehicleInfo?.inspectionType ?? 'standard', data.scoreResult?.score ?? null, params.vehicleId).catch(console.error)
     }
+    setInProgressInsp(null)
     setAppStep('view')
     setCurrentInspectionId(null)
     await fetchVehicle()
@@ -537,7 +545,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         initialStep={wizardInitialStep}
         inspectorId={user?.id}
         onComplete={handleWizardComplete}
-        onCancel={() => { setAppStep('view'); setCurrentInspectionId(null); setWizardInitialData(undefined); setWizardInitialStep(undefined) }}
+        onCancel={() => {
+          setAppStep('view'); setCurrentInspectionId(null); setWizardInitialData(undefined); setWizardInitialStep(undefined)
+          if (companyId && vehicle?.vin) findInProgressInspection(companyId, vehicle.vin).then(setInProgressInsp).catch(() => {})
+        }}
       />
     )
   }
@@ -564,7 +575,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
   const canStart = ['pending_arrival', 'on_lot', 'pending_pickup'].includes(status)
   const canDispatch = ['pending_arrival', 'on_lot'].includes(status)
-  const isResume = status === 'pending_pickup'
 
   return (
     <>
@@ -660,10 +670,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       {(canStart || canDispatch || status === 'pending_arrival' || status === 'on_lot' || status === 'pending_pickup') && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           {canStart && (
-            <button onClick={handleStart}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: isResume ? '#00B4D8' : '#F4A62A', color: isResume ? '#FFF' : '#0D1B2A', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Play size={15} />{isResume ? 'Resume Inspection' : 'Start Inspection'}
-            </button>
+            inProgressInsp ? (
+              <button onClick={handleResumeClick}
+                style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Play size={15} />Resume Inspection
+              </button>
+            ) : (
+              <button onClick={handleStart}
+                style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Play size={15} />Start Inspection
+              </button>
+            )
           )}
           {canDispatch && (
             <button onClick={() => router.push(dispatchEnabled ? `/storage/dispatch?vin=${vehicle.vin}` : '/storage/dispatch')}
@@ -705,9 +722,12 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Completed inspections */}
             {inspections.map((insp, idx) => {
               const rawDate = insp.report_generated_at ?? insp.created_at
-              const dateStr = rawDate ? new Date(rawDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+              const ts = rawDate ? new Date(rawDate) : null
+              const dateStr = ts ? ts.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+              const timeStr = ts ? ts.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : ''
               const inspector = (insp.inspector as any)?.full_name ?? null
               const usage: string = insp.usage_status ?? ''
               const typeLabel = usage === 'checkin' ? 'Check-In' : usage === 'checkout' ? 'Check-Out' : 'Standard'
@@ -719,35 +739,31 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               return (
                 <div key={insp.id}
                   style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  {/* Type badge */}
                   <span style={{ background: typeBg, color: typeColor, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {typeLabel}
                   </span>
-
-                  {/* Date + inspector */}
                   <div style={{ flex: 1, minWidth: 120 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>Report #{inspNum} · {dateStr}</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>Report #{inspNum} · {dateStr}{timeStr ? ` at ${timeStr}` : ''}</p>
                     {inspector && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>}
                   </div>
-
-                  {/* View PDF — stored URL if available, generate on the fly otherwise */}
                   <button
                     onClick={async () => {
-                      if (reportUrl) {
-                        const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
-                        if (url) { window.open(url, '_blank'); return }
-                      }
-                      // No stored report — generate from saved inspection data
-                      const full = await fetchFullInspectionAction(insp.id)
-                      if (!full) { setErrorMsg('Inspection data not found'); return }
-                      const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
-                        import('@/lib/vehicle-score'),
-                        import('@/lib/pdf-generator'),
-                      ])
-                      await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
+                      try {
+                        if (reportUrl) {
+                          const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
+                          if (url) { window.open(url, '_blank'); return }
+                        }
+                        const full = await fetchFullInspectionAction(insp.id)
+                        if (!full) { setErrorMsg('Inspection data not found'); return }
+                        const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
+                          import('@/lib/vehicle-score'),
+                          import('@/lib/pdf-generator'),
+                        ])
+                        await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
+                      } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
                     }}
-                    style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: reportUrl ? '#00B4D8' : '#4A5568', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                    <ExternalLink size={12} /> {reportUrl ? 'View PDF' : 'Generate PDF'}
+                    style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <Download size={12} />Download PDF
                   </button>
                 </div>
               )
@@ -1030,23 +1046,46 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       <BottomNav />
     </div>
 
-    {/* Resume inspection prompt */}
-    {resumeInspection && (
+    {/* Resume confirmation modal (Rule 3) */}
+    {showResumeConfirm && (
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setResumeInspection(null)} />
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowResumeConfirm(false)} />
         <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: '0 0 8px' }}>Resume Inspection?</h2>
           <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
-            An inspection for this vehicle is already in progress (started {new Date(resumeInspection.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}). Resume to continue where you left off, or start fresh.
+            You'll continue from where you left off.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={handleResumeExisting}
-              style={{ height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowResumeConfirm(false)}
+              style={{ flex: 1, height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Cancel
+            </button>
+            <button onClick={handleConfirmResume}
+              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               Resume
             </button>
-            <button onClick={handleStartFreshFromResume}
-              style={{ height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Start Fresh
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Abandon + start new confirmation modal (Rule 1) */}
+    {showAbandonConfirm && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowAbandonConfirm(false)} />
+        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: '0 0 8px' }}>Inspection Already In Progress</h2>
+          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+            Starting a new inspection will abandon your current one. Any progress will be lost.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowAbandonConfirm(false)}
+              style={{ flex: 1, height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Cancel
+            </button>
+            <button onClick={handleConfirmAbandon}
+              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Start New
             </button>
           </div>
         </div>

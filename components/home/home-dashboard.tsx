@@ -14,7 +14,6 @@ interface Props {
   onStartInspection: () => void
   onResumeInspection: (data: any) => void
   onViewReport: (data: any) => void
-  onGoToQueue?: () => void
 }
 
 type VehicleStatus = 'pending_arrival' | 'on_lot' | 'picked_up'
@@ -72,7 +71,7 @@ function StatCard({ value, label, selected, accent, onClick, loading }: StatCard
   )
 }
 
-export default function HomeDashboard({ onStartInspection, onResumeInspection, onViewReport, onGoToQueue }: Props) {
+export default function HomeDashboard({ onStartInspection, onResumeInspection, onViewReport }: Props) {
   const { effectiveCompany, user, userProfile, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
@@ -186,11 +185,9 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
           <AlertTriangle size={16} color="#F59E0B" style={{ flexShrink: 0 }} />
           <p style={{ flex: 1, fontSize: 13, fontWeight: 500, color: '#92400E', margin: 0 }}>
             {expiringCount} inspection{expiringCount !== 1 ? 's' : ''} will auto-complete in less than 4 hours.{' '}
-            {onGoToQueue && (
-              <button onClick={onGoToQueue} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#D97706', fontWeight: 600, fontSize: 13, textDecoration: 'underline' }}>
-                Resume now →
-              </button>
-            )}
+            <button onClick={() => router.push('/inspections?tab=in_progress')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#D97706', fontWeight: 600, fontSize: 13, textDecoration: 'underline' }}>
+              Resume now →
+            </button>
           </p>
           <button onClick={() => setWarningDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}>
             <X size={16} color="#92400E" />

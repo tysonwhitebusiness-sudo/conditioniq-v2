@@ -5,6 +5,11 @@ export async function generateInspectionPDF(
   scoreResult: ScoreResult,
   signatureUrl: string
 ): Promise<string | null> {
+  const inspStatus = inspectionData.status as string | undefined
+  if (inspStatus && !['completed', 'submitted'].includes(inspStatus)) {
+    throw new Error(`PDF generation refused: inspection status is "${inspStatus}". Only completed inspections can generate reports.`)
+  }
+
   const React = (await import('react')).default
   const { pdf } = await import('@react-pdf/renderer')
   const { default: InspectionReport } = await import('./pdf-report')

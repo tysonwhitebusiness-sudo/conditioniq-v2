@@ -181,12 +181,19 @@ function InProgressCard({ item, isDesktop, onResume }: { item: any; isDesktop: b
 function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }: {
   item: any; isDesktop: boolean; onView: () => void; onShare: () => void; onSend: () => void; shareSuccess: boolean
 }) {
+  const usage: string = item.usage_status ?? ''
+  const typeLabel = usage === 'checkin' ? 'Check-In' : usage === 'checkout' ? 'Check-Out' : 'Standard'
+  const typeColor = usage === 'checkin' ? '#0369A1' : usage === 'checkout' ? '#065F46' : '#4A5568'
+  const typeBg   = usage === 'checkin' ? '#DBEAFE' : usage === 'checkout' ? '#D1FAE5' : '#F0F4F8'
+
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderLeft: '4px solid #10B981', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 16 : 12, padding: isDesktop ? '12px 20px' : '12px 16px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <NameRow item={item} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: typeBg, color: typeColor, flexShrink: 0 }}>
+              {typeLabel}
+            </span>
             {item.auto_completed && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -197,6 +204,7 @@ function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }:
               </span>
             )}
           </div>
+          <NameRow item={item} />
           <VinRow item={item} />
           <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>{formatDate(item.created_at)}</p>
         </div>
@@ -211,7 +219,7 @@ function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }:
                 fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}
             >
-              View Report
+              Download PDF
             </button>
           ) : (
             <button
@@ -222,7 +230,7 @@ function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }:
                 border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
               }}
             >
-              View
+              PDF
             </button>
           )}
           <button

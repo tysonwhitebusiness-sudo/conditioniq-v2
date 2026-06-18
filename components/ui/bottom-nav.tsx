@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, LayoutGrid, DollarSign, Lock } from 'lucide-react'
+import { Home, Car, Plus, LayoutGrid, ClipboardList, Lock } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -20,7 +20,6 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
   const router = useRouter()
   const [showStartSheet, setShowStartSheet] = useState(false)
   const lotMapEnabled = useFeatureFlag('lot_map')
-  const lotBillingEnabled = useFeatureFlag('lot_billing')
 
   if (isDesktop) return null
 
@@ -87,10 +86,10 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
             </button>
           </div>
 
-          {/* Right tabs — fixed: Lot + Lot Billing */}
+          {/* Right tabs */}
           <div style={{ flex: 1, display: 'flex' }}>
             {tabBtn('lot', LayoutGrid, 'Lot', '/lot', lotMapEnabled === false)}
-            {tabBtn('lot-billing', DollarSign, 'Lot Billing', '/lot-billing', lotBillingEnabled === false)}
+            {tabBtn('inspections', ClipboardList, 'Inspections', '/inspections')}
           </div>
         </div>
       </div>

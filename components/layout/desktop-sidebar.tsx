@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock,
+  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock, ClipboardList,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -75,9 +75,10 @@ export default function DesktopSidebar({
   }
 
   const inspItems: NavItem[] = [
-    { id: 'start',       label: 'Start Inspection', icon: <Play size={18} />,      type: 'action' as const },
-    { id: 'vehicles',    label: 'Vehicles',          icon: <Car size={18} />,       type: 'route', route: '/vehicles' },
-    { id: 'dispatch',    label: 'Dispatch',           icon: <Send size={18} />,      type: 'route' as const, route: '/storage/dispatch' },
+    { id: 'start',        label: 'Start Inspection', icon: <Play size={18} />,          type: 'action' as const },
+    { id: 'vehicles',     label: 'Vehicles',          icon: <Car size={18} />,           type: 'route', route: '/vehicles' },
+    { id: 'inspections',  label: 'Inspections',       icon: <ClipboardList size={18} />, type: 'route' as const, route: '/inspections' },
+    { id: 'dispatch',     label: 'Dispatch',           icon: <Send size={18} />,          type: 'route' as const, route: '/storage/dispatch' },
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
     { id: 'lot',         label: 'Lot',               icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' },
     { id: 'lot-billing', label: 'Lot Billing',       icon: <DollarSign size={18} />, type: 'route' as const, route: '/lot-billing' },

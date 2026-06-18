@@ -606,27 +606,30 @@ export async function getVehiclesNeedingAttention(companyId: string) {
 export async function releaseVehicle(vehicleId: string): Promise<void> {
   const supabase = createClient()
   const now = new Date()
-  await supabase.from('storage_vehicles').update({
+  const { error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'picked_up',
     status: 'released',
     released_at: now.toISOString(),
     released_date: now.toISOString().split('T')[0],
     updated_at: now.toISOString(),
   }).eq('id', vehicleId)
+  if (error) throw error
 }
 
 export async function markVehiclePendingPickup(vehicleId: string): Promise<void> {
   const supabase = createClient()
-  await supabase.from('storage_vehicles').update({
+  const { error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'pending_pickup',
     updated_at: new Date().toISOString(),
   }).eq('id', vehicleId)
+  if (error) throw error
 }
 
 export async function markVehicleOnLot(vehicleId: string): Promise<void> {
   const supabase = createClient()
-  await supabase.from('storage_vehicles').update({
+  const { error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'on_lot',
     updated_at: new Date().toISOString(),
   }).eq('id', vehicleId)
+  if (error) throw error
 }

@@ -26,7 +26,7 @@ export async function checkUsageState(companyId: string): Promise<UsageState> {
 
   const used = company?.reports_used ?? 0
   const plan = getPlan(company?.subscription_tier)
-  const included = plan.reportsIncluded
+  const included = company?.reports_included ?? plan.reportsIncluded
   const remaining = Math.max(0, included - used)
   const percentUsed = included > 0 ? (used / included) * 100 : 100
 

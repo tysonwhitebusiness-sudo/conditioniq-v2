@@ -8,6 +8,7 @@ import BrandingPage from '@/components/settings/branding-page'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { Lock } from 'lucide-react'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 
 export default function BrandingSettingsPage() {
   const { user, loading, isOwnerUser, companyRole } = useAuth()
@@ -20,6 +21,7 @@ export default function BrandingSettingsPage() {
   }, [user, loading, isOwnerUser, companyRole, router])
 
   if (loading || !user) return null
+  if (whiteLabelEnabled === null) return <LoadingOverlay show fullScreen />
   if (whiteLabelEnabled === false) {
     return (
       <>

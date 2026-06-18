@@ -1274,3 +1274,261 @@ Centered modal:
 | `/fleet/*` | FMC/fleet role — not applicable to QA Storage account |
 | Completed report share view | `/inspect/{shareToken}` — SharedInspectionView component |
 | Mobile bottom tab navigation | Broken in screenshot workflow — document separately with real device |
+
+---
+
+## GUIDE 3 — RUNNING INSPECTIONS (CORRECTED — replaces prior Guide 3)
+
+> Corrected: 2026-06-18. Prior Guide 3 documented a 3-option Start Inspection menu and did not reflect the required Baseline Vehicle Photo or Cancel button.
+
+### G3-01 — Start Inspection Entry Point
+- Button: "Start Inspection" — orange, top-right on most pages (inventory, lot, dispatch)
+- With **dispatch OFF**: clicking opens the inspection sheet directly at the VIN form (no menu)
+- With **dispatch ON**: clicking shows a 2-option menu first
+
+### G3-02 — Start Inspection Menu (dispatch ON only)
+Two options shown as large tappable rows:
+1. **Start Inspection** — orange circle, Car icon | "Run an inspection yourself" → advances to VIN form
+2. **Dispatch** — dark (#0D1B2A) circle, Send icon | "Send to a remote inspector" → navigates to `/storage/dispatch`
+
+> ⚠️ BUG (as of v5): Navigating to `/storage/dispatch` switches the active company context from the correct company to a different account. Navigate to `/` to restore context after visiting dispatch.
+
+### G3-03 — VIN Entry Form
+- 17-character VIN field (validates length; "Start" button disabled until 17 chars)
+- With dispatch ON: "Back" button in sheet header returns to the 2-option menu
+- "Start" button becomes active at exactly 17 characters
+
+### G3-04 — Usage Confirmation Modal
+Shown before starting an inspection. Two modes:
+
+**Normal mode (under plan limit):**
+- Cyan Car icon
+- Title: "Start Inspection?"
+- Subtitle: "Completing this inspection will use 1 report from your {planName} plan."
+- Usage bar: cyan, shows "Reports used / {included}"
+- Warning strip (≥80% used): amber background, "You've used {pct}% of your monthly limit."
+- 24-hour notice (Clock icon): "You have **24 hours** to complete this inspection. If left inactive, it will be auto-cancelled at no charge."
+- Buttons: "Cancel" (white/grey border) | "Confirm & Start" (cyan)
+
+**Overage mode (at or over plan limit):**
+- Red AlertTriangle icon
+- Title: "Plan limit reached"
+- Subtitle: "You've used all {included} reports this month."
+- Overage card: red background, "Overage rate: ${rate} per report"
+- Buttons: "Cancel" | "Confirm Overage & Start" (red)
+
+### G3-05 — Inspection Wizard: Step 1 — Vehicle Info
+- **VIN field**: auto-filled and locked (grey) when started from a vehicle record or dispatch; editable otherwise
+- **Baseline Vehicle Photo**: NOW REQUIRED (marked required=true). Cannot advance without uploading a photo.
+- `canAdvance = isVinComplete && hasPhoto` — both conditions must be true for Next to enable
+- **Inspection type** (Check-In / Check-Out): auto-inferred from vehicle lifecycle status via `inferInspectionType`; can be overridden manually
+
+### G3-06 — Inspection Wizard: Subsequent Steps
+Steps vary by inspection type (Check-In vs Check-Out). Each step shows a dark sticky header with:
+- Back arrow (returns to previous step, or step 0 → shows Cancel dialog)
+- Step title
+- Progress indicator
+
+### G3-07 — Cancel Button Behavior
+- Available on step 1+ via the back arrow on step 0
+- Clicking back arrow on **step 0** (first step) opens the Cancel dialog (not a back navigation)
+- **Cancel dialog:**
+  - Title: "Cancel Inspection?"
+  - Body: "This inspection will be cancelled. No report will be charged for cancelled inspections."
+  - Buttons: "Keep Going" (white/border) | "Cancel" (red #EF4444)
+  - Confirming Cancel calls `abandonInspection(inspectionId)` + `onCancel()`
+- No report charge is incurred for cancelled inspections
+
+### G3-08 — Completing an Inspection
+- Final step has a "Submit" / "Complete" button
+- On completion: lifecycle status updates, report is generated and counted against plan usage
+- Completed inspections appear in the Reports list
+
+---
+
+## GUIDE 5 — LOT MANAGEMENT (CORRECTED — replaces prior Guide 5)
+
+> Corrected: 2026-06-18. Prior Guide 5 documented a 7-status legend and did not clarify the lot_map vs lot_billing flag distinction.
+
+### G5-01 — Feature Flag Requirements
+- **`lot_map` flag**: gates the `/lot` page entirely. Without it, the page shows a lock icon: "Lot Map is not enabled for your account."
+- **`lot_billing` flag**: gates the `/lot-billing` route (Billing Defaults + Invoice History). Does NOT gate the `/lot` page or its billing stat chips.
+- Both flags can be independently enabled. The lot page billing stat chips (Accruing/day, Empty cost/day) are **data-driven**, not flag-gated — they appear whenever billing data exists.
+
+### G5-02 — Lot Page Overview (`/lot`)
+- Shows a grid of parking spots
+- Each spot is colored by vehicle lifecycle status
+- Stat chips at top: "Accruing/day" (total daily revenue from occupied spots) and "Empty cost/day" (opportunity cost from empty spots, only if company has `default_daily_rate` set)
+
+### G5-03 — Lot Map Legend (CORRECTED — 5-status model)
+The legend as it **should** display (matching actual spot colors in code):
+
+| Color | Hex | Status Label |
+|-------|-----|--------------|
+| Light grey | `#E1E8F0` | Empty |
+| Slate | `#94A3B8` | Pending Arrival |
+| Cyan | `#00B4D8` | On Lot |
+| Amber | `#F4A62A` | Pending Pickup |
+| Green | `#10B981` | Picked Up |
+| Purple | `#9333EA` | Completed |
+
+> ⚠️ BUG: As of v5, the displayed legend on `/lot` still shows the old 7-status model (In Progress, One-Off, Releasing, Released) which does not match the actual spot colors. Completed (purple) is not in the legend at all. This is a known discrepancy between `lot-grid.tsx` (SPOT_COLOR — correct) and `storage-lot-view.tsx` (LEGEND — outdated).
+
+### G5-04 — Spot Interaction
+- Click a spot to open vehicle details / quick actions
+- Empty spots may allow assigning a vehicle (if implemented)
+
+### G5-05 — Billing Stat Chips
+- **Accruing/day**: sum of daily rates for all occupied spots with active billing
+- **Empty cost/day**: `available_spots × default_daily_rate` — only visible if company has a default daily rate configured
+- These chips appear based on data, not the `lot_billing` flag
+
+---
+
+## GUIDE 6 — BILLING (`/lot-billing`)
+
+> Requires `lot_billing` feature flag to be enabled.
+
+### G6-01 — Page Access
+- Route: `/lot-billing`
+- Navigation: appears in sidebar when `lot_billing` flag is ON
+- Page title: "Lot Billing"
+- Two sections: BILLING DEFAULTS and INVOICE HISTORY
+
+### G6-02 — Billing Defaults
+Controls company-wide billing settings:
+- **Billing type toggle**: Daily / Monthly
+- **Daily rate field**: default rate per vehicle per day (drives the "Empty cost/day" chip on the lot page)
+- **Monthly rate field**: default rate per vehicle per month
+- **Save Defaults** button — saves changes
+
+### G6-03 — Invoice History
+- Table of past invoices (columns vary; includes invoice date, amount, status)
+- Empty state shown as "No invoices yet" or similar when no invoices exist
+- As of v5 QA: invoice history was empty for the QA account
+
+### G6-04 — Single-Vehicle Invoice Flow
+Triggered from the individual vehicle detail page (`/inventory/[vehicleId]`):
+1. Navigate to vehicle detail
+2. Click billing/invoice action button
+3. If accrued amount is $0: "$0 Invoice" warning modal appears:
+   - Title: "$0 Invoice"
+   - Body: "This vehicle has accrued $0.00. Generate a $0 invoice anyway?"
+   - Buttons: "Cancel" | "Generate Anyway" (closes warning, opens invoice modal)
+4. Invoice modal: review dates, rate, total
+5. Generate invoice → appears in Invoice History
+
+### G6-05 — Bulk Invoice Flow (5 steps)
+Triggered from `/lot-billing` or bulk action on lot page.
+
+**Step 1 — Vehicle Selection**
+- Multi-select vehicles from list
+- Can select across multiple vehicles/clients
+
+**Step 2 — Date Range**
+- Select billing period start and end dates
+
+**Step 3 — Smart Date Resolution**
+- Warns about edge cases: vehicles that arrived after start date, vehicles released before end date, overlapping prior invoices
+- User reviews and confirms or adjusts
+
+**Step 4 — Rate Review**
+- Shows per-vehicle breakdown: days × rate = subtotal
+- User can override individual rates
+
+**Step 5 — Bill To + Preview**
+- **Bill To (sub-client) logic:**
+  - If all selected vehicles share the same `sub_client_name`: field is auto-populated
+  - If vehicles have different `sub_client_name` values: field is blank with hint "Multiple clients selected — enter a Bill To name manually."
+  - If no vehicles have `sub_client_name`: field is blank, no hint
+  - Step 5 cannot proceed (Generate button disabled) until `billToName.trim().length > 0`
+- Shows invoice preview (line items, total)
+- **Generate** button creates the invoice and adds it to Invoice History
+
+### G6-06 — PDF Invoice Colors (White Label)
+- When `white_label` flag is ON, PDF invoices use brand colors from `/settings/branding`:
+  - **Header Background**: color picker, sets PDF invoice header color
+  - **Accent Stripe**: color picker, sets accent stripe color
+- When `white_label` is OFF, PDFs use default Condition IQ brand colors
+- Logo set in branding appears on PDF invoices
+
+---
+
+## GUIDE 7 — SETTINGS
+
+### G7-01 — Settings Hub (`/settings`)
+Hub page with cards linking to sub-pages:
+- **Profile** → `/settings/profile`
+- **Billing & Plan** → `/billing`
+- **Team Members** → `/settings/members`
+- **Branding** → `/settings/branding` (shown as "Contact us to enable" if `white_label` OFF)
+- **What's New** → changelog/release notes
+
+### G7-02 — Profile (`/settings/profile`)
+Three sections:
+- **PERSONAL INFO**: Full Name (editable), Email (read-only)
+- **ORGANIZATION**: Company Name (editable by owner only)
+- **CHANGE PASSWORD**: current password + new password fields
+
+### G7-03 — Team Members (`/settings/members`)
+- Page header: "Team Members / {Company Name} · {N} members"
+- **No self-service Add Member form** (as of v5). Prior documentation showing an email + role dropdown was outdated.
+- Current flow: "Email the Condition IQ team" to add members
+- Lists existing members (if any) with role badges
+
+### G7-04 — Branding (`/settings/branding`)
+> Requires `white_label` feature flag. Without it, the Settings hub card shows "Contact us to enable."
+
+Sections:
+- **CURRENT LOGO**: displays current logo or placeholder if none uploaded
+- **BUSINESS NAME ON REPORTS**: text field + Save button (appears on generated PDF reports)
+- **PDF BRAND COLORS**:
+  - Header Background color picker
+  - Accent Stripe color picker
+  - Live preview panel
+  - "Save Colors" button
+- **UPLOAD NEW LOGO**: drag-and-drop zone for logo image upload
+
+---
+
+## GUIDE 8 — PLAN & USAGE (`/billing`)
+
+### G8-01 — Page Overview
+Route: `/billing` (also reachable via Settings hub → Billing & Plan)
+Page title: "Billing & Usage"
+
+### G8-02 — Sections
+**CURRENT PLAN**
+- Plan name (e.g., "Pro")
+- Monthly price (e.g., $399/mo)
+- Included reports per month (e.g., 200)
+- Overage rate per report (e.g., $2.50)
+
+**USAGE THIS CYCLE**
+- Reports used this billing cycle out of included total (e.g., "1 of 200")
+- Visual usage bar
+
+**ESTIMATED NEXT INVOICE**
+- Dollar amount based on plan + accrued overages (e.g., $399)
+
+**REPORTS CHART**
+- Bar chart: daily report count over last 14 days
+
+**USAGE HISTORY**
+- Table of past billing cycles with usage and invoice amounts
+- Note: as of v5, invoice history section was removed from this page (it moved to `/lot-billing`). The `/billing` page shows usage history (cycles, counts) but not downloadable invoice PDFs.
+
+### G8-03 — Plan Changes
+- No self-service plan upgrade/downgrade UI visible on this page as of v5
+- Contact Condition IQ team to change plans
+
+---
+
+## ISSUES OBSERVED (v5 QA — 2026-06-18)
+
+| ID | Severity | Description |
+|----|----------|-------------|
+| BUG-01 | HIGH | Company context switches from "QA Test Storage" (PRO) to "Q" (FREE) when navigating to `/storage/dispatch` or clicking Dispatch in Start Inspection menu. Workaround: navigate to `/` to restore. |
+| BUG-02 | MEDIUM | Lot page legend shows old 7-status model; actual spot colors use new 5-status model. Completed (purple) is absent from legend entirely. |
+| BUG-03 | LOW | $0 invoice warning modal path confirmed working but edge case — vehicles with $0 accrued show warning before invoice modal. |
+

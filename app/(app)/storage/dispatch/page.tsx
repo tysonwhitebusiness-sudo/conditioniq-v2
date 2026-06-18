@@ -10,6 +10,7 @@ import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 
 function Skeleton({ h = 40, r = 8 }: { h?: number; r?: number }) {
   return <div style={{ height: h, borderRadius: r, background: '#F0F4F8', animation: 'pulse 1.5s ease infinite' }} />
@@ -106,6 +107,7 @@ export default function StorageDispatchPage() {
     load()
   }
 
+  if (dispatchEnabled === null) return <LoadingOverlay show fullScreen />
   if (dispatchEnabled === false) {
     return (
       <>

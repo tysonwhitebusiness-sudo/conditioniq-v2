@@ -8,6 +8,7 @@ import { saveLotBillingDefaultsAction } from '@/lib/lot-server-actions'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { DollarSign, Check, FileText, ExternalLink, ChevronRight, Layers, Loader2 } from 'lucide-react'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 import { getCompanyInvoices, getInvoiceSignedUrl, updateInvoiceStatus, type LotInvoice } from '@/lib/invoice-actions'
 import { updateBulkInvoiceStatus, getBulkInvoiceSignedUrl } from '@/lib/bulk-invoice-actions'
 
@@ -140,9 +141,12 @@ export default function LotBillingPage() {
           <div>
             <p style={sectionLabel}>Billing Defaults</p>
             {loading ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94A3B8', fontSize: 14 }}>Loading…</div>
+              <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20, minHeight: 80 }}>
+                <LoadingOverlay show />
+              </div>
             ) : (
-              <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+                <LoadingOverlay show={saving} />
                 <div style={{ marginBottom: 20 }}>
                   <label style={labelStyle}>Default Billing Type</label>
                   <div style={{ display: 'flex', background: '#F0F4F8', borderRadius: 10, padding: 3 }}>

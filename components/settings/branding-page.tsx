@@ -9,6 +9,7 @@ import { createLogoUploadUrl, saveLogoPath, removeLogo, getLogoSignedUrl, saveBu
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { ArrowLeft, Upload, X, Image as ImageIcon, Check, Building2 } from 'lucide-react'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_SIZE_MB = 5
@@ -161,12 +162,13 @@ export default function BrandingPage() {
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#94A3B8', fontSize: 14 }}>Loading…</div>
+          <LoadingOverlay show fullScreen />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* Current Logo */}
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <LoadingOverlay show={removing} />
               <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Current Logo</p>
               {currentLogoUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -192,7 +194,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Business Name */}
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <LoadingOverlay show={nameSaving} />
               <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Business Name on Reports</p>
               <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 12px', lineHeight: 1.5 }}>
                 Appears alongside your logo on PDF reports and invoices.
@@ -215,7 +218,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Brand Colors */}
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <LoadingOverlay show={colorSaving} />
               <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>PDF Brand Colors</p>
               <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 16px', lineHeight: 1.5 }}>
                 Customize the header background and accent stripe on inspection reports and invoices.
@@ -291,7 +295,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Upload */}
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+              <LoadingOverlay show={uploading} />
               <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Upload New Logo</p>
 
               <div

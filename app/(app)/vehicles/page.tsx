@@ -18,6 +18,8 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import BulkBillingModal, { type BulkVehicle } from '@/components/billing/bulk-billing-modal'
+import { calculateVehicleBilling } from '@/lib/lot-actions'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -636,14 +638,87 @@ export default function VehiclesPage() {
     setReportsLoading(false)
   }
 
-  const exportCSV = () => {
-    const hdrs = ['VIN', 'Year', 'Make', 'Model', 'Status', 'Days on Lot', 'Location', 'Check-In Score', 'Check-Out Score']
+  const exportCSV = async () => {
+    // Wrap in quotes if value contains commas, quotes, or newlines
+    const esc = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return ''
+      const s = String(val)
+      return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+
+    // Collect inspection IDs needed for check-in / check-out scores
+    const inspIds = new Set<string>()
+    for (const v of filtered) {
+      if (v.checkin_inspection_id) inspIds.add(v.checkin_inspection_id)
+      if (v.checkout_inspection_id) inspIds.add(v.checkout_inspection_id)
+    }
+
+    // Batch-fetch scores and dates in a single query
+    const scoreMap = new Map<string, { score: number | null; date: string | null }>()
+    if (inspIds.size > 0) {
+      const { data: inspRows } = await createClient()
+        .from('vehicle_inspections')
+        .select('id, vehicle_score, completed_at, created_at')
+        .in('id', Array.from(inspIds))
+      for (const row of (inspRows ?? [])) {
+        scoreMap.set(row.id, { score: row.vehicle_score ?? null, date: row.completed_at ?? row.created_at ?? null })
+      }
+    }
+
+    // Fetch company billing defaults for accrued-amount calculation
+    const { data: companyData } = await createClient()
+      .from('companies')
+      .select('default_billing_type, default_daily_rate, default_monthly_rate')
+      .eq('id', companyId)
+      .single()
+    const companyBilling = companyData ?? { default_billing_type: null, default_daily_rate: null, default_monthly_rate: null }
+
+    const headers = [
+      'VIN', 'Year', 'Make', 'Model', 'Status', 'Intake Date', 'Picked Up Date', 'Days on Lot',
+      'Billing Type', 'Rate', 'Accrued Amount', 'Sub Client Name',
+      'Check-In Score', 'Check-In Date', 'Check-Out Score', 'Check-Out Date',
+    ]
+
+    // checkin_inspection_id / checkout_inspection_id are updated to the most recent inspection
+    // of each type on every completion, so these already reflect the latest check-in / check-out.
+    // If a different rule is wanted (e.g. first check-in, not most recent), revisit here.
     const rows = filtered.map(v => {
       const days = daysOnLot(v.arrived_at, v.released_at, v._status)
-      return [v.vin, v.year ?? '', v.make ?? '', v.model ?? '', v._status, days ?? '', v.location?.name ?? '', '', '']
+      const billing = calculateVehicleBilling(v, companyBilling)
+      const statusLabel = STATUS_CFG[v._status as LifecycleStatus]?.label ?? v._status ?? ''
+      const intakeDate = v.arrived_at ? new Date(v.arrived_at).toLocaleDateString() : ''
+      const pickedUpDate = (v.released_date || v.released_at)
+        ? new Date(v.released_date ?? v.released_at).toLocaleDateString() : ''
+
+      const ciInsp = v.checkin_inspection_id ? scoreMap.get(v.checkin_inspection_id) : undefined
+      const coInsp = v.checkout_inspection_id ? scoreMap.get(v.checkout_inspection_id) : undefined
+
+      return [
+        esc(v.vin),
+        esc(v.year),
+        esc(v.make),
+        esc(v.model),
+        esc(statusLabel),
+        esc(intakeDate),
+        esc(pickedUpDate),
+        esc(days),
+        esc(billing.billingType === 'daily' ? 'Daily' : 'Monthly'),
+        esc(billing.rate),
+        esc(billing.accruedAmount !== null ? billing.accruedAmount.toFixed(2) : null),
+        esc(v.sub_client_name),
+        esc(ciInsp?.score ?? null),
+        esc(ciInsp?.date ? new Date(ciInsp.date).toLocaleDateString() : null),
+        esc(coInsp?.score ?? null),
+        esc(coInsp?.date ? new Date(coInsp.date).toLocaleDateString() : null),
+      ].join(',')
     })
-    const csv = [hdrs, ...rows].map(r => r.join(',')).join('\n')
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `vehicles-${new Date().toISOString().slice(0, 10)}.csv` })
+
+    const csv = [headers.join(','), ...rows].join('\n')
+    const date = new Date().toISOString().slice(0, 10)
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+      download: `condition-iq-vehicles-${date}.csv`,
+    })
     a.click()
   }
 
@@ -664,6 +739,7 @@ export default function VehiclesPage() {
   // ── Browse mode ────────────────────────────────────────────────────────────
   return (
     <>
+    <LoadingOverlay show={loading && vehicles.length === 0} fullScreen />
     {!isDesktop && <MobilePageHeader />}
     <div style={{ padding: isDesktop ? '24px 28px' : '16px', paddingTop: isDesktop ? '24px' : '16px', paddingBottom: isDesktop ? undefined : 'calc(80px + env(safe-area-inset-bottom))', maxWidth: 1400, margin: '0 auto' }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.veh-row:hover{background:#F8FAFC!important}`}</style>
@@ -843,11 +919,11 @@ export default function VehiclesPage() {
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                           {v._status === 'pending_arrival' && <>
                             <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
-                            <button onClick={() => dispatchEnabled ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch
                             </button>
                           </>}
-                          {v._status === 'on_lot' && <button onClick={() => dispatchEnabled ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
+                          {v._status === 'on_lot' && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
                           {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
                           {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                           <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
@@ -908,7 +984,7 @@ export default function VehiclesPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                       {v._status === 'pending_arrival' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
-                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => dispatchEnabled ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
+                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
                       {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
                       {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                       <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
@@ -926,7 +1002,7 @@ export default function VehiclesPage() {
       {showAddVehicle && (
         <AddVehicleSlideOver companyId={companyId} isFMC={isFMC} locations={locations} onClose={() => setShowAddVehicle(false)}
           onAdded={() => { setShowAddVehicle(false); loadVehicles() }}
-          onAddAndDispatch={vin => { setShowAddVehicle(false); setDispatchSheet({ open: true, vin }) }} />
+          onAddAndDispatch={vin => { setShowAddVehicle(false); if (dispatchEnabled === false) { router.push('/storage/dispatch') } else { setDispatchSheet({ open: true, vin }) } }} />
       )}
       {showCSV && <CSVImportModal companyId={companyId} existingVins={existingVins} onClose={() => setShowCSV(false)} onImported={loadVehicles} />}
       {openKebab && <div onClick={() => setOpenKebab(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}

@@ -19,6 +19,7 @@ import {
   ArrowLeft, Play, Send, ExternalLink, Download,
   Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Lock,
 } from 'lucide-react'
+import LoadingOverlay from '@/components/ui/loading-overlay'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -398,26 +399,41 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const handleMarkOnLot = async () => {
     if (!vehicle) return
     setActionSaving(true)
-    await markVehicleOnLot(vehicle.id)
-    await fetchVehicle()
-    setActionSaving(false)
+    try {
+      await markVehicleOnLot(vehicle.id)
+      await fetchVehicle()
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Failed to update status')
+    } finally {
+      setActionSaving(false)
+    }
   }
 
   const handleMarkPendingPickup = async () => {
     if (!vehicle) return
     setActionSaving(true)
-    await markVehiclePendingPickup(vehicle.id)
-    await fetchVehicle()
-    setActionSaving(false)
+    try {
+      await markVehiclePendingPickup(vehicle.id)
+      await fetchVehicle()
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Failed to update status')
+    } finally {
+      setActionSaving(false)
+    }
   }
 
   const handleRelease = async () => {
     if (!vehicle) return
     setActionSaving(true)
-    await releaseVehicle(vehicle.id)
-    setConfirmRelease(false)
-    await fetchVehicle()
-    setActionSaving(false)
+    try {
+      await releaseVehicle(vehicle.id)
+      setConfirmRelease(false)
+      await fetchVehicle()
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Failed to update status')
+    } finally {
+      setActionSaving(false)
+    }
   }
 
   const handleWizardComplete = useCallback(async (data: any) => {
@@ -526,15 +542,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     )
   }
 
-  // ── Loading skeleton
-  if (loadingVehicle) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        <Loader2 size={28} color="#00B4D8" style={{ animation: 'spin 0.8s linear infinite' }} />
-      </div>
-    )
-  }
+  if (loadingVehicle) return <LoadingOverlay show fullScreen />
 
   if (!vehicle) {
     return (
@@ -687,8 +695,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       {/* ── Inspection History ──────────────────────────────────────────────── */}
       <SectionCard title="Inspection History" count={inspections.length}>
         {loadingInspections ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-            <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+          <div style={{ position: 'relative', minHeight: 80 }}>
+            <LoadingOverlay show />
           </div>
         ) : inspections.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>

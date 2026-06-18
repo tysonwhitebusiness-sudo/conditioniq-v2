@@ -225,10 +225,9 @@ const LEGEND = [
   { label: 'Empty',           color: '#E1E8F0' },
   { label: 'Pending Arrival', color: '#94A3B8' },
   { label: 'On Lot',          color: '#00B4D8' },
-  { label: 'In Progress',     color: '#8B5CF6' },
-  { label: 'One-Off',         color: '#F97316' },
-  { label: 'Releasing',       color: '#F4A62A' },
-  { label: 'Released',        color: '#10B981' },
+  { label: 'Pending Pickup',  color: '#F4A62A' },
+  { label: 'Picked Up',       color: '#10B981' },
+  { label: 'Completed',       color: '#9333EA' },
 ]
 
 function StatChip({ label, value, color }: { label: string; value: number; color?: string }) {

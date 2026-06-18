@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { createFakeAuthContext, AuthContext } from '@/contexts/auth-context'
@@ -68,6 +68,7 @@ export default function InspectTokenPage() {
   const [existingInspection, setExistingInspection] = useState<{ inspectionId: string; startedAt: string } | null>(null)
   const [resumedData, setResumedData] = useState<Record<string, any> | null>(null)
   const [resumedStep, setResumedStep] = useState<StepId | undefined>(undefined)
+  const anonSessionCreated = useRef(false)
 
   useEffect(() => {
     async function validate() {
@@ -100,6 +101,7 @@ export default function InspectTokenPage() {
     if (!session) {
       const { error: anonErr } = await supabase.auth.signInAnonymously()
       if (anonErr) throw anonErr
+      anonSessionCreated.current = true
     }
   }
 
@@ -197,7 +199,7 @@ export default function InspectTokenPage() {
   }
 
   async function handleComplete() {
-    await supabase.auth.signOut()
+    if (anonSessionCreated.current) await supabase.auth.signOut()
     setStatus('done')
   }
 

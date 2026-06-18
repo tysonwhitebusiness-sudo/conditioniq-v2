@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings, Lock, Send } from 'lucide-react'
+import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings, Lock, Send, DollarSign } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -13,6 +13,7 @@ export default function MobilePageHeader() {
   const router = useRouter()
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const dispatchEnabled = useFeatureFlag('dispatch')
+  const lotBillingEnabled = useFeatureFlag('lot_billing')
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -132,6 +133,12 @@ export default function MobilePageHeader() {
                 {iconBox(dispatchEnabled === false ? '#F0F4F8' : '#E0F7FC', <Send size={15} color={dispatchEnabled === false ? '#94A3B8' : '#0097B2'} />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: dispatchEnabled === false ? '#94A3B8' : '#0D1B2A', flex: 1 }}>Dispatch</span>
                 {dispatchEnabled === false && <Lock size={13} color="#CBD5E1" style={{ flexShrink: 0 }} />}
+              </button>
+
+              <button onClick={() => nav('/lot-billing')} style={itemStyle}>
+                {iconBox(lotBillingEnabled === false ? '#F0F4F8' : '#F0FDF4', <DollarSign size={15} color={lotBillingEnabled === false ? '#94A3B8' : '#059669'} />)}
+                <span style={{ fontSize: 14, fontWeight: 500, color: lotBillingEnabled === false ? '#94A3B8' : '#0D1B2A', flex: 1 }}>Lot Billing</span>
+                {lotBillingEnabled === false && <Lock size={13} color="#CBD5E1" style={{ flexShrink: 0 }} />}
               </button>
 
               {isAdmin && (

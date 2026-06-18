@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, Send, MapPin, Grid3x3, Package, FileText,
-  Shield, LogOut, ChevronLeft, ChevronRight, Play, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock, ClipboardList,
+  Shield, LogOut, ChevronLeft, ChevronRight, PlusCircle, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock, ClipboardList,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
@@ -70,12 +70,12 @@ export default function DesktopSidebar({
     if (isInspecting && item.id !== 'signout') return
     if (item.type === 'tab' && onTabChange) onTabChange(item.tab!)
     else if (item.type === 'route' && item.route) router.push(item.route)
-    else if (item.type === 'action' && item.id === 'start') { onStartPress?.(); onStartInspection?.() }
+    else if (item.type === 'action' && item.id === 'add-vehicle') { router.push('/vehicles?add=true') }
     else if (item.type === 'action' && item.id === 'send-inspector') onSendToInspector?.()
   }
 
   const inspItems: NavItem[] = [
-    { id: 'start',        label: 'Start Inspection', icon: <Play size={18} />,          type: 'action' as const },
+    { id: 'add-vehicle',  label: 'Add Vehicle',       icon: <PlusCircle size={18} />,    type: 'action' as const },
     { id: 'vehicles',     label: 'Vehicles',          icon: <Car size={18} />,           type: 'route', route: '/vehicles' },
     { id: 'inspections',  label: 'Inspections',       icon: <ClipboardList size={18} />, type: 'route' as const, route: '/inspections' },
     { id: 'dispatch',     label: 'Dispatch',           icon: <Send size={18} />,          type: 'route' as const, route: '/storage/dispatch' },
@@ -247,9 +247,6 @@ export default function DesktopSidebar({
               <button key={item.id} onClick={() => handleClick(item)} style={expandedItemStyle(isActive(item))}>
                 {item.icon}
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {item.id === 'start' && (
-                  <span style={{ fontSize: 9, fontWeight: 800, background: '#F4A62A', color: '#0D1B2A', borderRadius: 6, padding: '2px 6px', letterSpacing: '0.04em' }}>NEW</span>
-                )}
                 {locked && <Lock size={12} color="rgba(255,255,255,0.3)" />}
               </button>
             )

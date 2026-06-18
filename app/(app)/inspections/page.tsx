@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QueuePage from '@/components/queue/queue-page'
 import BottomNav from '@/components/ui/bottom-nav'
+import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
 import { fetchFullInspectionAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
 
@@ -49,8 +50,10 @@ function InspectionsContent() {
 
   return (
     <>
+      <MobilePageHeader />
       <QueuePage
         initialTab={tab}
+        hideHeader
         onStartInspection={handleStartInspection}
         onResumeInspection={handleResumeInspection}
         onViewReport={handleViewReport}

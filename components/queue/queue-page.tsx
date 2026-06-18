@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StatusBadge, { ScoreBadge } from '@/components/ui/status-badge'
-import { Search, Trash2, Play, Upload, Plus, List, Clock, Share2, Send, Bot } from 'lucide-react'
+import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2, Check } from 'lucide-react'
 import { createShareToken, createInspectionRequest } from '@/lib/usage-actions'
 
 type SubTab = 'queue' | 'in_progress' | 'history'
@@ -15,6 +15,7 @@ interface Props {
   onStartInspection: (queueItem?: any) => void
   onResumeInspection: (data: any) => void
   onViewReport: (data: any) => void
+  hideHeader?: boolean
 }
 
 function Skeleton() {
@@ -261,9 +262,115 @@ function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }:
   )
 }
 
+// ── Add-to-Queue picker ────────────────────────────────────────────────────
+
+function AddToQueueSheet({ companyId, existingQueueVins, onClose, onAdded }: {
+  companyId: string
+  existingQueueVins: Set<string>
+  onClose: () => void
+  onAdded: (items: any[]) => void
+}) {
+  const supabase = createClient()
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const [vehicles, setVehicles] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    const fetch = async () => {
+      const { data } = await supabase
+        .from('storage_vehicles')
+        .select('id, vin, year, make, model, lifecycle_status')
+        .eq('company_id', companyId)
+        .in('lifecycle_status', ['on_lot', 'pending_arrival'])
+        .order('arrived_at', { ascending: false })
+      setVehicles((data ?? []).filter(v => v.vin && !existingQueueVins.has(v.vin)))
+      setLoading(false)
+    }
+    fetch()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const confirm = async () => {
+    const toAdd = vehicles.filter(v => selected.has(v.id))
+    if (!toAdd.length) return
+    setAdding(true)
+    try {
+      await supabase.from('inspection_queue').insert(
+        toAdd.map(v => ({ company_id: companyId, vin: v.vin, year: v.year ?? '', make: v.make ?? '', model: v.model ?? '', status: 'queued' }))
+      )
+      onAdded(toAdd)
+    } finally { setAdding(false) }
+  }
+
+  const filtered = search
+    ? vehicles.filter(v => v.vin?.toLowerCase().includes(search.toLowerCase()) || [v.year, v.make, v.model].filter(Boolean).join(' ').toLowerCase().includes(search.toLowerCase()))
+    : vehicles
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: isDesktop ? 'center' : 'flex-end', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} />
+      <div style={{ position: 'relative', background: '#FFF', borderRadius: isDesktop ? 20 : '20px 20px 0 0', width: '100%', maxWidth: isDesktop ? 480 : undefined, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #E1E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Add Vehicles to Queue</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={18} color="#94A3B8" /></button>
+        </div>
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid #F0F4F8', flexShrink: 0 }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search VIN or vehicle..." style={{ width: '100%', height: 40, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: '40px 0', display: 'flex', justifyContent: 'center' }}>
+              <Loader2 size={24} color="#94A3B8" className="animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p style={{ fontSize: 14, color: '#94A3B8', textAlign: 'center', padding: '40px 20px', margin: 0 }}>
+              {search ? 'No matches' : 'All vehicles are already in the queue'}
+            </p>
+          ) : filtered.map(v => {
+            const title = [v.year, v.make, v.model].filter(Boolean).join(' ') || v.vin
+            const sel = selected.has(v.id)
+            const onLot = v.lifecycle_status === 'on_lot'
+            return (
+              <button key={v.id} onClick={() => toggle(v.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '12px 20px', background: sel ? '#F0FDFF' : 'none', border: 'none', borderBottom: '1px solid #F0F4F8', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${sel ? '#00B4D8' : '#CBD5E1'}`, background: sel ? '#00B4D8' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 120ms ease' }}>
+                  {sel && <Check size={12} color="#fff" strokeWidth={3} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
+                  <p style={{ fontSize: 11, fontFamily: 'monospace', color: '#94A3B8', margin: '1px 0 0' }}>{v.vin}</p>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 6, padding: '2px 7px', flexShrink: 0, background: onLot ? '#D1FAE5' : '#F0F4F8', color: onLot ? '#059669' : '#4A5568' }}>
+                  {onLot ? 'On Lot' : 'Pending'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #E1E8F0', display: 'flex', gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: 'none', color: '#4A5568', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={confirm} disabled={selected.size === 0 || adding}
+            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: selected.size > 0 ? '#F4A62A' : '#E1E8F0', color: selected.size > 0 ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 14, cursor: selected.size > 0 ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            {adding ? 'Adding…' : selected.size > 0 ? `Add ${selected.size} Vehicle${selected.size !== 1 ? 's' : ''}` : 'Select vehicles'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
-export default function QueuePage({ initialTab = 'queue', onStartInspection, onResumeInspection, onViewReport }: Props) {
+export default function QueuePage({ initialTab = 'queue', onStartInspection, onResumeInspection, onViewReport, hideHeader = false }: Props) {
   const { effectiveCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const [tab, setTab] = useState<SubTab>(initialTab)
@@ -274,6 +381,7 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
   const [history, setHistory] = useState<any[]>([])
   const [shareSuccessId, setShareSuccessId] = useState<string | null>(null)
   const [infoMsg, setInfoMsg] = useState<string | null>(null)
+  const [showAddToQueue, setShowAddToQueue] = useState(false)
 
   const supabase = createClient()
 
@@ -432,10 +540,15 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
       paddingBottom: isDesktop ? 0 : 'calc(64px + env(safe-area-inset-bottom, 0px))',
     }}>
 
-      {/* Mobile header */}
-      {!isDesktop && (
+      {/* Mobile header — hidden when parent provides its own header (e.g. standalone /inspections page) */}
+      {!isDesktop && !hideHeader && (
         <div style={{ background: '#0D1B2A', padding: '48px 16px 16px' }}>
           <h1 style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 20, margin: '0 0 8px' }}>Inspections</h1>
+          {tabButtons}
+        </div>
+      )}
+      {!isDesktop && hideHeader && (
+        <div style={{ background: '#0D1B2A', padding: '8px 16px 14px' }}>
           {tabButtons}
         </div>
       )}
@@ -468,14 +581,14 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
           {tab === 'queue' && (
             <>
               <button
+                onClick={() => setShowAddToQueue(true)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
                   height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
                   background: '#1B2D40', color: '#FFFFFF', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
                 }}
-                onClick={() => {}}
               >
-                <Upload size={14} /> Import
+                <Plus size={14} /> Add to Queue
               </button>
               <button
                 onClick={() => onStartInspection()}
@@ -506,6 +619,26 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
             <button onClick={() => setInfoMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
           </div>
         </div>
+      )}
+
+      {showAddToQueue && effectiveCompany && (
+        <AddToQueueSheet
+          companyId={effectiveCompany.id}
+          existingQueueVins={new Set(queue.map((q: any) => q.vin).filter(Boolean))}
+          onClose={() => setShowAddToQueue(false)}
+          onAdded={items => {
+            setQueue(prev => [
+              ...items.map(v => ({
+                id: crypto.randomUUID(),
+                company_id: effectiveCompany.id,
+                vin: v.vin, year: v.year ?? '', make: v.make ?? '', model: v.model ?? '',
+                status: 'queued', created_at: new Date().toISOString(),
+              })),
+              ...prev,
+            ])
+            setShowAddToQueue(false)
+          }}
+        />
       )}
     </div>
   )

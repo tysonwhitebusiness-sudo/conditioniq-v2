@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, Car, Plus, LayoutGrid, ClipboardList, Lock } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
 // NavTab kept for backward-compat imports
@@ -14,11 +12,10 @@ interface BottomNavProps {
   onStartPress?: () => void
 }
 
-export default function BottomNav({ onStartPress }: BottomNavProps) {
+export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProps) {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const pathname = usePathname()
   const router = useRouter()
-  const [showStartSheet, setShowStartSheet] = useState(false)
   const lotMapEnabled = useFeatureFlag('lot_map')
 
   if (isDesktop) return null
@@ -26,10 +23,7 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
   const isActive = (route: string) =>
     route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/')
 
-  const handleCenter = () => {
-    if (onStartPress) onStartPress()
-    else setShowStartSheet(true)
-  }
+  const handleCenter = () => router.push('/vehicles?add=true')
 
   const tabBtn = (id: string, Icon: React.ElementType, label: string, route: string, locked = false) => {
     const active = isActive(route)
@@ -80,7 +74,7 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: 'none', cursor: 'pointer',
               }}
-              aria-label="New Inspection"
+              aria-label="Add Vehicle"
             >
               <Plus size={26} color="#0D1B2A" strokeWidth={2.5} />
             </button>
@@ -94,7 +88,6 @@ export default function BottomNav({ onStartPress }: BottomNavProps) {
         </div>
       </div>
 
-      <StartInspectionSheet open={showStartSheet} onClose={() => setShowStartSheet(false)} />
     </>
   )
 }

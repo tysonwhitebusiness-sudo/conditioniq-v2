@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import DesktopSidebar from '@/components/layout/desktop-sidebar'
 import DesktopTopBar from '@/components/layout/desktop-topbar'
-import StartInspectionSheet from '@/components/ui/start-inspection-sheet'
 import FeedbackButton from '@/components/ui/feedback-button'
 
 const PAGE_TITLES: Record<string, string> = {
@@ -40,7 +39,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const pathname = usePathname()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [showStartSheet, setShowStartSheet] = useState(false)
 
   const pageTitle = Object.entries(PAGE_TITLES).find(([k]) => pathname === k || pathname.startsWith(k + '/'))?.[1] ?? 'Condition IQ'
   const sidebarWidth = sidebarCollapsed ? 64 : 256
@@ -50,7 +48,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4F8' }}>
       <DesktopSidebar
-        onStartPress={() => setShowStartSheet(true)}
         collapsed={sidebarCollapsed}
         onCollapseChange={setSidebarCollapsed}
       />
@@ -60,7 +57,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <StartInspectionSheet open={showStartSheet} onClose={() => setShowStartSheet(false)} />
       <FeedbackButton />
     </div>
   )

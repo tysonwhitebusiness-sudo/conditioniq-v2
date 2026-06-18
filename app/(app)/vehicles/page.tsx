@@ -508,6 +508,13 @@ export default function VehiclesPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('add=true')) {
+      setShowAddVehicle(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
   function toggleVehicleSelect(id: string) {
     setSelectedVehicleIds(prev => {
       const next = new Set<string>(Array.from(prev))

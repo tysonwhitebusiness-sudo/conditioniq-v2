@@ -11,11 +11,9 @@ import {
   addVehicleToSystem, getVehicleInspectionHistory,
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
-import { updateVehicleLifecycleStatusAction, getReportSignedUrlAction, loadInspectionForResume } from '@/lib/inspection-server-actions'
-import InspectionWizard, { type StepId } from '@/components/inspection-wizard/inspection-wizard'
+import { getReportSignedUrlAction, fetchInspectionsByIds } from '@/lib/inspection-server-actions'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
-import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import BulkBillingModal, { type BulkVehicle } from '@/components/billing/bulk-billing-modal'
 import { calculateVehicleBilling } from '@/lib/lot-actions'
@@ -24,7 +22,6 @@ import LoadingOverlay from '@/components/ui/loading-overlay'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type LifecycleStatus = 'pending_arrival' | 'on_lot' | 'pending_pickup' | 'picked_up' | 'completed'
-type AppStep = 'browse' | 'inspecting'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -184,6 +181,8 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
 function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, onAddAndDispatch }: {
   companyId: string; isFMC: boolean; locations: any[]; onClose: () => void; onAdded: () => void; onAddAndDispatch: (vin: string) => void
 }) {
+  const router = useRouter()
+  const [status, setStatus] = useState<'pending_arrival' | 'on_lot'>('pending_arrival')
   const [vin, setVin] = useState('')
   const [year, setYear] = useState(''); const [make, setMake] = useState(''); const [model, setModel] = useState('')
   const [locationId, setLocationId] = useState('')
@@ -191,7 +190,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   const [notes, setNotes] = useState('')
   const [decoding, setDecoding] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [dupeWarn, setDupeWarn] = useState(false)
+  const [dupeVehicleId, setDupeVehicleId] = useState<string | null>(null)
 
   const cleanVin = vin.trim().toUpperCase()
 
@@ -208,19 +207,19 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   const checkDupe = async () => {
     if (cleanVin.length < 3) return
     const { data } = await createClient().from('storage_vehicles').select('id').eq('company_id', companyId).eq('vin', cleanVin).maybeSingle()
-    setDupeWarn(!!data)
+    setDupeVehicleId(data?.id ?? null)
   }
 
   const save = async (andDispatch = false) => {
-    if (!cleanVin) return
+    if (!cleanVin || dupeVehicleId) return
     setSaving(true)
     try {
       await addVehicleToSystem(companyId, {
         vin: cleanVin, year, make, model,
         locationId: locationId || undefined,
-        arrivedAt: arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
+        arrivedAt: status === 'on_lot' && arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
         notes,
-        lifecycleStatus: 'pending_arrival',
+        lifecycleStatus: status,
       })
       if (andDispatch) onAddAndDispatch(cleanVin)
       else onAdded()
@@ -236,20 +235,40 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} color="#94A3B8" /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {/* Status */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Status *</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['pending_arrival', 'on_lot'] as const).map(s => (
+                <button key={s} onClick={() => setStatus(s)}
+                  style={{ flex: 1, height: 44, borderRadius: 10, border: `1.5px solid ${status === s ? '#00B4D8' : '#E1E8F0'}`, background: status === s ? '#E0F7FC' : '#FAFAFA', color: status === s ? '#0097B2' : '#4A5568', fontSize: 13, fontWeight: status === s ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {s === 'pending_arrival' ? 'Pending Arrival' : 'On Lot'}
+                </button>
+              ))}
+            </div>
+          </div>
           {/* VIN */}
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>VIN *</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input value={vin} onChange={e => setVin(e.target.value.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase().slice(0, 17))}
+              <input value={vin} onChange={e => { setVin(e.target.value.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase().slice(0, 17)); setDupeVehicleId(null) }}
                 onBlur={() => { checkDupe(); if (cleanVin.length === 17) decode() }}
                 placeholder="17-character VIN" maxLength={17}
-                style={{ flex: 1, height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA' }} />
+                style={{ flex: 1, height: 44, border: `1px solid ${dupeVehicleId ? '#EF4444' : '#E1E8F0'}`, borderRadius: 10, padding: '0 12px', fontSize: 14, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA' }} />
               <button onClick={decode} disabled={cleanVin.length !== 17 || decoding}
                 style={{ height: 44, padding: '0 14px', borderRadius: 10, background: '#00B4D8', color: '#FFF', border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: cleanVin.length !== 17 ? 0.5 : 1, fontFamily: 'inherit' }}>
                 {decoding ? '…' : 'Decode'}
               </button>
             </div>
-            {dupeWarn && <p style={{ fontSize: 12, color: '#EF4444', margin: '4px 0 0' }}>This VIN already exists in your system</p>}
+            {dupeVehicleId && (
+              <p style={{ fontSize: 12, color: '#EF4444', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                This VIN already exists.{' '}
+                <button onClick={() => { onClose(); router.push(`/inventory/${dupeVehicleId}`) }}
+                  style={{ background: 'none', border: 'none', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
+                  View vehicle →
+                </button>
+              </p>
+            )}
           </div>
           {/* Year / Make / Model */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
@@ -272,12 +291,14 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
               </select>
             </div>
           )}
-          {/* Arrival Date */}
-          <div style={{ marginBottom: 18 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Arrival Date</label>
-            <input type="date" value={arrivedAt} onChange={e => setArrivedAt(e.target.value)}
-              style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-          </div>
+          {/* Arrival Date — only shown when On Lot */}
+          {status === 'on_lot' && (
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Arrival Date *</label>
+              <input type="date" value={arrivedAt} onChange={e => setArrivedAt(e.target.value)}
+                style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
+          )}
           {/* Notes */}
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Notes</label>
@@ -286,12 +307,12 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
           </div>
         </div>
         <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E8F0', display: 'flex', gap: 10 }}>
-          <button onClick={() => save(false)} disabled={!cleanVin || saving}
-            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin ? '#F4A62A' : '#E1E8F0', color: cleanVin ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          <button onClick={() => save(false)} disabled={!cleanVin || !!dupeVehicleId || saving}
+            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#F4A62A' : '#E1E8F0', color: cleanVin && !dupeVehicleId ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {saving ? 'Adding…' : 'Add Vehicle'}
           </button>
-          <button onClick={() => save(true)} disabled={!cleanVin || saving}
-            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin ? '#00B4D8' : '#E1E8F0', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: cleanVin ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          <button onClick={() => save(true)} disabled={!cleanVin || !!dupeVehicleId || saving}
+            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#00B4D8' : '#E1E8F0', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             Add & Dispatch
           </button>
         </div>
@@ -452,37 +473,12 @@ const TABS = [
   { id: 'completed',      label: 'Completed' },
 ]
 
-const RESUME_STEP_ORDER: Array<{ dataKey: string; nextStep: StepId }> = [
-  { dataKey: 'engine_data',           nextStep: 'review' },
-  { dataKey: 'interior_data',         nextStep: 'engine' },
-  { dataKey: 'exterior_data',         nextStep: 'interior' },
-  { dataKey: 'documentation_data',    nextStep: 'exterior' },
-  { dataKey: 'vehicle_function_data', nextStep: 'documentation' },
-  { dataKey: 'keys_data',             nextStep: 'function' },
-  { dataKey: 'bol_data',              nextStep: 'keys' },
-  { dataKey: 'vehicleInfo',           nextStep: 'bol' },
-]
-
-function inferResumeStep(row: Record<string, any>): StepId {
-  for (const { dataKey, nextStep } of RESUME_STEP_ORDER) {
-    const val = row[dataKey]
-    if (val && typeof val === 'object' && Object.keys(val).length > 0) return nextStep
-  }
-  return 'vehicle-info'
-}
-
 export default function VehiclesPage() {
   const router = useRouter()
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const isFMC = effectiveCompany?.account_type === 'fmc'
   const companyId = effectiveCompany?.id ?? ''
-
-  // Wizard state
-  const [appStep, setAppStep] = useState<AppStep>('browse')
-  const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
-  const [currentInspectionData, setCurrentInspectionData] = useState<Record<string, any>>({})
-  const [currentInspectionInitialStep, setCurrentInspectionInitialStep] = useState<StepId | undefined>(undefined)
 
   // Table state
   const [vehicles, setVehicles] = useState<any[]>([])
@@ -538,38 +534,6 @@ export default function VehiclesPage() {
   useEffect(() => { loadVehicles() }, [loadVehicles])
   useEffect(() => { if (isFMC && companyId) getStorageLocations(companyId).then(setLocations) }, [isFMC, companyId])
 
-  // Auto-start inspection when coming from Start Inspection sheet (new or resume)
-  useEffect(() => {
-    if (!user || !companyId) return
-    async function checkPending() {
-      try {
-        const pendingId = sessionStorage.getItem('pending_inspection_id')
-        if (!pendingId) return
-        sessionStorage.removeItem('pending_inspection_id')
-
-        // Load any previously saved step data so resume restores progress
-        const row = await loadInspectionForResume(pendingId)
-        const initialData = row ? {
-          vehicleInfo: row.vehicleInfo ?? {},
-          bol_data: row.bol_data ?? {},
-          keys_data: row.keys_data ?? {},
-          vehicle_function_data: row.vehicle_function_data ?? {},
-          documentation_data: row.documentation_data ?? {},
-          exterior_data: row.exterior_data ?? {},
-          interior_data: row.interior_data ?? {},
-          engine_data: row.engine_data ?? {},
-        } : {}
-        const resumeStep = row ? inferResumeStep(row) : undefined
-
-        setCurrentInspectionId(pendingId)
-        setCurrentInspectionData(initialData)
-        setCurrentInspectionInitialStep(resumeStep)
-        setAppStep('inspecting')
-      } catch {}
-    }
-    checkPending()
-  }, [user, companyId])
-
   // Derived
   const allTagged = vehicles.map(v => ({ ...v, _status: effectiveStatus(v) }))
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
@@ -601,31 +565,6 @@ export default function VehiclesPage() {
   const statsUninspected = allTagged.filter(v => ['pending_arrival', 'on_lot', 'pending_pickup'].includes(v._status) && !v.latest_inspection_id).length
   const statsReleasedMonth = allTagged.filter(v => v._status === 'picked_up' && v.released_at >= monthStart).length
   const existingVins = new Set(vehicles.map(v => v.vin?.toUpperCase() ?? ''))
-
-  // Start inspection
-  const handleStart = async (vehicle: any) => {
-    if (!effectiveCompany || !user) return
-    try {
-      const { getDeviceId } = await import('@/lib/device-id')
-      const { initiateInspection } = await import('@/lib/usage-actions')
-      const { inspectionId } = await initiateInspection({
-        companyId: effectiveCompany.id, inspectorId: user.id,
-        initialData: { vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model },
-        deviceId: getDeviceId(),
-      })
-      setCurrentInspectionId(inspectionId)
-      setCurrentInspectionData({ vehicleInfo: { vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model } })
-      setAppStep('inspecting')
-    } catch (e: any) { setErrorMsg('Failed to start inspection: ' + e.message) }
-  }
-
-  const handleWizardComplete = useCallback(async (data: any) => {
-    if (effectiveCompany?.id && data.vehicleInfo?.vin) {
-      await updateVehicleLifecycleStatusAction(effectiveCompany.id, data.vehicleInfo.vin, data.inspectionId, data.vehicleInfo.inspectionType ?? 'standard', data.scoreResult?.score ?? null).catch(console.error)
-    }
-    setAppStep('browse')
-    loadVehicles()
-  }, [effectiveCompany?.id, loadVehicles])
 
   const handleOpenReports = async (v: any) => {
     setReportsVehicle(v)
@@ -720,20 +659,6 @@ export default function VehiclesPage() {
       download: `condition-iq-vehicles-${date}.csv`,
     })
     a.click()
-  }
-
-  // ── Wizard mode ────────────────────────────────────────────────────────────
-  if (appStep === 'inspecting' && currentInspectionId) {
-    return (
-      <InspectionWizard
-        inspectionId={currentInspectionId}
-        initialData={currentInspectionData}
-        initialStep={currentInspectionInitialStep}
-        inspectorId={user?.id}
-        onComplete={handleWizardComplete}
-        onCancel={() => setAppStep('browse')}
-      />
-    )
   }
 
   // ── Browse mode ────────────────────────────────────────────────────────────
@@ -918,13 +843,13 @@ export default function VehiclesPage() {
                       <td style={{ padding: '13px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                           {v._status === 'pending_arrival' && <>
-                            <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
+                            <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
                             <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch
                             </button>
                           </>}
                           {v._status === 'on_lot' && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
-                          {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
+                          {v._status === 'pending_pickup' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
                           {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                           <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                           {/* Kebab */}
@@ -936,7 +861,7 @@ export default function VehiclesPage() {
                             {openKebab === v.id && (
                               <div style={{ position: 'absolute', right: 0, top: 32, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 150, padding: '4px 0' }}>
                                 {v._status !== 'picked_up' && v._status !== 'completed' && (
-                                  <button onClick={() => { handleStart(v); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
+                                  <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
                                 )}
                                 <button onClick={() => { setConfirmDeleteId(v.id); setOpenKebab(null) }}
                                   style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#EF4444', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
@@ -983,9 +908,9 @@ export default function VehiclesPage() {
                       {days !== null && <span style={{ fontSize: 12, color: daysColor(days), fontWeight: 600 }}>{days}d on lot</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                      {v._status === 'pending_arrival' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
+                      {v._status === 'pending_arrival' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
                       {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
-                      {v._status === 'pending_pickup' && <button onClick={() => handleStart(v)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
+                      {v._status === 'pending_pickup' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
                       {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
                       <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                     </div>

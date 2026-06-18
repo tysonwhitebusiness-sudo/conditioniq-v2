@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { Lock } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Lock, ChevronRight, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import BottomNav from '@/components/ui/bottom-nav'
@@ -34,6 +34,7 @@ const DESKTOP_PAGE_TITLES: Record<NavTab, string> = {
 }
 
 export default function VehicleInspectionApp() {
+  const router = useRouter()
   const { user, effectiveCompany, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const dispatchEnabled = useFeatureFlag('dispatch')
@@ -41,6 +42,7 @@ export default function VehicleInspectionApp() {
   const [navTab, setNavTab] = useState<NavTab>((searchParams.get('tab') as NavTab) ?? 'home')
   const [appStep, setAppStep] = useState<AppStep>('browse')
   const [showActionSheet, setShowActionSheet] = useState(false)
+  const [showVehiclePicker, setShowVehiclePicker] = useState(false)
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null)
   const [currentInspectionData, setCurrentInspectionData] = useState<Record<string, any>>({})
   const [usageState, setUsageState] = useState<UsageState | null>(null)
@@ -162,6 +164,13 @@ export default function VehicleInspectionApp() {
   // Shared modals rendered in every layout
   const sharedModals = (
     <>
+      {showVehiclePicker && (
+        <VehiclePickerSheet
+          companyId={effectiveCompany?.id ?? ''}
+          onClose={() => setShowVehiclePicker(false)}
+          onSelect={vehicleId => { setShowVehiclePicker(false); router.push(`/inventory/${vehicleId}`) }}
+        />
+      )}
       {showUsageModal && usageState && (
         <UsageConfirmationModal
           usageState={usageState}
@@ -296,7 +305,7 @@ export default function VehicleInspectionApp() {
     <>
       {navTab === 'home' && (
         <HomeDashboard
-          onStartInspection={() => isDesktop ? handleStartInspection() : setShowActionSheet(true)}
+          onStartInspection={() => isDesktop ? handleStartInspection() : setShowVehiclePicker(true)}
           onResumeInspection={handleResumeInspection}
           onViewReport={handleViewReport}
           onGoToQueue={() => setNavTab('queue')}
@@ -366,6 +375,109 @@ export default function VehicleInspectionApp() {
         onSendToInspector={handleSendToInspector}
       />
       {sharedModals}
+    </div>
+  )
+}
+
+function VehiclePickerSheet({ companyId, onClose, onSelect }: {
+  companyId: string
+  onClose: () => void
+  onSelect: (vehicleId: string) => void
+}) {
+  const [vehicles, setVehicles] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!companyId) return
+    setLoading(true)
+    import('@/lib/supabase/client').then(({ createClient }) => {
+      createClient()
+        .from('storage_vehicles')
+        .select('id, vin, year, make, model, lifecycle_status, status, checkin_inspection_id')
+        .eq('company_id', companyId)
+        .order('arrived_at', { ascending: false, nullsFirst: false })
+        .then(({ data }) => {
+          const active = (data ?? []).filter(v => {
+            const s = v.lifecycle_status || v.status
+            return ['pending_arrival', 'on_lot', 'pending_inspection', 'active', 'inspected'].includes(s)
+          })
+          setVehicles(active)
+          setLoading(false)
+        })
+    })
+  }, [companyId])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  const getStatusLabel = (v: any) => {
+    const s = v.lifecycle_status || v.status
+    if (s === 'on_lot' || s === 'inspected') return 'On Lot'
+    return 'Pending Arrival'
+  }
+
+  const getStatusColors = (v: any) => {
+    const s = v.lifecycle_status || v.status
+    if (s === 'on_lot' || s === 'inspected') return { bg: '#E0F7FC', color: '#0097B2' }
+    return { bg: '#F0F4F8', color: '#4A5568' }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.65)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
+      <div style={{
+        position: 'relative', background: '#FFFFFF',
+        borderRadius: '28px 28px 0 0',
+        paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+        maxHeight: '75vh', display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{ width: 40, height: 4, background: '#E1E8F0', borderRadius: 2, margin: '12px auto 0' }} />
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid #F0F4F8' }}>
+          <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Select Vehicle</p>
+          <p style={{ fontSize: 13, color: '#94A3B8', margin: '2px 0 0' }}>On Lot · Pending Arrival</p>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {loading && (
+            <div style={{ padding: '32px 0', display: 'flex', justifyContent: 'center' }}>
+              <Loader2 size={24} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          )}
+          {!loading && vehicles.length === 0 && (
+            <p style={{ padding: '32px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>
+              No vehicles on lot or pending arrival.
+            </p>
+          )}
+          {!loading && vehicles.map(v => {
+            const sc = getStatusColors(v)
+            return (
+              <button key={v.id} onClick={() => onSelect(v.id)}
+                style={{ width: '100%', padding: '14px 20px', background: 'none', border: 'none', borderBottom: '1px solid #F0F4F8', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, fontFamily: 'inherit' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {[v.year, v.make, v.model].filter(Boolean).join(' ') || v.vin}
+                  </p>
+                  {(v.make || v.model) && (
+                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>
+                  )}
+                </div>
+                <span style={{ background: sc.bg, color: sc.color, borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                  {getStatusLabel(v)}
+                </span>
+                <ChevronRight size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ padding: '12px 20px' }}>
+          <button onClick={onClose}
+            style={{ width: '100%', height: 52, borderRadius: 14, background: '#FFFFFF', border: '1.5px solid #E1E8F0', color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

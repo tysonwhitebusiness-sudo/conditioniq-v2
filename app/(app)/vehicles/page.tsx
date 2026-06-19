@@ -503,6 +503,7 @@ export default function VehiclesPage() {
   // Bulk billing
   const lotMapEnabled = useFeatureFlag('lot_map')
   const dispatchEnabled = useFeatureFlag('dispatch')
+  const reportingExportEnabled = useFeatureFlag('reporting_export')
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
   const [showBulkBilling, setShowBulkBilling] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -586,6 +587,7 @@ export default function VehiclesPage() {
   }
 
   const exportCSV = async () => {
+    if (!reportingExportEnabled) return
     // Wrap in quotes if value contains commas, quotes, or newlines
     const esc = (val: string | number | null | undefined): string => {
       if (val === null || val === undefined) return ''
@@ -744,7 +746,10 @@ export default function VehiclesPage() {
             })}
           </div>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-            <button onClick={exportCSV} style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Download size={14} />Export</button>
+            <button onClick={reportingExportEnabled ? exportCSV : undefined} title={reportingExportEnabled === false ? 'Pro feature' : undefined}
+              style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: reportingExportEnabled === false ? '#F0F4F8' : '#FFF', color: reportingExportEnabled === false ? '#94A3B8' : '#4A5568', fontSize: 13, fontWeight: 500, cursor: reportingExportEnabled === false ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
+              {reportingExportEnabled === false ? <Lock size={14} color="#CBD5E1" /> : <Download size={14} />}Export
+            </button>
             <button onClick={() => setShowCSV(true)} style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
             <button onClick={() => setShowAddVehicle(true)} style={{ height: 38, padding: '0 14px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
           </div>

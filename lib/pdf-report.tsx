@@ -14,6 +14,61 @@ const C = {
   white: '#FFFFFF',
 }
 
+// ── Layout constants (A4 = 595pt wide, 20pt horizontal padding each side) ──
+const CONTENT_W = 555                         // usable content width in points
+const COL2_W    = 273                         // (555 − 8gap) / 2 for 2-col grids
+const SPEC_L_W  = 305                         // 55 % of content — spec table column
+const SPEC_R_W  = CONTENT_W - SPEC_L_W - 12  // ~238pt — baseline photo column
+
+// ── Photo helpers ──────────────────────────────────────────────────────────
+/**
+ * Parse the natural height/width aspect ratio from a base64 image data URI.
+ * Handles JPEG (FF D8) and PNG (89 50 4E 47) by reading the raw byte headers.
+ * Returns null for plain URLs or when parsing fails.
+ */
+function parseImgAr(src: string): number | null {
+  try {
+    if (typeof atob === 'undefined' || !src?.startsWith('data:')) return null
+    const b64 = src.split(',')[1]
+    if (!b64) return null
+    const bin = atob(b64)
+
+    // PNG: IHDR chunk — width at bytes 16-19, height at bytes 20-23
+    if (bin.charCodeAt(0) === 137 && bin.charCodeAt(1) === 80) {
+      const w = ((bin.charCodeAt(16) << 24) | (bin.charCodeAt(17) << 16) | (bin.charCodeAt(18) << 8) | bin.charCodeAt(19)) >>> 0
+      const h = ((bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16) | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23)) >>> 0
+      if (w > 0 && h > 0) return h / w
+    }
+
+    // JPEG: scan for SOF markers (C0–CF, excluding C4/C8/CC which aren't frame headers)
+    if (bin.charCodeAt(0) === 0xFF && bin.charCodeAt(1) === 0xD8) {
+      let i = 2
+      while (i < bin.length - 8) {
+        if (bin.charCodeAt(i) !== 0xFF) break
+        const m = bin.charCodeAt(i + 1)
+        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+          const h = (bin.charCodeAt(i + 5) << 8) | bin.charCodeAt(i + 6)
+          const w = (bin.charCodeAt(i + 7) << 8) | bin.charCodeAt(i + 8)
+          if (w > 0 && h > 0) return h / w
+        }
+        const segLen = (bin.charCodeAt(i + 2) << 8) | bin.charCodeAt(i + 3)
+        i += 2 + segLen
+      }
+    }
+
+    return null
+  } catch { return null }
+}
+
+/**
+ * Compute display height from column width and the image's natural aspect ratio.
+ * Falls back to 1.33 (≈ 3:4 portrait) when the ratio cannot be determined,
+ * which is the correct bias for mobile phone photos.
+ */
+function imgH(src: string, colW: number): number {
+  return Math.round(colW * (parseImgAr(src) ?? 1.33))
+}
+
 // ── Formatters ─────────────────────────────────────────────────────────────
 function fmt(value: string | undefined | null): string {
   if (!value) return '—'
@@ -305,15 +360,21 @@ function DamageTable({ items }: { items: any[] }) {
   )
 }
 
-function PhotoGrid({ photos, photoHeight = 100 }: { photos: Array<{ url: string; caption: string }>; photoHeight?: number }) {
+// Fix 1: PhotoGrid now derives each photo's display height from its natural
+// aspect ratio rather than using a hardcoded fixed height. Portrait mobile
+// photos (e.g. 1179×2556) will render tall instead of being cropped.
+function PhotoGrid({ photos }: { photos: Array<{ url: string; caption: string }> }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {photos.filter(p => p.url).map((p, i) => (
-        <View key={i} style={{ width: '48%' }}>
-          <Image src={p.url} style={{ width: '100%', height: photoHeight, borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6, objectFit: 'cover' }} />
-          <Text style={{ color: C.gray400, fontSize: 7, textAlign: 'center', marginTop: 4 }}>{p.caption}</Text>
-        </View>
-      ))}
+      {photos.filter(p => p.url).map((p, i) => {
+        const h = imgH(p.url, COL2_W)
+        return (
+          <View key={i} style={{ width: COL2_W }}>
+            <Image src={p.url} style={{ width: COL2_W, height: h, borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6 }} />
+            <Text style={{ color: C.gray400, fontSize: 7, textAlign: 'center', marginTop: 4 }}>{p.caption}</Text>
+          </View>
+        )
+      })}
     </View>
   )
 }
@@ -444,11 +505,51 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
 
   const base = { vin, date, totalPages, logoUrl, companyName, brandHeaderColor, brandAccentColor }
 
-  // NHTSA-sourced fields
-  const nhtsaBodyClass = vi.bodyClass  ?? vi.body_class  ?? ''
-  const nhtsaEngine    = vi.engineType ?? vi.engine_type ?? vi.engine ?? ''
-  const nhtsaDriveType = vi.driveType  ?? vi.drive_type  ?? ''
-  const hasNhtsa       = !!(nhtsaBodyClass || nhtsaEngine || nhtsaDriveType)
+  // ── Fix 3: NHTSA-sourced spec fields ──────────────────────────────────────
+  // These cover existing fields (body class, drive type) plus new ones
+  // (trim, fuel, and a richer engine string from displacement + cylinders).
+  const nhtsaBodyClass = vi.bodyClass    ?? vi.body_class    ?? vi.body             ?? ''
+  const nhtsaDriveType = vi.driveType    ?? vi.drive_type    ?? ''
+  const nhtsaTrim      = vi.trim         ?? vi.vehicleTrim   ?? ''
+  const nhtsaFuel      = vi.fuelType     ?? vi.fuel_type     ?? vi.fuelTypePrimary  ?? vi.fuel_type_primary ?? ''
+  const dispL          = vi.displacementL ?? vi.displacement_l ?? ''
+  const cylinders      = vi.engineCylinders ?? vi.engine_cylinders ?? ''
+  const nhtsaEngine    = (() => {
+    if (dispL && cylinders) {
+      const d = parseFloat(String(dispL))
+      return isNaN(d) ? `${dispL} V${cylinders}` : `${d.toFixed(1)}L V${cylinders}`
+    }
+    if (dispL) { const d = parseFloat(String(dispL)); return !isNaN(d) ? `${d.toFixed(1)}L` : String(dispL) }
+    if (cylinders) return `V${cylinders}`
+    return vi.engineType ?? vi.engine_type ?? vi.engine ?? ''
+  })()
+
+  // Used on page 1 cover only — unchanged
+  const hasNhtsa = !!(nhtsaBodyClass || nhtsaEngine || nhtsaDriveType)
+
+  // ── Fix 2: Baseline vehicle photo ─────────────────────────────────────────
+  // Check common field names used across different inspection step schemas.
+  const baselinePhotoSrc = img(
+    vi.baselinePhoto         ?? vi.vehiclePhoto       ?? vi.vehicle_photo ??
+    vi.baseline_photo        ?? vi.baselineVehiclePhoto ??
+    inspectionData.baseline_photo ?? inspectionData.vehicle_photo
+  )
+
+  // ── Fix 3: Spec table rows (new field order) ───────────────────────────────
+  const specRows = [
+    { label: 'Year',     value: vi.year,        mono: false },
+    { label: 'Make',     value: vi.make,        mono: false },
+    { label: 'Model',    value: vi.model,       mono: false },
+    { label: 'Trim',     value: nhtsaTrim    || undefined, mono: false },
+    { label: 'Body',     value: nhtsaBodyClass || undefined, mono: false },
+    { label: 'Drive',    value: nhtsaDriveType || undefined, mono: false },
+    { label: 'Engine',   value: nhtsaEngine  || undefined, mono: false },
+    { label: 'Fuel',     value: nhtsaFuel    || undefined, mono: false },
+    { label: 'VIN',      value: vin,            mono: true  },
+    { label: 'Odometer', value: vi.odometer ? `${vi.odometer} mi` : undefined, mono: false },
+    { label: 'Location', value: vi.location,    mono: false },
+    { label: 'Asset ID', value: vi.assetId,     mono: false },
+  ].filter(r => r.value)
 
   return (
     <Document title={`Inspection Report — ${vin}`} author="Condition IQ">
@@ -521,25 +622,42 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
       {/* ══ PAGE 2: SPECS + DOCS ═══════════════════════════════════════════ */}
       <ReportPage {...base} pageNum={2}>
         <SectionHeader label="VEHICLE SPECIFICATIONS" />
-        {[
-          { label: 'Year',      value: vi.year,     mono: false },
-          { label: 'Make',      value: vi.make,     mono: false },
-          { label: 'Model',     value: vi.model,    mono: false },
-          { label: 'VIN',       value: vin,         mono: true  },
-          { label: 'Odometer',   value: vi.odometer ? `${vi.odometer} mi` : undefined, mono: false },
-          { label: 'Body Class', value: nhtsaBodyClass || undefined, mono: false },
-          { label: 'Engine',     value: nhtsaEngine    || undefined, mono: false },
-          { label: 'Drive Type', value: nhtsaDriveType || undefined, mono: false },
-          { label: 'Location',   value: vi.location, mono: false },
-          { label: 'Asset ID',   value: vi.assetId,  mono: false },
-        ].filter(r => r.value).map((r, i) => (
-          <View key={i} style={{ flexDirection: 'row', padding: '7px 12px', backgroundColor: i % 2 === 0 ? C.gray100 : C.white }}>
-            <Text style={{ color: C.gray400, fontSize: 8, flex: 1 }}>{r.label}</Text>
-            <Text style={{ color: C.midnight, fontFamily: r.mono ? 'Courier' : 'Helvetica-Bold', fontSize: 9, flex: 2 }}>{r.value}</Text>
-          </View>
-        ))}
 
-        <View style={{ height: 14 }} />
+        {/* Fix 2: If a baseline photo exists, show spec table and photo side by side.
+            Otherwise fall back to the original full-width spec table. */}
+        {baselinePhotoSrc ? (
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+            {/* Left — spec table */}
+            <View style={{ width: SPEC_L_W }}>
+              {specRows.map((r, i) => (
+                <View key={i} style={{ flexDirection: 'row', padding: '7px 12px', backgroundColor: i % 2 === 0 ? C.gray100 : C.white }}>
+                  <Text style={{ color: C.gray400, fontSize: 8, flex: 1 }}>{r.label}</Text>
+                  <Text style={{ color: C.midnight, fontFamily: r.mono ? 'Courier' : 'Helvetica-Bold', fontSize: 9, flex: 2 }}>{r.value}</Text>
+                </View>
+              ))}
+            </View>
+            {/* Right — baseline photo */}
+            <View style={{ width: SPEC_R_W }}>
+              <Image
+                src={baselinePhotoSrc}
+                style={{ width: SPEC_R_W, height: imgH(baselinePhotoSrc, SPEC_R_W), borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6 }}
+              />
+              <Text style={{ color: C.gray400, fontSize: 7, textAlign: 'center', marginTop: 4 }}>
+                Baseline photo — captured at inspection start
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ marginBottom: 14 }}>
+            {specRows.map((r, i) => (
+              <View key={i} style={{ flexDirection: 'row', padding: '7px 12px', backgroundColor: i % 2 === 0 ? C.gray100 : C.white }}>
+                <Text style={{ color: C.gray400, fontSize: 8, flex: 1 }}>{r.label}</Text>
+                <Text style={{ color: C.midnight, fontFamily: r.mono ? 'Courier' : 'Helvetica-Bold', fontSize: 9, flex: 2 }}>{r.value}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         <SectionHeader label="DOCUMENTATION & KEYS" />
 
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
@@ -711,7 +829,7 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
         {intPhotos.length > 0 && (
           <View style={{ marginTop: 10 }}>
             <Text style={{ color: C.gray400, fontSize: 7, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>INTERIOR PHOTOS</Text>
-            <PhotoGrid photos={intPhotos} photoHeight={80} />
+            <PhotoGrid photos={intPhotos} />
           </View>
         )}
       </ReportPage>
@@ -748,7 +866,10 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
         {img(eng.enginePhoto) && (
           <View>
             <Text style={{ color: C.gray400, fontSize: 7, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>ENGINE BAY</Text>
-            <Image src={img(eng.enginePhoto)} style={{ width: '100%', height: 120, borderRadius: 6, objectFit: 'cover', borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid' }} />
+            <Image
+              src={img(eng.enginePhoto)}
+              style={{ width: CONTENT_W, height: imgH(img(eng.enginePhoto), CONTENT_W), borderRadius: 6, borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid' }}
+            />
           </View>
         )}
       </ReportPage>

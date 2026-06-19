@@ -34,6 +34,7 @@ const FEATURE_FLAGS = [
   'send_to_inspector',
   'team_members',
   'locations',
+  'reporting_export',
 ] as const
 
 const SAMPLE_VEHICLES = [

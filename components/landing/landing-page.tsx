@@ -162,8 +162,8 @@ function Nav() {
             ))}
           </div>
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/auth/signin" className="text-sm text-[#F0F4F8] hover:text-white transition-colors px-3 py-1.5">Sign In</Link>
-            <Link href="/auth/signup" className="text-sm font-bold bg-[#F4A62A] text-[#0D1B2A] px-4 py-2 rounded-xl hover:bg-amber-400 transition-all amber-glow">Get Started</Link>
+            <Link href="/login" className="text-sm text-[#F0F4F8] hover:text-white transition-colors px-3 py-1.5">Sign In</Link>
+            <Link href="/login" className="text-sm font-bold bg-[#F4A62A] text-[#0D1B2A] px-4 py-2 rounded-xl hover:bg-amber-400 transition-all amber-glow">Get Started</Link>
           </div>
           <button className="md:hidden text-white p-1" onClick={() => setOpen(o => !o)}>
             {open ? <X size={22} /> : <Menu size={22} />}
@@ -177,8 +177,8 @@ function Nav() {
               <Link key={l.label} href={l.href} className="text-xl text-[#F0F4F8] font-medium" onClick={() => setOpen(false)}>{l.label}</Link>
             ))}
             <div className="border-t border-[#1B2D40] pt-6 flex flex-col gap-4">
-              <Link href="/auth/signin" className="text-[#F0F4F8] text-lg" onClick={() => setOpen(false)}>Sign In</Link>
-              <Link href="/auth/signup" className="bg-[#F4A62A] text-[#0D1B2A] font-bold text-lg text-center py-3 rounded-xl" onClick={() => setOpen(false)}>Get Started</Link>
+              <Link href="/login" className="text-[#F0F4F8] text-lg" onClick={() => setOpen(false)}>Sign In</Link>
+              <Link href="/login" className="bg-[#F4A62A] text-[#0D1B2A] font-bold text-lg text-center py-3 rounded-xl" onClick={() => setOpen(false)}>Get Started</Link>
             </div>
           </div>
         </div>
@@ -218,10 +218,10 @@ function Hero() {
               Condition IQ gives storage yards, fleet operators, and tow companies the tools to document every vehicle, track every lot, and bill every storage day — without the enterprise price tag.
             </p>
             <div className="flex flex-wrap gap-3 mb-3">
-              <Link href="/auth/signup" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-6 py-3 rounded-xl text-sm hover:bg-amber-400 transition-all amber-glow">
+              <Link href="/login" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-6 py-3 rounded-xl text-sm hover:bg-amber-400 transition-all amber-glow">
                 Get Started <ArrowRight size={15} />
               </Link>
-              <Link href="/demo" className="inline-flex items-center gap-2 border border-white/20 text-white px-6 py-3 rounded-xl text-sm hover:bg-white/5 transition-all">
+              <Link href="/login" className="inline-flex items-center gap-2 border border-white/20 text-white px-6 py-3 rounded-xl text-sm hover:bg-white/5 transition-all">
                 View Report Preview
               </Link>
             </div>
@@ -621,7 +621,7 @@ function Pricing() {
                     </div>
                   ))}
                 </div>
-                <Link href="/auth/signup" className={`block text-center text-xs font-bold py-2.5 rounded-xl transition-all ${p.featured ? 'bg-[#F4A62A] text-[#0D1B2A] hover:bg-amber-400' : 'border border-[#94A3B8]/30 text-[#94A3B8] hover:text-white hover:border-white/30'}`}>
+                <Link href="/login" className={`block text-center text-xs font-bold py-2.5 rounded-xl transition-all ${p.featured ? 'bg-[#F4A62A] text-[#0D1B2A] hover:bg-amber-400' : 'border border-[#94A3B8]/30 text-[#94A3B8] hover:text-white hover:border-white/30'}`}>
                   {p.cta}
                 </Link>
               </div>
@@ -741,7 +741,7 @@ function FinalCTA() {
       <div ref={ref} className="relative fade-s text-center max-w-2xl mx-auto">
         <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Start Documenting. Start Billing. Start Today.</h2>
         <p className="text-[#94A3B8] text-base mb-8">Generate 10 free reports — no credit card, no commitment. See the workflow, see the PDF, decide if it fits your operation.</p>
-        <Link href="/auth/signup" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-8 py-4 rounded-2xl text-base hover:bg-amber-400 transition-all amber-glow mb-4">
+        <Link href="/login" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-8 py-4 rounded-2xl text-base hover:bg-amber-400 transition-all amber-glow mb-4">
           Get Started Free <ArrowRight size={18} />
         </Link>
         <p className="text-[#94A3B8] text-xs">No credit card · Cancel anytime · Setup in minutes</p>
@@ -757,7 +757,7 @@ function Footer() {
     { label: 'Pricing',    href: '#pricing'   },
     { label: 'FAQ',        href: '#faq'       },
     { label: "What's New", href: '/changelog' },
-    { label: 'Sign In',    href: '/auth/signin' },
+    { label: 'Sign In',    href: '/login' },
   ]
   return (
     <footer className="bg-[#0D1B2A] border-t border-[#1B2D40] px-5 py-10">

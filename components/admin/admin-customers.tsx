@@ -32,6 +32,10 @@ const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
   { key: 'lot_billing',       label: 'Lot Billing'         },
   { key: 'white_label',       label: 'White Label PDF'     },
   { key: 'dispatch',          label: 'Dispatch'            },
+  { key: 'reporting_export',  label: 'Reporting & Export'  },
+  { key: 'multi_location',    label: 'Multi-Location'      },
+  { key: 'fmc_account',       label: 'FMC Account'         },
+  { key: 'api_access',        label: 'API Access'          },
 ]
 
 const TIERS = ['demo', 'legacy_starter', 'starter', 'growth', 'pro', 'enterprise']
@@ -153,7 +157,8 @@ export default function AdminCustomers() {
   const currentInterval = (editBilling?.billing_interval as string) ?? 'monthly'
   const currentPlan = getPlan(currentTier)
   const isLegacyBilling = currentTier === 'legacy_starter'
-  const isAddOnEligible = !isLegacyBilling && ADD_ON_ELIGIBLE_PLANS.has(currentTier as PlanKey)
+  const planAddOns = ADD_ONS.filter(a => a.eligiblePlans.includes(currentTier as PlanKey))
+  const isAddOnEligible = !isLegacyBilling && planAddOns.length > 0
   const planCap = getDefaultMemberCap(currentTier)
   const planCostDisplay = currentTier === 'enterprise' ? 'Custom'
     : currentTier === 'demo' ? 'Free'
@@ -401,10 +406,10 @@ export default function AdminCustomers() {
                   <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Add-Ons</p>
                   {!flags ? (
                     <p style={{ fontSize: 13, color: '#94A3B8', margin: '12px 0 0' }}>Loading...</p>
-                  ) : ADD_ONS.map(addon => {
+                  ) : planAddOns.map(addon => {
                     const flagKey = addon.key as FeatureKey
                     const flag = flags[flagKey]
-                    const isOn = flag?.enabled ?? (flagKey === 'white_label')
+                    const isOn = flag?.enabled ?? false
                     const price = currentInterval === 'annual'
                       ? `$${addon.annualCost}/yr`
                       : `$${addon.monthlyCost}/mo`

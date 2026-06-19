@@ -55,9 +55,9 @@ export default function LandingPage() {
         <h2 className="text-2xl font-bold text-center mb-8">Simple Pricing</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { name: 'Starter', price: 99, reports: 30, overage: 4.00 },
-            { name: 'Growth', price: 199, reports: 75, overage: 3.25 },
-            { name: 'Pro', price: 399, reports: 200, overage: 2.75 },
+            { name: 'Starter', price: 99,  reports: 30,  overage: 3.50 },
+            { name: 'Growth',  price: 199, reports: 75,  overage: 3.00 },
+            { name: 'Pro',     price: 399, reports: 300, overage: 2.00 },
           ].map(plan => (
             <div key={plan.name} className="bg-white/10 rounded-2xl p-5 text-center">
               <h3 className="font-bold text-lg mb-1">{plan.name}</h3>

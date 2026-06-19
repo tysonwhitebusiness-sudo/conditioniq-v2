@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { getPlan, ADD_ONS, ADD_ON_ELIGIBLE_PLANS, type PlanKey } from '@/lib/pricing'
+import { getPlan, ADD_ONS, type PlanKey } from '@/lib/pricing'
 import {
   getBillingPageData, submitPlanChangeRequest,
   type UsageLogEntry,
@@ -24,12 +24,12 @@ const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 const PLAN_FEATURES: Record<string, string[]> = {
-  demo:           ['3 reports/mo', 'Up to 3 users', 'PDF reports'],
+  demo:           ['10 reports/mo', 'Up to 1 user', 'Core inspection workflow', 'PDF reports'],
   legacy_starter: ['15 reports/mo', 'Up to 3 users', 'Grandfathered rates locked', 'Send-to-inspector links', 'PDF reports'],
-  starter:        ['30 reports/mo', 'Up to 3 users', 'Send-to-inspector links', 'PDF reports', 'Dispatch board'],
-  growth:         ['75 reports/mo', 'Up to 5 users', 'All Starter features', 'Team management'],
-  pro:            ['200 reports/mo', 'Unlimited users', 'All Growth features', 'Priority support'],
-  enterprise:     ['Unlimited reports', 'Unlimited users', 'All Pro features', 'Dedicated support', 'Custom integrations'],
+  starter:        ['30 reports/mo', 'Up to 3 users', 'Core inspection workflow', 'PDF reports', 'Add-ons available'],
+  growth:         ['75 reports/mo', 'Up to 5 users', 'All Starter features', 'Dispatch board', 'Lot billing', 'Add-ons available'],
+  pro:            ['300 reports/mo', 'Unlimited users', 'All Growth features', 'Lot map', 'White label PDF', 'Reporting & export'],
+  enterprise:     ['Unlimited reports', 'Unlimited users', 'All Pro features', 'Multi-location', 'API access', 'Dedicated support'],
 }
 
 const AVAILABLE_PLANS = ['Starter', 'Growth', 'Pro', 'Enterprise', 'Custom']
@@ -261,7 +261,8 @@ export default function BillingPage() {
   const overageCost = overage * plan.additionalReportCost
   const planColor = PLAN_COLORS[tier] ?? PLAN_COLORS.starter
   const features = PLAN_FEATURES[tier] ?? PLAN_FEATURES.starter
-  const isAddOnEligible = !isLegacy && ADD_ON_ELIGIBLE_PLANS.has(tier)
+  const planAddOns = ADD_ONS.filter(a => a.eligiblePlans.includes(tier))
+  const isAddOnEligible = !isLegacy && planAddOns.length > 0
 
   const priceDisplay = tier === 'enterprise' ? 'Custom'
     : tier === 'demo' ? 'Free'
@@ -363,7 +364,7 @@ export default function BillingPage() {
               <Card>
                 <SectionLabel>Add-Ons</SectionLabel>
                 <div>
-                  {ADD_ONS.map((addon, i) => {
+                  {planAddOns.map((addon, i) => {
                     const isActive = flags[addon.key]?.enabled ?? false
                     const price = billingInterval === 'annual'
                       ? `$${addon.annualCost}/yr`

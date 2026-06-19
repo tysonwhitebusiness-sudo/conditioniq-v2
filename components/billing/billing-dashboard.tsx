@@ -182,10 +182,10 @@ export default function BillingDashboard() {
 function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void; currentPlan: string; companyId: string }) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const plans = [
-    { key: 'starter', name: 'Starter', price: 99, reports: 30, overage: 4.0, features: ['30 reports/mo', '$4.00 overage', 'Mobile app', 'PDF reports'] },
-    { key: 'growth', name: 'Growth', price: 199, reports: 75, overage: 3.25, features: ['75 reports/mo', '$3.25 overage', 'Team access', 'Priority support'] },
-    { key: 'pro', name: 'Pro', price: 399, reports: 200, overage: 2.75, features: ['200 reports/mo', '$2.75 overage', 'Advanced analytics', 'API access'] },
-    { key: 'enterprise', name: 'Enterprise', price: 0, reports: 9999, overage: 2.25, features: ['Unlimited reports', '$2.25 overage', 'Dedicated support', 'Custom integrations'] },
+    { key: 'starter',    name: 'Starter',    price: 99,  reports: 30,   overage: 3.50, features: ['30 reports/mo',        '$3.50/overage', 'Core inspection workflow', 'PDF reports']               },
+    { key: 'growth',     name: 'Growth',     price: 199, reports: 75,   overage: 3.00, features: ['75 reports/mo',        '$3.00/overage', 'Dispatch board',           'Lot billing']               },
+    { key: 'pro',        name: 'Pro',        price: 399, reports: 300,  overage: 2.00, features: ['300 reports/mo',       '$2.00/overage', 'Lot map',                  'White label PDF', 'Export'] },
+    { key: 'enterprise', name: 'Enterprise', price: 0,   reports: 9999, overage: 0,    features: ['Unlimited reports',    'Volume pricing', 'Multi-location',           'API access',      'Dedicated support'] },
   ]
 
   const handleRequest = async (targetPlan: string) => {

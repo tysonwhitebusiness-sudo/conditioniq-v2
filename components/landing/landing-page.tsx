@@ -7,6 +7,7 @@ import {
   DollarSign, ShieldCheck, Map, ClipboardCheck, Receipt, Send, FileText,
   Warehouse, Truck, Network,
 } from 'lucide-react'
+import { submitContactRequest } from '@/lib/contact-actions'
 
 // ─── CSS ──────────────────────────────────────────────────────────────────
 const CSS = `
@@ -133,8 +134,146 @@ function useTyping(words: string[], typeMs = 80, delMs = 40, pauseMs = 1800) {
   return text
 }
 
+// ─── Contact Modal ────────────────────────────────────────────────────────
+const COMPANY_TYPES = [
+  { value: 'storage_facility', label: 'Storage Yard / Facility' },
+  { value: 'tow_impound',      label: 'Tow & Impound Operator' },
+  { value: 'fleet',            label: 'Fleet Manager / Transporter' },
+  { value: 'other',            label: 'Other' },
+]
+
+function ContactModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [company, setCompany] = useState('')
+  const [type, setType] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim() || !email.trim() || !company.trim() || !type) {
+      setError('Please fill in all required fields.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await submitContactRequest({
+        name: name.trim(),
+        email: email.trim(),
+        company_name: company.trim(),
+        company_type: type,
+        message: message.trim() || undefined,
+      })
+      setDone(true)
+    } catch {
+      setError('Something went wrong. Please email us at hello@conditioniq.app.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', height: 44, border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10, padding: '0 14px', fontSize: 14, outline: 'none',
+    background: 'rgba(255,255,255,0.05)', color: '#F0F4F8',
+    fontFamily: 'inherit', boxSizing: 'border-box',
+  }
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: 12, fontWeight: 600,
+    color: '#94A3B8', marginBottom: 6,
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(13,27,42,0.85)', backdropFilter: 'blur(6px)' }}>
+      <div className="relative w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#1B2D40', border: '1px solid rgba(0,180,216,0.2)', boxShadow: '0 0 60px rgba(0,180,216,0.1), 0 32px 64px rgba(0,0,0,0.5)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <div className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-1">Get Started</div>
+            <h2 className="text-white font-bold text-xl">Tell us about your operation.</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <X size={16} color="#94A3B8" />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="px-6 py-12 text-center">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(16,185,129,0.15)' }}>
+              <Check size={26} color="#10B981" />
+            </div>
+            <h3 className="text-white font-bold text-lg mb-2">Request received.</h3>
+            <p className="text-[#94A3B8] text-sm leading-relaxed mb-6">We'll reach out within one business day. In the meantime, feel free to email us at <a href="mailto:hello@conditioniq.app" className="text-[#00B4D8]">hello@conditioniq.app</a>.</p>
+            <button onClick={onClose} className="bg-[#F4A62A] text-[#0D1B2A] font-bold px-8 py-3 rounded-xl text-sm hover:bg-amber-400 transition-all">Done</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label style={labelStyle}>Name <span style={{ color: '#EF4444' }}>*</span></label>
+                <input style={inputStyle} placeholder="Jane Smith" value={name} onChange={e => setName(e.target.value)} />
+              </div>
+              <div>
+                <label style={labelStyle}>Email <span style={{ color: '#EF4444' }}>*</span></label>
+                <input style={inputStyle} type="email" placeholder="jane@company.com" value={email} onChange={e => setEmail(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Company <span style={{ color: '#EF4444' }}>*</span></label>
+              <input style={inputStyle} placeholder="ABC Storage Yard" value={company} onChange={e => setCompany(e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Operation Type <span style={{ color: '#EF4444' }}>*</span></label>
+              <div className="grid grid-cols-2 gap-2">
+                {COMPANY_TYPES.map(ct => (
+                  <button
+                    key={ct.value}
+                    type="button"
+                    onClick={() => setType(ct.value)}
+                    className="text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-all"
+                    style={{
+                      border: type === ct.value ? '1px solid #00B4D8' : '1px solid rgba(255,255,255,0.1)',
+                      background: type === ct.value ? 'rgba(0,180,216,0.12)' : 'rgba(255,255,255,0.04)',
+                      color: type === ct.value ? '#00B4D8' : '#94A3B8',
+                    }}
+                  >
+                    {ct.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Message <span style={{ color: '#94A3B8', fontWeight: 400 }}>(optional)</span></label>
+              <textarea
+                style={{ ...inputStyle, height: 80, padding: '10px 14px', resize: 'none' }}
+                placeholder="Tell us anything specific about your operation or questions you have..."
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+              />
+            </div>
+            {error && <p className="text-xs" style={{ color: '#EF4444' }}>{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all"
+              style={{ background: loading ? '#c8851f' : '#F4A62A', color: '#0D1B2A', fontSize: 14, cursor: loading ? 'default' : 'pointer' }}
+            >
+              {loading ? 'Sending...' : <><Send size={15} /> Send Request</>}
+            </button>
+            <p className="text-[#94A3B8] text-xs text-center">No credit card · No commitment · We'll follow up within 1 business day</p>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Nav ──────────────────────────────────────────────────────────────────
-function Nav() {
+function Nav({ onGetStarted }: { onGetStarted: () => void }) {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -163,7 +302,7 @@ function Nav() {
           </div>
           <div className="hidden md:flex items-center gap-3">
             <Link href="/login" className="text-sm text-[#F0F4F8] hover:text-white transition-colors px-3 py-1.5">Sign In</Link>
-            <Link href="/login" className="text-sm font-bold bg-[#F4A62A] text-[#0D1B2A] px-4 py-2 rounded-xl hover:bg-amber-400 transition-all amber-glow">Get Started</Link>
+            <button onClick={onGetStarted} className="text-sm font-bold bg-[#F4A62A] text-[#0D1B2A] px-4 py-2 rounded-xl hover:bg-amber-400 transition-all amber-glow">Get Started</button>
           </div>
           <button className="md:hidden text-white p-1" onClick={() => setOpen(o => !o)}>
             {open ? <X size={22} /> : <Menu size={22} />}
@@ -178,7 +317,7 @@ function Nav() {
             ))}
             <div className="border-t border-[#1B2D40] pt-6 flex flex-col gap-4">
               <Link href="/login" className="text-[#F0F4F8] text-lg" onClick={() => setOpen(false)}>Sign In</Link>
-              <Link href="/login" className="bg-[#F4A62A] text-[#0D1B2A] font-bold text-lg text-center py-3 rounded-xl" onClick={() => setOpen(false)}>Get Started</Link>
+              <button onClick={() => { setOpen(false); onGetStarted() }} className="bg-[#F4A62A] text-[#0D1B2A] font-bold text-lg text-center py-3 rounded-xl w-full">Get Started</button>
             </div>
           </div>
         </div>
@@ -188,7 +327,7 @@ function Nav() {
 }
 
 // ─── Hero ─────────────────────────────────────────────────────────────────
-function Hero() {
+function Hero({ onGetStarted }: { onGetStarted: () => void }) {
   const word = useTyping(CYCLING_WORDS)
   return (
     <section className="relative min-h-screen pt-16 bg-[#0D1B2A] overflow-hidden flex items-center">
@@ -218,9 +357,9 @@ function Hero() {
               Condition IQ gives storage yards, fleet operators, and tow companies the tools to document every vehicle, track every lot, and bill every storage day — without the enterprise price tag.
             </p>
             <div className="flex flex-wrap gap-3 mb-3">
-              <Link href="/login" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-6 py-3 rounded-xl text-sm hover:bg-amber-400 transition-all amber-glow">
+              <button onClick={onGetStarted} className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-6 py-3 rounded-xl text-sm hover:bg-amber-400 transition-all amber-glow">
                 Get Started <ArrowRight size={15} />
-              </Link>
+              </button>
               <Link href="/login" className="inline-flex items-center gap-2 border border-white/20 text-white px-6 py-3 rounded-xl text-sm hover:bg-white/5 transition-all">
                 View Report Preview
               </Link>
@@ -581,7 +720,7 @@ function TheReport() {
 }
 
 // ─── Pricing ──────────────────────────────────────────────────────────────
-function Pricing() {
+function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
   const plans = [
     { key: 'demo',       name: 'Demo',       price: 'Free', sub: '3 one-time · No overage', featured: false,
       features: ['3 one-time reports', '1 user', 'PDF report output', 'No credit card'], cta: 'Try for Free' },
@@ -621,9 +760,9 @@ function Pricing() {
                     </div>
                   ))}
                 </div>
-                <Link href="/login" className={`block text-center text-xs font-bold py-2.5 rounded-xl transition-all ${p.featured ? 'bg-[#F4A62A] text-[#0D1B2A] hover:bg-amber-400' : 'border border-[#94A3B8]/30 text-[#94A3B8] hover:text-white hover:border-white/30'}`}>
+                <button onClick={onGetStarted} className={`w-full block text-center text-xs font-bold py-2.5 rounded-xl transition-all ${p.featured ? 'bg-[#F4A62A] text-[#0D1B2A] hover:bg-amber-400' : 'border border-[#94A3B8]/30 text-[#94A3B8] hover:text-white hover:border-white/30'}`}>
                   {p.cta}
-                </Link>
+                </button>
               </div>
             </FadeCard>
           ))}
@@ -731,7 +870,7 @@ function FAQ() {
 }
 
 // ─── Final CTA ────────────────────────────────────────────────────────────
-function FinalCTA() {
+function FinalCTA({ onGetStarted }: { onGetStarted: () => void }) {
   const ref = useFadeIn()
   return (
     <section className="relative bg-[#0D1B2A] py-24 px-5 overflow-hidden">
@@ -741,9 +880,9 @@ function FinalCTA() {
       <div ref={ref} className="relative fade-s text-center max-w-2xl mx-auto">
         <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Start Documenting. Start Billing. Start Today.</h2>
         <p className="text-[#94A3B8] text-base mb-8">Generate 10 free reports — no credit card, no commitment. See the workflow, see the PDF, decide if it fits your operation.</p>
-        <Link href="/login" className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-8 py-4 rounded-2xl text-base hover:bg-amber-400 transition-all amber-glow mb-4">
+        <button onClick={onGetStarted} className="inline-flex items-center gap-2 bg-[#F4A62A] text-[#0D1B2A] font-bold px-8 py-4 rounded-2xl text-base hover:bg-amber-400 transition-all amber-glow mb-4">
           Get Started Free <ArrowRight size={18} />
-        </Link>
+        </button>
         <p className="text-[#94A3B8] text-xs">No credit card · Cancel anytime · Setup in minutes</p>
       </div>
     </section>
@@ -787,20 +926,24 @@ function Footer() {
 
 // ─── Root ─────────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const [modalOpen, setModalOpen] = useState(false)
+  const open = useCallback(() => setModalOpen(true), [])
+  const close = useCallback(() => setModalOpen(false), [])
   return (
     <div className="min-h-screen">
       <style>{CSS}</style>
-      <Nav />
-      <Hero />
+      <Nav onGetStarted={open} />
+      <Hero onGetStarted={open} />
       <PainPoints />
       <PlatformWorkflow />
       <AudienceCards />
       <StatsStrip />
       <TheReport />
-      <Pricing />
+      <Pricing onGetStarted={open} />
       <FAQ />
-      <FinalCTA />
+      <FinalCTA onGetStarted={open} />
       <Footer />
+      {modalOpen && <ContactModal onClose={close} />}
     </div>
   )
 }

@@ -8,6 +8,7 @@ const ITEMS = [
   { href: '/admin/crm/queue', label: 'Queue' },
   { href: '/admin/crm/leads', label: 'Leads' },
   { href: '/admin/crm/pipeline', label: 'Pipeline' },
+  { href: '/admin/crm/inbound', label: 'Inbound' },
 ]
 
 export default function CRMSubNav() {

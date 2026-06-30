@@ -191,6 +191,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   const [decoding, setDecoding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dupeVehicleId, setDupeVehicleId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const cleanVin = vin.trim().toUpperCase()
 
@@ -213,6 +214,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   const save = async (andDispatch = false) => {
     if (!cleanVin || dupeVehicleId) return
     setSaving(true)
+    setSaveError(null)
     try {
       await addVehicleToSystem(companyId, {
         vin: cleanVin, year, make, model,
@@ -223,6 +225,8 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
       })
       if (andDispatch) onAddAndDispatch(cleanVin)
       else onAdded()
+    } catch (e: any) {
+      setSaveError('Failed to add vehicle. This may be a database constraint — run the VIN partial-index migration in Supabase.')
     } finally { setSaving(false) }
   }
 
@@ -306,7 +310,11 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
               style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 10, padding: '10px 12px', fontSize: 14, resize: 'vertical', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
         </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E8F0', display: 'flex', gap: 10 }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E8F0' }}>
+          {saveError && (
+            <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 10px', lineHeight: 1.5 }}>{saveError}</p>
+          )}
+          <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => save(false)} disabled={!cleanVin || !!dupeVehicleId || saving}
             style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#F4A62A' : '#E1E8F0', color: cleanVin && !dupeVehicleId ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {saving ? 'Adding…' : 'Add Vehicle'}
@@ -315,6 +323,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
             style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#00B4D8' : '#E1E8F0', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             Add & Dispatch
           </button>
+          </div>
         </div>
       </div>
     </div>

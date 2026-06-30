@@ -573,7 +573,7 @@ export async function addVehicleToSystem(
     return existing.id
   }
 
-  const { data: inserted } = await supabase
+  const { data: inserted, error: insertError } = await supabase
     .from('storage_vehicles')
     .insert({
       company_id: companyId,
@@ -591,6 +591,7 @@ export async function addVehicleToSystem(
     .select('id')
     .single()
 
+  if (insertError) throw new Error(insertError.message)
   return inserted?.id
 }
 

@@ -206,7 +206,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
 
   const checkDupe = async () => {
     if (cleanVin.length < 3) return
-    const { data } = await createClient().from('storage_vehicles').select('id').eq('company_id', companyId).eq('vin', cleanVin).maybeSingle()
+    const { data } = await createClient().from('storage_vehicles').select('id').eq('company_id', companyId).eq('vin', cleanVin).neq('lifecycle_status', 'completed').maybeSingle()
     setDupeVehicleId(data?.id ?? null)
   }
 
@@ -573,7 +573,7 @@ export default function VehiclesPage() {
   const statsOnLot = allTagged.filter(v => ['pending_arrival', 'on_lot', 'pending_pickup'].includes(v._status)).length
   const statsUninspected = allTagged.filter(v => ['pending_arrival', 'on_lot', 'pending_pickup'].includes(v._status) && !v.latest_inspection_id).length
   const statsReleasedMonth = allTagged.filter(v => v._status === 'picked_up' && v.released_at >= monthStart).length
-  const existingVins = new Set(vehicles.map(v => v.vin?.toUpperCase() ?? ''))
+  const existingVins = new Set(allTagged.filter(v => v._status !== 'completed').map(v => v.vin?.toUpperCase() ?? ''))
 
   const handleOpenReports = async (v: any) => {
     setReportsVehicle(v)

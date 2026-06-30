@@ -62,6 +62,7 @@ export async function upsertVehicleToInventory(
     .select('id, checkin_inspection_id, checkout_inspection_id, status, year, make, model')
     .eq('company_id', companyId)
     .eq('vin', vinKey)
+    .neq('lifecycle_status', 'completed')
     .maybeSingle()
 
   const now = new Date().toISOString()
@@ -128,6 +129,7 @@ export async function inferInspectionType(
     .select('id, status, checkin_inspection_id')
     .eq('company_id', companyId)
     .eq('vin', vin)
+    .neq('lifecycle_status', 'completed')
     .maybeSingle()
 
   if (!data) return 'check_in'
@@ -265,11 +267,12 @@ export async function bulkInsertVehicles(
 ): Promise<{ inserted: number; skipped: string[] }> {
   const supabase = createClient()
 
-  // Fetch existing VINs
+  // Fetch existing non-completed VINs (completed records don't block re-adds)
   const { data: existing } = await supabase
     .from('storage_vehicles')
     .select('vin')
     .eq('company_id', companyId)
+    .neq('lifecycle_status', 'completed')
 
   const existingVins = new Set((existing ?? []).map(r => r.vin.toUpperCase()))
   const skipped: string[] = []
@@ -490,6 +493,7 @@ export async function updateVehicleLifecycleStatus(
     .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
     .eq('company_id', companyId)
     .eq('vin', vin)
+    .neq('lifecycle_status', 'completed')
     .maybeSingle()
 
   if (!vehicle) return
@@ -556,6 +560,7 @@ export async function addVehicleToSystem(
     .select('id')
     .eq('company_id', companyId)
     .eq('vin', vin)
+    .neq('lifecycle_status', 'completed')
     .maybeSingle()
 
   if (existing) {

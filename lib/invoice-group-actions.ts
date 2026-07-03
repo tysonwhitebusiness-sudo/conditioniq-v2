@@ -5,21 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export type InvoiceGroupStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void'
 
-export const INVOICE_STATUS_LABELS: Record<InvoiceGroupStatus, string> = {
-  draft: 'Draft',
-  sent: 'Sent',
-  paid: 'Paid',
-  overdue: 'Overdue',
-  void: 'Void',
-}
-
-export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  check: 'Check',
-  ach: 'ACH / Bank Transfer',
-  cash: 'Cash',
-  credit_card: 'Credit Card',
-  other: 'Other',
-}
+// INVOICE_STATUS_LABELS and PAYMENT_METHOD_LABELS live in lib/invoice-utils.ts
 
 export interface InvoiceGroup {
   id: string

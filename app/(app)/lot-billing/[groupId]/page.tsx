@@ -18,13 +18,12 @@ import {
   deleteInvoicePayment,
   addInvoiceAdjustment,
   deleteInvoiceAdjustment,
-  INVOICE_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
   type InvoiceGroupDetail,
   type InvoicePayment,
   type InvoiceAdjustment,
   type InvoiceGroupStatus,
 } from '@/lib/invoice-group-actions'
+import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/invoice-utils'
 import { getInvoiceSignedUrl } from '@/lib/invoice-actions'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {

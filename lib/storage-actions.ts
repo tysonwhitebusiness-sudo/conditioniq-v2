@@ -550,6 +550,7 @@ export async function addVehicleToSystem(
     notes?: string
     inspectionId?: string
     lifecycleStatus?: string
+    customerId?: string
   }
 ): Promise<string | undefined> {
   const supabase = createClient()
@@ -587,6 +588,7 @@ export async function addVehicleToSystem(
       lifecycle_status: data.lifecycleStatus ?? 'pending_arrival',
       status: 'active',
       latest_inspection_id: data.inspectionId || null,
+      customer_id: data.customerId || null,
     })
     .select('id')
     .single()

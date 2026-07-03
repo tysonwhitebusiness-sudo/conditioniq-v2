@@ -16,17 +16,19 @@ export interface BulkInvoiceRow {
 
 export async function getNextBulkInvoiceNumber(companyId: string): Promise<string> {
   const supabase = createAdminClient()
-  const { data } = await supabase
+  const { data, error } = await supabase.rpc('get_next_invoice_number', { p_company_id: companyId })
+  if (!error && data) return data as string
+  // fallback
+  const { data: latest } = await supabase
     .from('lot_invoices')
     .select('invoice_number')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-
   let next = 1
-  if (data?.invoice_number) {
-    const match = data.invoice_number.match(/(\d+)$/)
+  if (latest?.invoice_number) {
+    const match = latest.invoice_number.match(/(\d+)$/)
     if (match) next = parseInt(match[1], 10) + 1
   }
   return `INV-${String(next).padStart(4, '0')}`
@@ -56,6 +58,7 @@ export async function saveBulkInvoice({
   storagePath,
   rows,
   createdBy,
+  customerId,
 }: {
   companyId: string
   invoiceNumber: string
@@ -67,9 +70,30 @@ export async function saveBulkInvoice({
   storagePath: string | null
   rows: BulkInvoiceRow[]
   createdBy: string | null
-}): Promise<{ bulkInvoiceId: string | null; error: string | null }> {
+  customerId?: string | null
+}): Promise<{ bulkInvoiceId: string | null; groupId: string | null; error: string | null }> {
   const supabase = createAdminClient()
   const bulkInvoiceId = crypto.randomUUID()
+
+  // Create a group header for this bulk invoice
+  let groupId: string | null = null
+  const { data: group } = await supabase
+    .from('lot_invoice_groups')
+    .insert({
+      company_id: companyId,
+      invoice_number: invoiceNumber,
+      invoice_date: invoiceDate,
+      due_date: dueDate ?? null,
+      bill_to_name: billToName,
+      bill_to_contact: billToContact ?? null,
+      notes: notes ?? null,
+      customer_id: customerId ?? null,
+      status: 'draft' as const,
+      created_by: createdBy,
+    })
+    .select('id')
+    .single()
+  groupId = group?.id ?? null
 
   const inserts = rows.map(r => ({
     company_id: companyId,
@@ -90,11 +114,12 @@ export async function saveBulkInvoice({
     status: 'draft' as const,
     created_by: createdBy,
     bulk_invoice_id: bulkInvoiceId,
+    group_id: groupId,
   }))
 
   const { error } = await supabase.from('lot_invoices').insert(inserts)
-  if (error) { console.error('[bulk-invoices] save', error); return { bulkInvoiceId: null, error: error.message } }
-  return { bulkInvoiceId, error: null }
+  if (error) { console.error('[bulk-invoices] save', error); return { bulkInvoiceId: null, groupId: null, error: error.message } }
+  return { bulkInvoiceId, groupId, error: null }
 }
 
 export async function getBulkInvoiceSignedUrl(storagePath: string): Promise<string | null> {

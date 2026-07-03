@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car, Receipt, Lock } from 'lucide-react'
+import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car, Receipt, Lock, UserPlus } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import {
   addVehicleToSystem, getVehicleInspectionHistory,
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
+import { getCustomers, createCustomer, type Customer } from '@/lib/customer-actions'
 import { getReportSignedUrlAction, fetchInspectionsByIds } from '@/lib/inspection-server-actions'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
@@ -192,6 +193,15 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   const [saving, setSaving] = useState(false)
   const [dupeVehicleId, setDupeVehicleId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerId, setCustomerId] = useState<string>('')
+  const [quickAddName, setQuickAddName] = useState('')
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [creatingCustomer, setCreatingCustomer] = useState(false)
+
+  useEffect(() => {
+    getCustomers(companyId).then(setCustomers).catch(() => {})
+  }, [companyId])
 
   const cleanVin = vin.trim().toUpperCase()
 
@@ -222,6 +232,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
         arrivedAt: status === 'on_lot' && arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
         notes,
         lifecycleStatus: status,
+        customerId: customerId || undefined,
       })
       if (andDispatch) onAddAndDispatch(cleanVin)
       else onAdded()
@@ -303,6 +314,55 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
                 style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
             </div>
           )}
+          {/* Customer */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Customer</label>
+            {!showQuickAdd ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={customerId} onChange={e => setCustomerId(e.target.value)}
+                  style={{ flex: 1, height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                  <option value="">— No customer —</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button onClick={() => setShowQuickAdd(true)}
+                  style={{ height: 44, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#F8FAFC', color: '#4A5568', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', flexShrink: 0 }}>
+                  <UserPlus size={14} /> New
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} placeholder="Customer name…"
+                    style={{ flex: 1, height: 44, border: '1px solid #00B4D8', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                  <button onClick={async () => {
+                    if (!quickAddName.trim()) return
+                    setCreatingCustomer(true)
+                    try {
+                      const c = await createCustomer(companyId, {
+                        name: quickAddName.trim(), phone: null, email: null, billing_address: null,
+                        account_number: null, payment_terms: null, tax_exempt: false,
+                        secondary_contact_name: null, secondary_contact_phone: null,
+                        secondary_contact_email: null, notes: null,
+                      })
+                      setCustomers(cs => [...cs, c].sort((a, b) => a.name.localeCompare(b.name)))
+                      setCustomerId(c.id)
+                      setQuickAddName('')
+                      setShowQuickAdd(false)
+                    } catch (e: any) { alert(e.message) }
+                    finally { setCreatingCustomer(false) }
+                  }} disabled={!quickAddName.trim() || creatingCustomer}
+                    style={{ height: 44, padding: '0 14px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFF', fontWeight: 700, fontSize: 13, cursor: quickAddName.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                    {creatingCustomer ? '…' : 'Create'}
+                  </button>
+                  <button onClick={() => { setShowQuickAdd(false); setQuickAddName('') }}
+                    style={{ width: 44, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={14} color="#94A3B8" />
+                  </button>
+                </div>
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '5px 0 0' }}>Creates a new customer record and links it to this vehicle</p>
+              </div>
+            )}
+          </div>
           {/* Notes */}
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Notes</label>

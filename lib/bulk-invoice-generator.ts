@@ -17,8 +17,10 @@ export async function generateAndSaveBulkInvoice(params: {
   rows: BulkGeneratorRow[]
   totalAmount: number
   bulkInvoiceId?: string   // pre-generated UUID (if retrying)
+  customerId?: string | null
 }): Promise<{
   bulkInvoiceId: string | null
+  groupId: string | null
   invoiceNumber: string
   pdfBlob: Blob
   storagePath: string | null
@@ -84,7 +86,7 @@ export async function generateAndSaveBulkInvoice(params: {
   }
 
   // Save DB rows (one per vehicle, all sharing bulkInvoiceId + invoiceNumber)
-  const { bulkInvoiceId, error } = await saveBulkInvoice({
+  const { bulkInvoiceId, groupId, error } = await saveBulkInvoice({
     companyId: params.companyId,
     invoiceNumber: params.invoiceNumber,
     invoiceDate: params.invoiceDate,
@@ -105,9 +107,10 @@ export async function generateAndSaveBulkInvoice(params: {
       subtotal: r.subtotal,
     })),
     createdBy: params.userId,
+    customerId: params.customerId,
   })
 
-  if (error) return { bulkInvoiceId: null, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error }
+  if (error) return { bulkInvoiceId: null, groupId: null, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error }
 
-  return { bulkInvoiceId, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error: null }
+  return { bulkInvoiceId, groupId: groupId ?? null, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error: null }
 }

@@ -17,9 +17,15 @@ import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import {
   ArrowLeft, Play, Send, ExternalLink, Download,
-  Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Lock,
+  Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Lock, Users, Pencil, Trash2,
 } from 'lucide-react'
+import { linkVehicleToCustomer, getCustomers, type Customer } from '@/lib/customer-actions'
+import {
+  getVehicleCharges, applyFeeToVehicle, updateCharge, deleteCharge,
+  getFeeTypes, type VehicleCharge, type FeeType,
+} from '@/lib/lot-fee-actions'
 import LoadingOverlay from '@/components/ui/loading-overlay'
+import VehicleInvoiceHistory from '@/components/billing/vehicle-invoice-history'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -204,6 +210,27 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [photosLoaded, setPhotosLoaded] = useState(false)
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null)
 
+  // Charges
+  const [charges, setCharges] = useState<VehicleCharge[]>([])
+  const [loadingCharges, setLoadingCharges] = useState(false)
+  const [feeTypes, setFeeTypes] = useState<FeeType[]>([])
+  const [showApplyFee, setShowApplyFee] = useState(false)
+  const [applyFeeTypeId, setApplyFeeTypeId] = useState('')
+  const [applyFeeLabel, setApplyFeeLabel] = useState('')
+  const [applyFeeAmount, setApplyFeeAmount] = useState('')
+  const [applyingFee, setApplyingFee] = useState(false)
+  const [editingChargeId, setEditingChargeId] = useState<string | null>(null)
+  const [editChargeLabel, setEditChargeLabel] = useState('')
+  const [editChargeAmount, setEditChargeAmount] = useState('')
+  const [savingCharge, setSavingCharge] = useState(false)
+  const [confirmDeleteChargeId, setConfirmDeleteChargeId] = useState<string | null>(null)
+
+  // Customer
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [editingCustomer, setEditingCustomer] = useState(false)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+  const [savingCustomer, setSavingCustomer] = useState(false)
+
   // Notes
   const [rawNotes, setRawNotes] = useState<string | null>(null)
   const [newNote, setNewNote] = useState('')
@@ -250,7 +277,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setLoadingVehicle(true)
     const { data } = await createClient()
       .from('storage_vehicles')
-      .select('*, location:location_id(id, name, city, state)')
+      .select('*, location:location_id(id, name, city, state), customer:customer_id(id, name, phone, email)')
       .eq('id', params.vehicleId)
       .eq('company_id', companyId)
       .single()
@@ -283,7 +310,27 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setRateOverride(vehicle.daily_rate != null ? String(vehicle.daily_rate) : vehicle.monthly_rate != null ? String(vehicle.monthly_rate) : '')
     setBillToName(vehicle.bill_to_name ?? '')
     setBillToContact(vehicle.bill_to_contact ?? '')
+    setSelectedCustomerId(vehicle.customer_id ?? '')
   }, [vehicle?.id])
+
+  // ── Load company customers for customer selector
+  useEffect(() => {
+    if (!companyId) return
+    getCustomers(companyId).then(setCustomers).catch(() => {})
+  }, [companyId])
+
+  // ── Load vehicle charges + available fee types
+  useEffect(() => {
+    if (!vehicle?.id || !companyId || !lotMapEnabled) return
+    setLoadingCharges(true)
+    Promise.all([
+      getVehicleCharges(vehicle.id),
+      getFeeTypes(companyId),
+    ]).then(([c, f]) => {
+      setCharges(c)
+      setFeeTypes(f)
+    }).catch(() => {}).finally(() => setLoadingCharges(false))
+  }, [vehicle?.id, companyId, lotMapEnabled])
 
   // ── Load in-progress inspection; mark stale (>48h) ones abandoned on first load
   useEffect(() => {
@@ -911,6 +958,269 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         )
       })()}
 
+      {/* ── Charges Breakdown (lot_map gated) ───────────────────────────────── */}
+      {lotMapEnabled && (() => {
+        const reportTotal = charges.filter(c => c.charge_type === 'report').reduce((s, c) => s + Number(c.amount), 0)
+        const feeTotal = charges.filter(c => c.charge_type === 'custom_fee').reduce((s, c) => s + Number(c.amount), 0)
+        const billingResult = calculateVehicleBilling(
+          { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
+          companyBillingDefaults ?? {},
+        )
+        const storageTotal = billingResult.accruedAmount ?? 0
+        const grandTotal = storageTotal + reportTotal + feeTotal
+
+        const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F8FAFC' }
+        const labelStyle: React.CSSProperties = { fontSize: 13, color: '#4A5568', margin: 0 }
+        const amountStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }
+        const typeTag = (type: string) => {
+          const cfg: Record<string, { label: string; bg: string; color: string }> = {
+            checkin:  { label: 'CHECK-IN',  bg: '#E0F7FC', color: '#0097B2' },
+            checkout: { label: 'CHECK-OUT', bg: '#EDE9FE', color: '#7C3AED' },
+            one_off:  { label: 'ONE-OFF',   bg: '#FEF3C7', color: '#92400E' },
+          }
+          const c = cfg[type] ?? { label: type.toUpperCase(), bg: '#F0F4F8', color: '#4A5568' }
+          return <span style={{ fontSize: 9, fontWeight: 700, background: c.bg, color: c.color, borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>{c.label}</span>
+        }
+
+        return (
+          <SectionCard
+            title="Charges"
+            action={
+              feeTypes.length > 0
+                ? <button onClick={() => { setShowApplyFee(true); setApplyFeeTypeId(''); setApplyFeeLabel(''); setApplyFeeAmount('') }}
+                    style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#00B4D8', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                    + Apply Fee
+                  </button>
+                : null
+            }
+          >
+            {loadingCharges ? (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <Loader2 size={16} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+              </div>
+            ) : (
+              <>
+                {/* Storage row */}
+                <div style={rowStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <p style={labelStyle}>Storage ({billingResult.daysOnLot}d)</p>
+                  </div>
+                  <p style={amountStyle}>{billingResult.accruedAmount != null ? `$${storageTotal.toFixed(2)}` : '—'}</p>
+                </div>
+
+                {/* Report charge rows */}
+                {charges.filter(c => c.charge_type === 'report').map(c => (
+                  <div key={c.id} style={rowStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                      <p style={labelStyle}>{c.label}</p>
+                      {c.report_type && typeTag(c.report_type)}
+                    </div>
+                    <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
+                  </div>
+                ))}
+
+                {/* Custom fee rows */}
+                {charges.filter(c => c.charge_type === 'custom_fee').map(c => (
+                  editingChargeId === c.id ? (
+                    <div key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid #F8FAFC' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8 }}>
+                        <input value={editChargeLabel} onChange={e => setEditChargeLabel(e.target.value)}
+                          style={{ height: 36, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94A3B8' }}>$</span>
+                          <input type="number" min="0" step="0.01" value={editChargeAmount} onChange={e => setEditChargeAmount(e.target.value)}
+                            style={{ width: 90, height: 36, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setEditingChargeId(null)}
+                          style={{ flex: 1, height: 30, borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                        <button disabled={savingCharge} onClick={async () => {
+                          setSavingCharge(true)
+                          try {
+                            await updateCharge(c.id, { label: editChargeLabel, amount: parseFloat(editChargeAmount) })
+                            setCharges(cs => cs.map(x => x.id === c.id ? { ...x, label: editChargeLabel, amount: parseFloat(editChargeAmount) } : x))
+                            setEditingChargeId(null)
+                          } finally { setSavingCharge(false) }
+                        }}
+                          style={{ flex: 2, height: 30, borderRadius: 7, border: 'none', background: '#F4A62A', fontSize: 12, fontWeight: 700, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {savingCharge ? '…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : confirmDeleteChargeId === c.id ? (
+                    <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
+                      <p style={{ fontSize: 12, color: '#EF4444', margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setConfirmDeleteChargeId(null)}
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 11, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                        <button onClick={async () => {
+                          await deleteCharge(c.id)
+                          setCharges(cs => cs.filter(x => x.id !== c.id))
+                          setConfirmDeleteChargeId(null)
+                        }}
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: '#EF4444', fontSize: 11, fontWeight: 700, color: '#FFF', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={labelStyle}>{c.label}</p>
+                        {c.is_recurring && <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>Recurring</p>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
+                        <button onClick={() => { setEditingChargeId(c.id); setEditChargeLabel(c.label); setEditChargeAmount(String(c.amount)) }}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Pencil size={11} color="#4A5568" />
+                        </button>
+                        <button onClick={() => setConfirmDeleteChargeId(c.id)}
+                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <Trash2 size={11} color="#EF4444" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ))}
+
+                {charges.length === 0 && (
+                  <p style={{ fontSize: 12, color: '#CBD5E1', margin: '4px 0 8px' }}>No charges recorded yet</p>
+                )}
+
+                {/* Total */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 2, borderTop: '2px solid #E1E8F0' }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Total</p>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: '#00B4D8', margin: 0 }}>${grandTotal.toFixed(2)}</p>
+                </div>
+              </>
+            )}
+          </SectionCard>
+        )
+      })()}
+
+      {/* Apply Fee Modal */}
+      {showApplyFee && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setShowApplyFee(false)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 360, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 16px' }}>Apply Fee to Vehicle</h3>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Fee Type</label>
+              <select value={applyFeeTypeId} onChange={e => {
+                const ft = feeTypes.find(f => f.id === e.target.value)
+                setApplyFeeTypeId(e.target.value)
+                setApplyFeeLabel(ft?.name ?? '')
+                setApplyFeeAmount(ft ? String(ft.default_amount) : '')
+              }} style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                <option value="">— Select a fee —</option>
+                {feeTypes.map(f => <option key={f.id} value={f.id}>{f.name} (${Number(f.default_amount).toFixed(2)})</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Label</label>
+              <input value={applyFeeLabel} onChange={e => setApplyFeeLabel(e.target.value)}
+                placeholder="Fee label…"
+                style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Amount</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94A3B8' }}>$</span>
+                <input type="number" min="0" step="0.01" value={applyFeeAmount} onChange={e => setApplyFeeAmount(e.target.value)}
+                  style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowApplyFee(false)}
+                style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button
+                disabled={!applyFeeTypeId || !applyFeeLabel.trim() || !applyFeeAmount || applyingFee}
+                onClick={async () => {
+                  if (!vehicle || !user || !applyFeeTypeId || !applyFeeLabel.trim() || !applyFeeAmount) return
+                  const ft = feeTypes.find(f => f.id === applyFeeTypeId)
+                  setApplyingFee(true)
+                  try {
+                    const charge = await applyFeeToVehicle({
+                      companyId, vehicleId: vehicle.id, feeTypeId: applyFeeTypeId,
+                      label: applyFeeLabel.trim(), amount: parseFloat(applyFeeAmount),
+                      isRecurring: ft?.is_recurring ?? false, createdBy: user.id,
+                    })
+                    setCharges(cs => [...cs, charge])
+                    setShowApplyFee(false)
+                  } catch (e: any) { alert(e.message) }
+                  finally { setApplyingFee(false) }
+                }}
+                style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: applyFeeTypeId && applyFeeLabel && applyFeeAmount ? '#F4A62A' : '#E1E8F0', color: applyFeeTypeId && applyFeeLabel && applyFeeAmount ? '#0D1B2A' : '#94A3B8', fontWeight: 700, cursor: applyFeeTypeId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                {applyingFee ? 'Applying…' : 'Apply Fee'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Customer ─────────────────────────────────────────────────────────── */}
+      <SectionCard
+        title="Customer"
+        action={
+          !editingCustomer
+            ? <button onClick={() => setEditingCustomer(true)} style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#00B4D8', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Change</button>
+            : null
+        }
+      >
+        {editingCustomer ? (
+          <div>
+            <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}
+              style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit', marginBottom: 10 }}>
+              <option value="">— No customer —</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { setEditingCustomer(false); setSelectedCustomerId(vehicle?.customer_id ?? '') }}
+                style={{ flex: 1, height: 38, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+              <button onClick={async () => {
+                if (!vehicle) return
+                setSavingCustomer(true)
+                try {
+                  await linkVehicleToCustomer(vehicle.id, selectedCustomerId || null)
+                  setVehicle((v: any) => ({
+                    ...v,
+                    customer_id: selectedCustomerId || null,
+                    customer: customers.find(c => c.id === selectedCustomerId) ?? null,
+                  }))
+                  setEditingCustomer(false)
+                } catch (e: any) { alert(e.message) }
+                finally { setSavingCustomer(false) }
+              }} disabled={savingCustomer}
+                style={{ flex: 2, height: 38, borderRadius: 9, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {savingCustomer ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        ) : vehicle?.customer ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 20, background: '#E0F7FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#0097B2' }}>{vehicle.customer.name.charAt(0).toUpperCase()}</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <button onClick={() => router.push(`/customers/${vehicle.customer.id}`)}
+                style={{ background: 'none', border: 'none', padding: 0, fontSize: 14, fontWeight: 700, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                {vehicle.customer.name}
+              </button>
+              {(vehicle.customer.phone || vehicle.customer.email) && (
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
+                  {[vehicle.customer.phone, vehicle.customer.email].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+            <Users size={16} color="#CBD5E1" />
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: '#CBD5E1', margin: 0 }}>No customer linked</p>
+        )}
+      </SectionCard>
+
       {/* ── Notes ───────────────────────────────────────────────────────────── */}
       <SectionCard title="Notes" count={parsedNotes.length || undefined}>
         {/* New note input */}
@@ -948,6 +1258,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </div>
         )}
       </SectionCard>
+
+      {/* ── Invoice History ──────────────────────────────────────────────── */}
+      {vehicle && (
+        <SectionCard title="Invoice History">
+          <VehicleInvoiceHistory
+            vehicleId={params.vehicleId}
+            vin={vehicle.vin}
+            companyId={companyId}
+          />
+        </SectionCard>
+      )}
 
       {/* Lightbox */}
       {lightbox && <Lightbox url={lightbox.url} label={lightbox.label} onClose={() => setLightbox(null)} />}

@@ -7,7 +7,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { User, CreditCard, Users, Palette, ChevronRight, Lock, Sparkles } from 'lucide-react'
+import { User, CreditCard, Users, Palette, ChevronRight, Lock, Sparkles, Receipt } from 'lucide-react'
 
 interface SettingsCard {
   icon: React.ReactNode
@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const { isOwnerUser, companyRole, loading } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const whiteLabelEnabled = useFeatureFlag('white_label')
+  const lotMapEnabled = useFeatureFlag('lot_map')
 
   const isAdmin = isOwnerUser || companyRole === 'admin'
 
@@ -58,6 +59,14 @@ export default function SettingsPage() {
       lockedLabel: !isAdmin ? 'Admin access required' : 'Contact us to enable',
       route: '/settings/branding',
       accessible: isAdmin && !!whiteLabelEnabled,
+    },
+    {
+      icon: <Receipt size={20} />,
+      title: 'Fee Structure',
+      description: 'Set report costs and manage custom fee types',
+      lockedLabel: !isAdmin ? 'Admin access required' : 'Lot billing not enabled',
+      route: '/settings/fees',
+      accessible: isAdmin && !!lotMapEnabled,
     },
   ]
 

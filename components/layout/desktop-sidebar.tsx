@@ -77,6 +77,7 @@ export default function DesktopSidebar({
   const inspItems: NavItem[] = [
     { id: 'add-vehicle',  label: 'Add Vehicle',       icon: <PlusCircle size={18} />,    type: 'action' as const },
     { id: 'vehicles',     label: 'Vehicles',          icon: <Car size={18} />,           type: 'route', route: '/vehicles' },
+    { id: 'customers',    label: 'Customers',         icon: <Users size={18} />,         type: 'route' as const, route: '/customers' },
     { id: 'inspections',  label: 'Inspections',       icon: <ClipboardList size={18} />, type: 'route' as const, route: '/inspections' },
     { id: 'dispatch',     label: 'Dispatch',           icon: <Send size={18} />,          type: 'route' as const, route: '/storage/dispatch' },
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),

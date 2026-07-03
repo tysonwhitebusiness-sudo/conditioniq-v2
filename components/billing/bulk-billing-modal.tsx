@@ -6,6 +6,7 @@ import { calculateBulkBilling, type BulkVehicleRow } from '@/lib/lot-actions'
 import { getNextBulkInvoiceNumber } from '@/lib/bulk-invoice-actions'
 import { generateAndSaveBulkInvoice } from '@/lib/bulk-invoice-generator'
 import { createClient } from '@/lib/supabase/client'
+import { getCustomers, type Customer } from '@/lib/customer-actions'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,8 @@ export default function BulkBillingModal({
   const [billToContact, setBillToContact] = useState('')
   const [billToNotes, setBillToNotes] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(todayStr())
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+  const [customers, setCustomers] = useState<Customer[]>([])
 
   // Generation
   const [generating, setGenerating] = useState(false)
@@ -128,6 +131,11 @@ export default function BulkBillingModal({
       .eq('id', companyId)
       .single()
       .then(({ data }) => setCompany(data ?? { default_billing_type: null, default_daily_rate: null, default_monthly_rate: null }))
+  }, [companyId])
+
+  // Fetch customers for step 5
+  useEffect(() => {
+    getCustomers(companyId).then(setCustomers).catch(() => {})
   }, [companyId])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -196,6 +204,19 @@ export default function BulkBillingModal({
     if (step === 5) setBillToName(prev => prev || subClientInfo.value)
   }, [step, subClientInfo.value])
 
+  function handleCustomerSelect(customerId: string) {
+    setSelectedCustomerId(customerId)
+    const customer = customers.find(c => c.id === customerId)
+    if (customer) {
+      setBillToName(customer.name)
+      setBillToContact(customer.email ?? customer.phone ?? '')
+    } else {
+      // "none" selected — clear only if the name matches a customer
+      if (customers.some(c => c.name === billToName)) setBillToName('')
+      setBillToContact('')
+    }
+  }
+
   // ── Navigation guards ──────────────────────────────────────────────────────
 
   function canAdvance() {
@@ -254,6 +275,7 @@ export default function BulkBillingModal({
         userId,
         rows: pdfRows,
         totalAmount: grandTotal,
+        customerId: selectedCustomerId || null,
       })
 
       if (result.error) { setGenError(result.error); return }
@@ -527,6 +549,21 @@ export default function BulkBillingModal({
               <div style={{ marginBottom: 20 }}>
                 <h3 style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Bill To</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {customers.length > 0 && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Customer (optional)</label>
+                      <select
+                        value={selectedCustomerId}
+                        onChange={e => handleCustomerSelect(e.target.value)}
+                        style={{ width: '100%', height: 40, border: '1.5px solid #E1E8F0', borderRadius: 9, padding: '0 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA', cursor: 'pointer', boxSizing: 'border-box' }}
+                      >
+                        <option value="">— Select a customer —</option>
+                        {customers.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Name <span style={{ color: '#EF4444' }}>*</span></label>
                     <input value={billToName} onChange={e => setBillToName(e.target.value)} placeholder="Company or person name"

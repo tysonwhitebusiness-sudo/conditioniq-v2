@@ -24,21 +24,24 @@ export interface LotInvoice {
   created_at: string
   created_by: string | null
   bulk_invoice_id: string | null  // null for individual invoices; shared UUID for bulk batches
+  group_id?: string | null         // lot_invoice_groups FK (null for legacy rows)
 }
 
 export async function getNextInvoiceNumber(companyId: string): Promise<string> {
   const supabase = createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase.rpc('get_next_invoice_number', { p_company_id: companyId })
+  if (!error && data) return data as string
+  // fallback if RPC unavailable
+  const { data: latest } = await supabase
     .from('lot_invoices')
     .select('invoice_number')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
     .single()
-
   let next = 1
-  if (data?.invoice_number) {
-    const match = data.invoice_number.match(/(\d+)$/)
+  if (latest?.invoice_number) {
+    const match = latest.invoice_number.match(/(\d+)$/)
     if (match) next = parseInt(match[1], 10) + 1
   }
   return `INV-${String(next).padStart(4, '0')}`
@@ -65,9 +68,31 @@ export async function getInvoiceSignedUrl(storagePath: string): Promise<string |
 
 export async function saveLotInvoice(invoice: Omit<LotInvoice, 'id' | 'created_at'>): Promise<LotInvoice | null> {
   const supabase = createClient()
+
+  // Create a group header for this invoice so the new detail page and portal work
+  let groupId: string | null = invoice.group_id ?? null
+  if (!groupId) {
+    const { data: group } = await supabase
+      .from('lot_invoice_groups')
+      .insert({
+        company_id: invoice.company_id,
+        invoice_number: invoice.invoice_number,
+        invoice_date: invoice.invoice_date,
+        due_date: invoice.due_date ?? null,
+        bill_to_name: invoice.bill_to_name,
+        bill_to_contact: invoice.bill_to_contact ?? null,
+        notes: invoice.notes ?? null,
+        status: invoice.status ?? 'draft',
+        created_by: invoice.created_by,
+      })
+      .select('id')
+      .single()
+    groupId = group?.id ?? null
+  }
+
   const { data, error } = await supabase
     .from('lot_invoices')
-    .insert(invoice)
+    .insert({ ...invoice, group_id: groupId })
     .select()
     .single()
   if (error) { console.error('[invoices] save', error); return null }

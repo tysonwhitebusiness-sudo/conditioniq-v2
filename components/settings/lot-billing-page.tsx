@@ -15,10 +15,11 @@ import {
 } from 'lucide-react'
 import {
   getBillingKPIs, getVehicleBillingRows, getOutstandingInvoices,
-  computeAgingBuckets, getRevenueData, bulkMarkPaid,
+  getRevenueData, bulkMarkPaid,
   type BillingKPIs, type VehicleBillingRow, type OutstandingInvoice,
   type AgingBucket, type RevenueMonth, type TopCustomer,
 } from '@/lib/billing-dashboard-actions'
+import { computeAgingBuckets } from '@/lib/billing-utils'
 import ExportCsvModal from '@/components/billing/export-csv-modal'
 import BillingReminderBanner from '@/components/billing/billing-reminder-banner'
 import {

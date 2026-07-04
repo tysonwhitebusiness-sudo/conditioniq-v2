@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getInvoiceGroupByToken, INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/invoice-group-actions'
+import { getInvoiceGroupByToken } from '@/lib/invoice-group-actions'
+import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/invoice-utils'
 import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'

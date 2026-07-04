@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, ChevronRight, Users } from 'lucide-react'
 import { getVehicleInvoiceHistory, type VehicleInvoiceRow } from '@/lib/vehicle-invoice-actions'
+import { updateInvoiceGroupStatus, INVOICE_STATUS_LABELS, type InvoiceGroupStatus } from '@/lib/invoice-group-actions'
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   draft:   { bg: '#F0F4F8', color: '#4A5568',  label: 'Draft'   },
@@ -24,6 +25,55 @@ function fmtDate(raw: string) {
 
 function fmtAmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function StatusControl({ row, onChanged }: { row: VehicleInvoiceRow; onChanged: (status: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const s = STATUS_STYLE[row.status] ?? STATUS_STYLE.draft
+
+  if (!row.groupId) {
+    return (
+      <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: s.bg, color: s.color, display: 'inline-block', marginTop: 2 }}>
+        {s.label.toUpperCase()}
+      </span>
+    )
+  }
+
+  if (!open) {
+    return (
+      <span
+        onClick={e => { e.stopPropagation(); setOpen(true) }}
+        style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: s.bg, color: s.color, display: 'inline-block', marginTop: 2, cursor: 'pointer' }}
+      >
+        {saving ? '…' : s.label.toUpperCase()}
+      </span>
+    )
+  }
+
+  return (
+    <select
+      autoFocus
+      value={row.status}
+      onClick={e => e.stopPropagation()}
+      onBlur={() => setOpen(false)}
+      onChange={async e => {
+        e.stopPropagation()
+        const next = e.target.value as InvoiceGroupStatus
+        setSaving(true)
+        try {
+          await updateInvoiceGroupStatus(row.groupId as string, next)
+          onChanged(next)
+        } finally {
+          setSaving(false)
+          setOpen(false)
+        }
+      }}
+      style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 4px', background: s.bg, color: s.color, border: 'none', outline: 'none', marginTop: 2, cursor: 'pointer' }}
+    >
+      {Object.entries(INVOICE_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  )
 }
 
 interface Props {
@@ -92,7 +142,6 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
         ) : (
           <div style={{ maxHeight: 280, overflowY: 'auto' }}>
             {rows.map((row, i) => {
-              const s = STATUS_STYLE[row.status] ?? STATUS_STYLE.draft
               return (
                 <div
                   key={row.id}
@@ -132,13 +181,10 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
                     <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>
                       ${fmtAmt(row.totalAmount)}
                     </p>
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, borderRadius: 4,
-                      padding: '1px 5px', background: s.bg, color: s.color,
-                      display: 'inline-block', marginTop: 2,
-                    }}>
-                      {s.label.toUpperCase()}
-                    </span>
+                    <StatusControl
+                      row={row}
+                      onChanged={next => setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: next } : r))}
+                    />
                   </div>
 
                   <ChevronRight size={13} color="#CBD5E1" style={{ flexShrink: 0 }} />

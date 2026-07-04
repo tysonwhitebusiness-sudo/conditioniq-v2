@@ -139,6 +139,34 @@ export async function applyFeeToVehicle(payload: {
   return data as VehicleCharge
 }
 
+export async function applyReportCostToVehicle(payload: {
+  companyId: string
+  vehicleId: string
+  reportType: 'checkin' | 'checkout' | 'one_off'
+  label: string
+  amount: number
+  inspectionId?: string | null
+  createdBy: string
+}): Promise<VehicleCharge> {
+  const { data, error } = await createClient()
+    .from('vehicle_charges')
+    .insert({
+      company_id: payload.companyId,
+      vehicle_id: payload.vehicleId,
+      charge_type: 'report',
+      label: payload.label,
+      amount: payload.amount,
+      report_type: payload.reportType,
+      inspection_id: payload.inspectionId ?? null,
+      is_recurring: false,
+      created_by: payload.createdBy,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as VehicleCharge
+}
+
 export async function updateCharge(
   id: string,
   data: { label?: string; amount?: number }

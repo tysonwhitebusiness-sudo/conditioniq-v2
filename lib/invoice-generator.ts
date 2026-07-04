@@ -10,10 +10,6 @@ export async function generateAndSaveInvoice(
     userId: string
     vehicleVin?: string | null
     vehicleDescription?: string | null
-    daysOnLot: number
-    billingType: 'daily' | 'monthly'
-    rate: number
-    accruedAmount: number
     billToName?: string
     billToContact?: string
     notes?: string
@@ -82,16 +78,21 @@ export async function generateAndSaveInvoice(
       bill_to_contact: data.billToContact ?? null,
       vehicle_vin: data.vehicleVin ?? null,
       vehicle_description: data.vehicleDescription ?? null,
-      days_on_lot: data.daysOnLot,
+      days_on_lot: data.includeStorage ? data.daysOnLot : 0,
       billing_type: data.billingType,
       rate: data.rate,
-      total_amount: data.accruedAmount,
+      total_amount: data.totalAmount,
       storage_path: storagePath,
       notes: data.notes ?? null,
       status: 'draft',
       created_by: data.userId,
       bulk_invoice_id: null,
     })
+
+    if (invoice?.group_id && data.charges.length > 0) {
+      const { linkChargesToInvoice } = await import('./invoice-charge-actions')
+      await linkChargesToInvoice(invoice.group_id, data.companyId, data.charges.map(c => ({ id: c.id, amount: c.amount })))
+    }
   } catch (err) {
     captureHighSeverityError(err, { flow: 'saveLotInvoice', invoiceNumber: data.invoiceNumber, companyId: data.companyId })
     throw err

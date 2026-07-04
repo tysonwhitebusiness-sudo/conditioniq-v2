@@ -21,9 +21,10 @@ import {
 } from 'lucide-react'
 import { linkVehicleToCustomer, getCustomers, type Customer } from '@/lib/customer-actions'
 import {
-  getVehicleCharges, applyFeeToVehicle, updateCharge, deleteCharge,
-  getFeeTypes, type VehicleCharge, type FeeType,
+  getVehicleCharges, applyFeeToVehicle, applyReportCostToVehicle, updateCharge, deleteCharge,
+  getFeeTypes, getReportCosts, type VehicleCharge, type FeeType, type ReportCosts,
 } from '@/lib/lot-fee-actions'
+import { getBilledChargeIds, getAlreadyBilledStorageDays } from '@/lib/invoice-charge-actions'
 import LoadingOverlay from '@/components/ui/loading-overlay'
 import VehicleInvoiceHistory from '@/components/billing/vehicle-invoice-history'
 
@@ -66,6 +67,27 @@ function daysOnLot(arrivedAt: string, releasedAt: string | null, status: Lifecyc
 }
 
 function daysColor(d: number) { return d < 30 ? '#059669' : d < 60 ? '#D97706' : '#DC2626' }
+
+const REPORT_TYPE_TAG_CFG: Record<string, { label: string; bg: string; color: string }> = {
+  checkin:  { label: 'CHECK-IN',  bg: '#E0F7FC', color: '#0097B2' },
+  checkout: { label: 'CHECK-OUT', bg: '#EDE9FE', color: '#7C3AED' },
+  one_off:  { label: 'ONE-OFF',   bg: '#FEF3C7', color: '#92400E' },
+}
+
+function reportTypeTag(type: string) {
+  const c = REPORT_TYPE_TAG_CFG[type] ?? { label: type.toUpperCase(), bg: '#F0F4F8', color: '#4A5568' }
+  return <span style={{ fontSize: 9, fontWeight: 700, background: c.bg, color: c.color, borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>{c.label}</span>
+}
+
+function billedTag() {
+  return <span style={{ fontSize: 9, fontWeight: 700, background: '#F0F4F8', color: '#94A3B8', borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>BILLED</span>
+}
+
+const REPORT_COST_LABELS: Record<'checkin' | 'checkout' | 'one_off', string> = {
+  checkin: 'Check-In Report',
+  checkout: 'Check-Out Report',
+  one_off: 'One-Off Report',
+}
 
 function scoreStyle(score: number | null) {
   if (score == null) return null
@@ -224,6 +246,16 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [editChargeAmount, setEditChargeAmount] = useState('')
   const [savingCharge, setSavingCharge] = useState(false)
   const [confirmDeleteChargeId, setConfirmDeleteChargeId] = useState<string | null>(null)
+  const [billedChargeIds, setBilledChargeIds] = useState<Set<string>>(new Set())
+  const [alreadyBilledDays, setAlreadyBilledDays] = useState(0)
+  const [reportCosts, setReportCosts] = useState<ReportCosts | null>(null)
+  const [showApplyReportCost, setShowApplyReportCost] = useState(false)
+  const [reportCostType, setReportCostType] = useState<'checkin' | 'checkout' | 'one_off'>('checkin')
+  const [reportCostLabel, setReportCostLabel] = useState('')
+  const [reportCostAmount, setReportCostAmount] = useState('')
+  const [applyingReportCost, setApplyingReportCost] = useState(false)
+  const [selectedChargeIds, setSelectedChargeIds] = useState<Set<string>>(new Set())
+  const [includeStorageSelected, setIncludeStorageSelected] = useState(true)
 
   // Customer
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -240,7 +272,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [confirmRelease, setConfirmRelease] = useState(false)
   const [actionSaving, setActionSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [showZeroInvoiceWarning, setShowZeroInvoiceWarning] = useState(false)
 
   // Wizard
   const [appStep, setAppStep] = useState<AppStep>('view')
@@ -319,16 +350,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     getCustomers(companyId).then(setCustomers).catch(() => {})
   }, [companyId])
 
-  // ── Load vehicle charges + available fee types
+  // ── Load vehicle charges + available fee types + billed/report state
   useEffect(() => {
     if (!vehicle?.id || !companyId || !lotMapEnabled) return
     setLoadingCharges(true)
     Promise.all([
       getVehicleCharges(vehicle.id),
       getFeeTypes(companyId),
-    ]).then(([c, f]) => {
+      getBilledChargeIds(vehicle.id),
+      getAlreadyBilledStorageDays(vehicle.id, companyId),
+      getReportCosts(companyId),
+    ]).then(([c, f, billed, days, costs]) => {
       setCharges(c)
       setFeeTypes(f)
+      setBilledChargeIds(billed)
+      setAlreadyBilledDays(days)
+      setReportCosts(costs)
     }).catch(() => {}).finally(() => setLoadingCharges(false))
   }, [vehicle?.id, companyId, lotMapEnabled])
 
@@ -527,10 +564,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
       companyBillingDefaults ?? {},
     )
-    if (billingResult.rate === null || billingResult.accruedAmount === null) {
-      setErrorMsg('Please set a rate before generating an invoice.')
+    const unbilledDays = Math.max(0, billingResult.daysOnLot - alreadyBilledDays)
+    const canIncludeStorage = unbilledDays > 0 && billingResult.rate !== null
+    const storageIncluded = includeStorageSelected && canIncludeStorage
+    const storageAmount = storageIncluded
+      ? (billingType === 'daily' ? unbilledDays * (billingResult.rate as number) : (unbilledDays / 30) * (billingResult.rate as number))
+      : 0
+    const unbilledCharges = charges.filter(c => !billedChargeIds.has(c.id))
+    const selectedCharges = unbilledCharges.filter(c => selectedChargeIds.has(c.id))
+    const chargesTotal = selectedCharges.reduce((s, c) => s + Number(c.amount), 0)
+    const totalAmount = storageAmount + chargesTotal
+
+    if (!storageIncluded && selectedCharges.length === 0) {
+      setErrorMsg('Select at least one item to include on this invoice.')
       return
     }
+
     setGeneratingInvoice(true)
     try {
       const { getNextInvoiceNumber } = await import('@/lib/invoice-actions')
@@ -554,12 +603,21 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         vehicleVin: vehicle.vin,
         vehicleDescription: vehicleTitle,
         intakeDate: vehicle.arrived_at ? new Date(vehicle.arrived_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
-        daysOnLot: billingResult.daysOnLot,
+        includeStorage: storageIncluded,
+        daysOnLot: unbilledDays,
         billingType,
-        rate: billingResult.rate,
-        accruedAmount: billingResult.accruedAmount,
+        rate: billingResult.rate ?? 0,
+        storageAmount,
+        charges: selectedCharges.map(c => ({ id: c.id, label: c.label, amount: Number(c.amount) })),
+        totalAmount,
         notes: invoiceNotes || undefined,
       })
+      setBilledChargeIds(prev => {
+        const next = new Set(prev)
+        selectedCharges.forEach(c => next.add(c.id))
+        return next
+      })
+      setAlreadyBilledDays(prev => prev + (storageIncluded ? unbilledDays : 0))
       setShowInvoiceModal(false)
       setInvoiceNotes('')
       setInvoiceDueDate('')
@@ -944,11 +1002,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 {billingSaved ? 'Saved ✓' : savingBilling ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => {
-                if (billingResult.accruedAmount !== null && Number(billingResult.accruedAmount) === 0) {
-                  setShowZeroInvoiceWarning(true)
-                } else {
-                  setShowInvoiceModal(true)
-                }
+                const unbilled = charges.filter(c => !billedChargeIds.has(c.id))
+                setSelectedChargeIds(new Set(unbilled.map(c => c.id)))
+                setIncludeStorageSelected(true)
+                setShowInvoiceModal(true)
               }}
                 style={{ height: 42, padding: '0 16px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Generate Invoice
@@ -972,26 +1029,28 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F8FAFC' }
         const labelStyle: React.CSSProperties = { fontSize: 13, color: '#4A5568', margin: 0 }
         const amountStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }
-        const typeTag = (type: string) => {
-          const cfg: Record<string, { label: string; bg: string; color: string }> = {
-            checkin:  { label: 'CHECK-IN',  bg: '#E0F7FC', color: '#0097B2' },
-            checkout: { label: 'CHECK-OUT', bg: '#EDE9FE', color: '#7C3AED' },
-            one_off:  { label: 'ONE-OFF',   bg: '#FEF3C7', color: '#92400E' },
-          }
-          const c = cfg[type] ?? { label: type.toUpperCase(), bg: '#F0F4F8', color: '#4A5568' }
-          return <span style={{ fontSize: 9, fontWeight: 700, background: c.bg, color: c.color, borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>{c.label}</span>
-        }
 
         return (
           <SectionCard
             title="Charges"
             action={
-              feeTypes.length > 0
-                ? <button onClick={() => { setShowApplyFee(true); setApplyFeeTypeId(''); setApplyFeeLabel(''); setApplyFeeAmount('') }}
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => {
+                  setReportCostType('checkin')
+                  setReportCostLabel(REPORT_COST_LABELS.checkin)
+                  setReportCostAmount(reportCosts?.report_cost_checkin != null ? String(reportCosts.report_cost_checkin) : '')
+                  setShowApplyReportCost(true)
+                }}
+                  style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#00B4D8', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                  + Bill Report Cost
+                </button>
+                {feeTypes.length > 0 && (
+                  <button onClick={() => { setShowApplyFee(true); setApplyFeeTypeId(''); setApplyFeeLabel(''); setApplyFeeAmount('') }}
                     style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#00B4D8', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
                     + Apply Fee
                   </button>
-                : null
+                )}
+              </div>
             }
           >
             {loadingCharges ? (
@@ -1013,7 +1072,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   <div key={c.id} style={rowStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
                       <p style={labelStyle}>{c.label}</p>
-                      {c.report_type && typeTag(c.report_type)}
+                      {c.report_type && reportTypeTag(c.report_type)}
+                      {billedChargeIds.has(c.id) && billedTag()}
                     </div>
                     <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
                   </div>
@@ -1065,19 +1125,26 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   ) : (
                     <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={labelStyle}>{c.label}</p>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <p style={labelStyle}>{c.label}</p>
+                          {billedChargeIds.has(c.id) && billedTag()}
+                        </div>
                         {c.is_recurring && <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>Recurring</p>}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
-                        <button onClick={() => { setEditingChargeId(c.id); setEditChargeLabel(c.label); setEditChargeAmount(String(c.amount)) }}
-                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Pencil size={11} color="#4A5568" />
-                        </button>
-                        <button onClick={() => setConfirmDeleteChargeId(c.id)}
-                          style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash2 size={11} color="#EF4444" />
-                        </button>
+                        {!billedChargeIds.has(c.id) && (
+                          <>
+                            <button onClick={() => { setEditingChargeId(c.id); setEditChargeLabel(c.label); setEditChargeAmount(String(c.amount)) }}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Pencil size={11} color="#4A5568" />
+                            </button>
+                            <button onClick={() => setConfirmDeleteChargeId(c.id)}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Trash2 size={11} color="#EF4444" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )
@@ -1097,6 +1164,70 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </SectionCard>
         )
       })()}
+
+      {/* Bill Report Cost Modal */}
+      {showApplyReportCost && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setShowApplyReportCost(false)} />
+          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 360, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 16px' }}>Bill Condition Report Cost</h3>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Report Type</label>
+              <select value={reportCostType} onChange={e => {
+                const t = e.target.value as 'checkin' | 'checkout' | 'one_off'
+                setReportCostType(t)
+                setReportCostLabel(REPORT_COST_LABELS[t])
+                const defaultAmt = t === 'checkin' ? reportCosts?.report_cost_checkin : t === 'checkout' ? reportCosts?.report_cost_checkout : reportCosts?.report_cost_one_off
+                setReportCostAmount(defaultAmt != null ? String(defaultAmt) : '')
+              }} style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                <option value="checkin">Check-In Report</option>
+                <option value="checkout">Check-Out Report</option>
+                <option value="one_off">One-Off Report</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Label</label>
+              <input value={reportCostLabel} onChange={e => setReportCostLabel(e.target.value)}
+                placeholder="Report cost label…"
+                style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Amount</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94A3B8' }}>$</span>
+                <input type="number" min="0" step="0.01" value={reportCostAmount} onChange={e => setReportCostAmount(e.target.value)}
+                  style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+              {!reportCostAmount && (
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>No default report cost configured in Settings for this type.</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowApplyReportCost(false)}
+                style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button
+                disabled={!reportCostLabel.trim() || !reportCostAmount || applyingReportCost}
+                onClick={async () => {
+                  if (!vehicle || !user || !reportCostLabel.trim() || !reportCostAmount) return
+                  setApplyingReportCost(true)
+                  try {
+                    const charge = await applyReportCostToVehicle({
+                      companyId, vehicleId: vehicle.id, reportType: reportCostType,
+                      label: reportCostLabel.trim(), amount: parseFloat(reportCostAmount),
+                      createdBy: user.id,
+                    })
+                    setCharges(cs => [...cs, charge])
+                    setShowApplyReportCost(false)
+                  } catch (e: any) { alert(e.message) }
+                  finally { setApplyingReportCost(false) }
+                }}
+                style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: reportCostLabel.trim() && reportCostAmount ? '#F4A62A' : '#E1E8F0', color: reportCostLabel.trim() && reportCostAmount ? '#0D1B2A' : '#94A3B8', fontWeight: 700, cursor: reportCostLabel.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                {applyingReportCost ? 'Applying…' : 'Bill Report Cost'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Apply Fee Modal */}
       {showApplyFee && (
@@ -1279,35 +1410,80 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
           companyBillingDefaults ?? {},
         )
+        const unbilledDays = Math.max(0, billingResult.daysOnLot - alreadyBilledDays)
+        const canIncludeStorage = unbilledDays > 0 && billingResult.rate !== null
+        const storageAmount = canIncludeStorage
+          ? (billingType === 'daily' ? unbilledDays * (billingResult.rate as number) : (unbilledDays / 30) * (billingResult.rate as number))
+          : 0
+        const storageIncluded = includeStorageSelected && canIncludeStorage
+        const unbilledCharges = charges.filter(c => !billedChargeIds.has(c.id))
+        const chargesTotal = unbilledCharges
+          .filter(c => selectedChargeIds.has(c.id))
+          .reduce((s, c) => s + Number(c.amount), 0)
+        const grandTotal = (storageIncluded ? storageAmount : 0) + chargesTotal
+        const nothingAvailable = !canIncludeStorage && unbilledCharges.length === 0
+        const canGenerate = storageIncluded || unbilledCharges.some(c => selectedChargeIds.has(c.id))
+
+        const checklistRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid #F0F4F8', cursor: 'pointer' }
+
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowInvoiceModal(false)} />
-            <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Generate Invoice</h3>
                 <button onClick={() => setShowInvoiceModal(false)} style={{ width: 30, height: 30, borderRadius: 15, background: '#F0F4F8', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <X size={14} color="#4A5568" />
                 </button>
               </div>
 
-              {/* Summary */}
-              <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 4px' }}>
-                  {[vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'Vehicle'}
-                </p>
-                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
-                  {billingResult.daysOnLot} days · {billingResult.rate != null ? `$${billingResult.rate.toFixed(2)}/${billingType === 'daily' ? 'day' : 'mo'}` : 'No rate set'}
-                </p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: billingResult.accruedAmount != null ? '#00B4D8' : '#94A3B8', margin: '6px 0 0' }}>
-                  Total: {billingResult.accruedAmount != null ? `$${billingResult.accruedAmount.toFixed(2)}` : '—'}
-                </p>
-              </div>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 12px' }}>
+                {[vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(' ') || 'Vehicle'}
+              </p>
 
-              {billingResult.rate === null && (
-                <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
-                  <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>Set a rate in the Billing section before generating an invoice.</p>
-                </div>
-              )}
+              {/* Selectable charges */}
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Include on this invoice</p>
+
+                {nothingAvailable && (
+                  <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>Nothing unbilled for this vehicle.</p>
+                )}
+
+                {canIncludeStorage && (
+                  <label style={checklistRowStyle}>
+                    <input type="checkbox" checked={includeStorageSelected} onChange={e => setIncludeStorageSelected(e.target.checked)} />
+                    <span style={{ flex: 1, fontSize: 13, color: '#0D1B2A' }}>Storage ({unbilledDays}d unbilled)</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>${storageAmount.toFixed(2)}</span>
+                  </label>
+                )}
+                {!canIncludeStorage && unbilledDays > 0 && (
+                  <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 8px' }}>Set a rate in Billing to include {unbilledDays}d of unbilled storage.</p>
+                )}
+
+                {unbilledCharges.map(c => (
+                  <label key={c.id} style={checklistRowStyle}>
+                    <input type="checkbox" checked={selectedChargeIds.has(c.id)} onChange={e => {
+                      setSelectedChargeIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(c.id); else next.delete(c.id)
+                        return next
+                      })
+                    }} />
+                    <span style={{ flex: 1, fontSize: 13, color: '#0D1B2A', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                      {c.label}
+                      {c.report_type && reportTypeTag(c.report_type)}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>${Number(c.amount).toFixed(2)}</span>
+                  </label>
+                ))}
+
+                {!nothingAvailable && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '2px solid #E1E8F0' }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Total</p>
+                    <p style={{ fontSize: 16, fontWeight: 800, color: '#00B4D8', margin: 0 }}>${grandTotal.toFixed(2)}</p>
+                  </div>
+                )}
+              </div>
 
               {/* Due Date */}
               <div style={{ marginBottom: 12 }}>
@@ -1328,8 +1504,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Cancel
                 </button>
-                <button onClick={handleGenerateInvoice} disabled={generatingInvoice || billingResult.rate === null}
-                  style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: generatingInvoice || billingResult.rate === null ? '#E1E8F0' : '#0D1B2A', color: generatingInvoice || billingResult.rate === null ? '#94A3B8' : '#FFF', fontSize: 14, fontWeight: 700, cursor: generatingInvoice || billingResult.rate === null ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <button onClick={handleGenerateInvoice} disabled={generatingInvoice || !canGenerate}
+                  style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: generatingInvoice || !canGenerate ? '#E1E8F0' : '#0D1B2A', color: generatingInvoice || !canGenerate ? '#94A3B8' : '#FFF', fontSize: 14, fontWeight: 700, cursor: generatingInvoice || !canGenerate ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   {generatingInvoice ? <><Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />Generating…</> : 'Generate & Download'}
                 </button>
               </div>
@@ -1430,20 +1606,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
           <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
           <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
-        </div>
-      </div>
-    )}
-
-    {showZeroInvoiceWarning && (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowZeroInvoiceWarning(false)} />
-        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>$0 Invoice</h3>
-          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>This vehicle has accrued $0.00. Generate a $0 invoice anyway?</p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setShowZeroInvoiceWarning(false)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={() => { setShowZeroInvoiceWarning(false); setShowInvoiceModal(true) }} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Generate Anyway</button>
-          </div>
         </div>
       </div>
     )}

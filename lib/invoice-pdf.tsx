@@ -37,6 +37,12 @@ const styles = StyleSheet.create({
   footerText: { fontSize: 9, color: C.gray400, textAlign: 'center' },
 })
 
+export interface InvoiceChargeLine {
+  id: string
+  label: string
+  amount: number
+}
+
 export interface InvoicePDFData {
   invoiceNumber: string
   invoiceDate: string
@@ -52,10 +58,13 @@ export interface InvoicePDFData {
   vehicleModel?: string | null
   vehicleVin?: string | null
   intakeDate?: string | null
+  includeStorage: boolean
   daysOnLot: number
   billingType: 'daily' | 'monthly'
   rate: number
-  accruedAmount: number
+  storageAmount: number
+  charges: InvoiceChargeLine[]
+  totalAmount: number
   notes?: string
 }
 
@@ -109,19 +118,28 @@ export default function InvoicePDF({ data }: { data: InvoicePDFData }) {
           <Text style={[styles.tableHeaderText, { flex: 1 }]}>Description</Text>
           <Text style={[styles.tableHeaderText, { width: 100, textAlign: 'right' }]}>Amount</Text>
         </View>
-        <View style={styles.tableRow}>
-          <Text style={[styles.tableCell, { flex: 1 }]}>
-            {data.billingType === 'daily' ? 'Daily Storage' : 'Monthly Storage'} — {vehicleTitle}
-            {'\n'}
-            <Text style={{ fontSize: 10, color: C.gray400 }}>{rateLabel}</Text>
-          </Text>
-          <Text style={[styles.tableCellRight, { width: 100 }]}>${data.accruedAmount.toFixed(2)}</Text>
-        </View>
+        {data.includeStorage && (
+          <View style={styles.tableRow}>
+            <Text style={[styles.tableCell, { flex: 1 }]}>
+              {data.billingType === 'daily' ? 'Daily Storage' : 'Monthly Storage'} — {vehicleTitle}
+              {'\n'}
+              <Text style={{ fontSize: 10, color: C.gray400 }}>{rateLabel}</Text>
+            </Text>
+            <Text style={[styles.tableCellRight, { width: 100 }]}>${data.storageAmount.toFixed(2)}</Text>
+          </View>
+        )}
+
+        {data.charges.map(c => (
+          <View key={c.id} style={styles.tableRow}>
+            <Text style={[styles.tableCell, { flex: 1 }]}>{c.label}</Text>
+            <Text style={[styles.tableCellRight, { width: 100 }]}>${c.amount.toFixed(2)}</Text>
+          </View>
+        ))}
 
         {/* Total */}
         <View style={styles.totalBox}>
           <Text style={styles.totalLabel}>Total Due</Text>
-          <Text style={styles.totalAmount}>${data.accruedAmount.toFixed(2)}</Text>
+          <Text style={styles.totalAmount}>${data.totalAmount.toFixed(2)}</Text>
         </View>
 
         {/* Notes */}

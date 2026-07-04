@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, ChevronRight, Users } from 'lucide-react'
 import { getVehicleInvoiceHistory, type VehicleInvoiceRow } from '@/lib/vehicle-invoice-actions'
-import { updateInvoiceGroupStatus, INVOICE_STATUS_LABELS, type InvoiceGroupStatus } from '@/lib/invoice-group-actions'
+import { updateInvoiceGroupStatus, type InvoiceGroupStatus } from '@/lib/invoice-group-actions'
+import { INVOICE_STATUS_LABELS } from '@/lib/invoice-utils'
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   draft:   { bg: '#F0F4F8', color: '#4A5568',  label: 'Draft'   },

@@ -1,5 +1,6 @@
 import { getAllOfflineInspections, deleteOfflineInspection } from './offline-db'
 import { createClient } from './supabase/client'
+import { updateInspectionSecure } from './inspection-auth'
 
 export interface SyncStatus {
   pending: number
@@ -21,12 +22,11 @@ export async function syncOfflineInspections(
   const total = pending.length
   let failed = 0
 
-  const supabase = createClient()
-
   for (const inspection of pending) {
     try {
-      const { _localOnly, _savedAt, ...data } = inspection
-      await supabase.from('vehicle_inspections').upsert(data)
+      const { _localOnly, _savedAt, id, ...data } = inspection
+      const ok = await updateInspectionSecure(id, data)
+      if (!ok) throw new Error('unauthorized')
       await deleteOfflineInspection(inspection.id)
     } catch {
       failed++
@@ -79,13 +79,8 @@ export async function updateInspectionOfflineAware(
     return
   }
 
-  const supabase = createClient()
-  const { error } = await supabase
-    .from('vehicle_inspections')
-    .update({ ...data, updated_at: new Date().toISOString() })
-    .eq('id', id)
-
-  if (error) {
+  const ok = await updateInspectionSecure(id, data)
+  if (!ok) {
     const { getOfflineInspection, saveInspectionOffline } = await import('./offline-db')
     const existing = await getOfflineInspection(id)
     await saveInspectionOffline({ ...(existing ?? {}), ...data, id })

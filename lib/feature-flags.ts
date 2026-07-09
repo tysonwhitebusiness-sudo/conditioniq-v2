@@ -77,6 +77,9 @@ export async function upsertFeatureFlag(
   config: Record<string, unknown> = {}
 ): Promise<void> {
   const supabase = createClient()
+  const { data: isOwner } = await supabase.rpc('is_platform_owner')
+  if (!isOwner) throw new Error('Not authorized to modify feature flags')
+
   const { error } = await supabase
     .from('company_feature_flags')
     .upsert(

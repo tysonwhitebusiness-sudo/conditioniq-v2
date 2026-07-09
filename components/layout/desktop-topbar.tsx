@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Bell, ChevronDown } from 'lucide-react'
+import { Search, Bell, ChevronDown, Ghost } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting = false, sidebarWidth = 256 }: Props) {
-  const { user, userProfile, isOwnerUser, signOut } = useAuth()
+  const { user, userProfile, isOwnerUser, signOut, impersonatedCompany } = useAuth()
   const router = useRouter()
   const [showAvatarMenu, setShowAvatarMenu] = useState(false)
 
@@ -62,6 +62,21 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
           </div>
         )}
 
+        {/* Ghost Mode qualifier */}
+        {impersonatedCompany && (
+          <span
+            title={`Ghost Mode: viewing ${impersonatedCompany.name}`}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 9px', borderRadius: 20,
+              background: '#F4A62A', color: '#0D1B2A',
+              fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+            }}
+          >
+            <Ghost size={11} /> GHOST
+          </span>
+        )}
+
         {/* Bell */}
         <button style={{
           width: 36, height: 36, borderRadius: 8,
@@ -108,6 +123,11 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
                 <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid #F0F4F8' }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{displayName || 'Account'}</p>
                   <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{user?.email}</p>
+                  {impersonatedCompany && (
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#C2820A', margin: '4px 0 0' }}>
+                      Viewing: {impersonatedCompany.name}
+                    </p>
+                  )}
                 </div>
                 {isOwnerUser && (
                   <button

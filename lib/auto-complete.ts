@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
+import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 
 export async function checkAndAutoCompleteExpired(companyId: string): Promise<void> {
   try {
@@ -21,9 +22,9 @@ export async function checkAndAutoCompleteExpired(companyId: string): Promise<vo
     const now = new Date().toISOString()
 
     await Promise.all(
-      expired.map((inspection) => {
+      expired.map(async (inspection) => {
         const scoreResult = calculateVehicleScore(inspection)
-        return supabase
+        const { error: updateError } = await supabase
           .from('vehicle_inspections')
           .update({
             status: 'completed',
@@ -33,6 +34,22 @@ export async function checkAndAutoCompleteExpired(companyId: string): Promise<vo
             vehicle_score: scoreResult.score,
           })
           .eq('id', inspection.id)
+
+        if (!updateError && inspection.vin) {
+          const { data: vehicle } = await supabase
+            .from('storage_vehicles')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('vin', inspection.vin)
+            .maybeSingle()
+          if (vehicle) {
+            logVehicleEvent({
+              companyId, vehicleId: vehicle.id, eventType: 'inspection_completed',
+              description: 'Inspection auto-completed (inactive 24h+)',
+              metadata: { inspection_id: inspection.id, score: scoreResult.score, auto_completed: true },
+            })
+          }
+        }
       })
     )
   } catch {

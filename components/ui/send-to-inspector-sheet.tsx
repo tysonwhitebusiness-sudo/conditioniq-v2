@@ -200,8 +200,8 @@ export default function SendToInspectorSheet({ open, onClose }: Props) {
               disabled={loading}
               style={{
                 width: '100%', height: 52, borderRadius: 12, border: 'none', cursor: loading ? 'default' : 'pointer',
-                background: loading ? '#E1E8F0' : '#F4A62A',
-                color: loading ? '#94A3B8' : '#0D1B2A',
+                background: loading ? '#E1E8F0' : '#00B4D8',
+                color: loading ? '#94A3B8' : '#FFFFFF',
                 fontWeight: 700, fontSize: 15,
                 marginTop: 16,
                 transition: 'background 150ms ease',
@@ -273,7 +273,7 @@ export default function SendToInspectorSheet({ open, onClose }: Props) {
               onClick={onClose}
               style={{
                 width: '100%', height: 52, borderRadius: 12, border: 'none', cursor: 'pointer',
-                background: '#F4A62A', color: '#0D1B2A',
+                background: '#00B4D8', color: '#FFFFFF',
                 fontWeight: 700, fontSize: 15, marginTop: 12,
                 fontFamily: 'inherit',
               }}

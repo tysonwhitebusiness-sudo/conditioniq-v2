@@ -6,7 +6,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveCo
 import { DollarSign, Users, FileText, TrendingUp, Activity, AlertTriangle, CheckCircle } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, string> = {
-  demo: '#94A3B8', starter: '#00B4D8', growth: '#10B981', pro: '#8B5CF6', enterprise: '#F4A62A', legacy_starter: '#F97316',
+  demo: '#94A3B8', starter: '#00B4D8', growth: '#10B981', pro: '#8B5CF6', enterprise: '#F4A62A', legacy_starter: '#64748B',
 }
 const PLAN_LABELS: Record<string, string> = {
   demo: 'DEMO', starter: 'STARTER', growth: 'GROWTH', pro: 'PRO', enterprise: 'ENT', legacy_starter: 'LEGACY',
@@ -15,7 +15,7 @@ const ACT_COLORS: Record<string, string> = { signup: '#10B981', upgrade: '#00B4D
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, boxShadow: '0 1px 3px rgba(13,27,42,0.06)', padding: 20, ...style }}>
+    <div style={{ background: '#1B2D40', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.2)', padding: 20, ...style }}>
       {children}
     </div>
   )
@@ -47,7 +47,7 @@ export default function AdminOverview() {
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ height: 120, background: '#E2E8F0', borderRadius: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />
+          <div key={i} style={{ height: 120, background: 'rgba(255,255,255,0.06)', borderRadius: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />
         ))}
       </div>
     </div>
@@ -59,22 +59,22 @@ export default function AdminOverview() {
   const planData = Object.entries(planCounts).map(([name, value]) => ({ name, value }))
 
   const statCards = [
-    { icon: DollarSign, label: 'MRR', value: `$${(stats?.mrr as number ?? 0).toLocaleString()}`, color: '#F4A62A', tint: true },
-    { icon: Users, label: 'Active Customers', value: String(stats?.activeCustomers ?? 0), color: '#00B4D8', tint: false },
-    { icon: FileText, label: 'Reports This Month', value: String(stats?.reportsThisMonth ?? 0), color: '#8B5CF6', tint: false },
-    { icon: TrendingUp, label: 'Trial Accounts', value: String(stats?.trialAccounts ?? 0), color: '#10B981', tint: false },
-    { icon: Activity, label: 'Churn This Month', value: '0', color: '#EF4444', tint: false },
+    { icon: DollarSign, label: 'MRR', value: `$${(stats?.mrr as number ?? 0).toLocaleString()}`, color: '#00B4D8' },
+    { icon: Users, label: 'Active Customers', value: String(stats?.activeCustomers ?? 0), color: '#00B4D8' },
+    { icon: FileText, label: 'Reports This Month', value: String(stats?.reportsThisMonth ?? 0), color: '#8B5CF6' },
+    { icon: TrendingUp, label: 'Trial Accounts', value: String(stats?.trialAccounts ?? 0), color: '#10B981' },
+    { icon: Activity, label: 'Churn This Month', value: '0', color: '#EF4444' },
   ]
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
-        {statCards.map(({ icon: Icon, label, value, color, tint }) => (
-          <div key={label} style={{ background: tint ? '#FEF3C7' : '#FFF', border: `1px solid ${tint ? '#FDE68A' : '#E1E8F0'}`, borderRadius: 16, boxShadow: '0 1px 3px rgba(13,27,42,0.06)', padding: 20 }}>
+        {statCards.map(({ icon: Icon, label, value, color }) => (
+          <div key={label} style={{ background: '#1B2D40', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.2)', padding: 20 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <Icon size={18} color={color} />
             </div>
-            <p style={{ fontSize: 32, fontWeight: 800, color: tint ? '#92400E' : '#0D1B2A', margin: '0 0 4px', lineHeight: 1 }}>{value}</p>
+            <p style={{ fontSize: 32, fontWeight: 800, color: '#F1F5F9', margin: '0 0 4px', lineHeight: 1 }}>{value}</p>
             <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{label}</p>
           </div>
         ))}
@@ -87,7 +87,7 @@ export default function AdminOverview() {
             <BarChart data={mrrHistory} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={52} />
-              <Tooltip formatter={(v) => typeof v === 'number' ? [`$${v.toLocaleString()}`, 'MRR'] as [string, string] : ''} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
+              <Tooltip formatter={(v) => typeof v === 'number' ? [`$${v.toLocaleString()}`, 'MRR'] as [string, string] : ''} contentStyle={{ background: '#0D1B2A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
               <Bar dataKey="mrr" fill="#00B4D8" activeBar={{ fill: '#0097B2' }} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -99,14 +99,14 @@ export default function AdminOverview() {
               <Pie data={planData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
                 {planData.map((entry, i) => <Cell key={i} fill={PLAN_COLORS[entry.name] ?? '#94A3B8'} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: '#0D1B2A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
             </PieChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', marginTop: 8 }}>
             {planData.map(p => (
               <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 4, background: PLAN_COLORS[p.name] ?? '#94A3B8' }} />
-                <span style={{ fontSize: 11, color: '#4A5568' }}>{PLAN_LABELS[p.name] ?? p.name} ({p.value})</span>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>{PLAN_LABELS[p.name] ?? p.name} ({p.value})</span>
               </div>
             ))}
           </div>
@@ -123,17 +123,17 @@ export default function AdminOverview() {
             const barColor = pct >= 100 ? '#EF4444' : pct >= 80 ? '#F4A62A' : '#00B4D8'
             const tier = (c.subscription_tier as string) ?? 'demo'
             return (
-              <div key={c.id as string} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #F0F4F8' }}>
+              <div key={c.id as string} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name as string}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name as string}</span>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 10, background: `${PLAN_COLORS[tier] ?? '#94A3B8'}20`, color: PLAN_COLORS[tier] ?? '#94A3B8', flexShrink: 0 }}>{PLAN_LABELS[tier] ?? tier}</span>
                   </div>
-                  <div style={{ height: 4, background: '#F0F4F8', borderRadius: 2 }}>
+                  <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
                     <div style={{ height: 4, width: `${pct}%`, background: barColor, borderRadius: 2 }} />
                   </div>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', flexShrink: 0 }}>{used}/{inc}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9', flexShrink: 0 }}>{used}/{inc}</span>
               </div>
             )
           })}
@@ -150,9 +150,9 @@ export default function AdminOverview() {
               <p style={{ fontSize: 13, color: '#10B981', fontWeight: 600, margin: 0 }}>No overages this month</p>
             </div>
           ) : overage.map(c => (
-            <div key={c.id as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F0F4F8' }}>
+            <div key={c.id as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{c.name as string}</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', margin: 0 }}>{c.name as string}</p>
                 <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{c.planName as string}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -168,10 +168,10 @@ export default function AdminOverview() {
         <SH>Recent Activity</SH>
         {recentActivity.length === 0 ? <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No recent activity</p>
           : recentActivity.map(ev => (
-            <div key={ev.id as string} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #F0F4F8' }}>
+            <div key={ev.id as string} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ width: 8, height: 8, borderRadius: 4, background: ACT_COLORS[ev.event as string] ?? '#94A3B8', flexShrink: 0 }} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', flex: 1 }}>{ev.company_name as string}</span>
-              <span style={{ fontSize: 12, color: '#4A5568' }}>{ev.description as string}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', flex: 1 }}>{ev.company_name as string}</span>
+              <span style={{ fontSize: 12, color: '#94A3B8' }}>{ev.description as string}</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: `${PLAN_COLORS[ev.plan as string] ?? '#94A3B8'}20`, color: PLAN_COLORS[ev.plan as string] ?? '#94A3B8' }}>
                 {PLAN_LABELS[ev.plan as string] ?? ev.plan as string}
               </span>

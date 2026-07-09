@@ -88,8 +88,8 @@ export default function BillingReminderBanner({
           onClick={handleReview}
           style={{
             height: 32, padding: '0 14px', borderRadius: 8,
-            border: 'none', background: '#F4A62A',
-            color: '#0D1B2A', fontSize: 12, fontWeight: 800,
+            border: '1px solid rgba(0,180,216,0.4)', background: 'rgba(255,255,255,0.06)',
+            color: '#00B4D8', fontSize: 12, fontWeight: 800,
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', gap: 5,
             whiteSpace: 'nowrap',

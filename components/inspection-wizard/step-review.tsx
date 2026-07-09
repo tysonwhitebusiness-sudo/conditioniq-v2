@@ -276,9 +276,9 @@ export default function StepReview({ inspectionData, onComplete, onBack, onGoToS
           style={{
             width: '100%', height: 52, borderRadius: 12, border: 'none',
             fontWeight: 700, fontSize: 15, cursor: canSubmit ? 'pointer' : 'not-allowed',
-            background: canSubmit ? '#F4A62A' : '#E1E8F0',
-            color: canSubmit ? '#0D1B2A' : '#94A3B8',
-            boxShadow: canSubmit ? '0 4px 12px rgba(244,166,42,0.3)' : 'none',
+            background: canSubmit ? '#00B4D8' : '#E1E8F0',
+            color: canSubmit ? '#FFFFFF' : '#94A3B8',
+            boxShadow: canSubmit ? '0 4px 12px rgba(0,180,216,0.3)' : 'none',
           }}
         >
           {submitting ? 'Generating report…' : 'Submit Inspection →'}

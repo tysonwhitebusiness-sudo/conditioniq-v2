@@ -37,7 +37,7 @@ export default function DesktopSidebar({
 }: Props) {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, userProfile, effectiveCompany, isOwnerUser, companyRole, signOut } = useAuth()
+  const { user, userProfile, effectiveCompany, isOwnerUser, companyRole, signOut, impersonatedCompany } = useAuth()
 
   // Auto-collapse when an inspection starts
   useEffect(() => {
@@ -195,9 +195,16 @@ export default function DesktopSidebar({
             {toggleBtn}
           </div>
           {effectiveCompany?.name && (
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', margin: 0, marginLeft: 46, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {effectiveCompany.name}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 46 }}>
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {effectiveCompany.name}
+              </p>
+              {impersonatedCompany && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: '#F4A62A', color: '#0D1B2A', flexShrink: 0 }}>
+                  GHOST
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -308,11 +315,16 @@ export default function DesktopSidebar({
           <div style={{ width: 32, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: 4, width: `${usagePct}%`, background: usageBarColor, borderRadius: 2 }} />
           </div>
-          <div
-            title={displayName || user?.email}
-            style={{ width: 32, height: 32, borderRadius: 16, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#FFFFFF' }}
-          >
-            {initials}
+          <div style={{ position: 'relative' }}>
+            <div
+              title={displayName || user?.email}
+              style={{ width: 32, height: 32, borderRadius: 16, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#FFFFFF' }}
+            >
+              {initials}
+            </div>
+            {impersonatedCompany && (
+              <div title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, background: '#F4A62A', border: '2px solid #1B2D40' }} />
+            )}
           </div>
         </div>
       ) : (
@@ -333,13 +345,21 @@ export default function DesktopSidebar({
             onClick={() => !isInspecting && handleClick({ id: 'account', label: 'Profile', icon: null, type: 'tab', tab: 'account' })}
             style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', padding: '8px 0', cursor: 'pointer' }}
           >
-            <div style={{ width: 32, height: 32, borderRadius: 16, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#FFFFFF', flexShrink: 0 }}>
-              {initials}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 16, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#FFFFFF' }}>
+                {initials}
+              </div>
+              {impersonatedCompany && (
+                <div title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, background: '#F4A62A', border: '2px solid #1B2D40' }} />
+              )}
             </div>
             <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displayName || user?.email}
               </p>
+              {impersonatedCompany && (
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#F4A62A', margin: 0 }}>Ghost Mode</p>
+              )}
             </div>
             <button
               onClick={async (e) => { e.stopPropagation(); await signOut(); router.replace('/login') }}

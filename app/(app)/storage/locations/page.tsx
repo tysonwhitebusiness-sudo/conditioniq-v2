@@ -101,7 +101,7 @@ function AddLocationSlider({ companyId, onClose, onAdded }: {
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving || !name.trim()}
-            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: saving || !name.trim() ? '#E1E8F0' : '#F4A62A', color: saving || !name.trim() ? '#94A3B8' : '#0D1B2A', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: saving || !name.trim() ? '#E1E8F0' : '#00B4D8', color: saving || !name.trim() ? '#94A3B8' : '#FFFFFF', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
             {saving ? 'Adding…' : 'Add Location'}
           </button>
         </div>
@@ -155,7 +155,7 @@ export default function StorageLocationsPage() {
           </p>
         </div>
         <button onClick={() => setShowAdd(true)}
-          style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
           <Plus size={14} /> Add Location
         </button>
       </div>

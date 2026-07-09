@@ -130,7 +130,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     const gpsEnd = await captureGPS()
 
     await Promise.all([
-      completeInspection(inspectionId),
+      completeInspection(inspectionId, scoreResult.score),
       updateInspectionOfflineAware(inspectionId, {
         ...allData,
         signature_url: signature,
@@ -170,13 +170,24 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     // Silently sync to storage inventory — never blocks completion
     if (effectiveCompany?.id) {
       const { upsertVehicleToInventory } = await import('@/lib/storage-actions')
+      const inspectionTypeForEvent = allData.vehicleInfo?.inspectionType ?? 'standard'
       upsertVehicleToInventory(
         inspectionId,
         effectiveCompany.id,
         allData,
         scoreResult,
-        allData.vehicleInfo?.inspectionType ?? 'standard'
-      ).catch(err => console.error('[storage] upsert failed:', err))
+        inspectionTypeForEvent
+      ).then(vehicleId => {
+        if (vehicleId) {
+          const typeLabel = inspectionTypeForEvent === 'check_in' ? 'Check-in' : inspectionTypeForEvent === 'check_out' ? 'Check-out' : 'Standard'
+          import('@/lib/vehicle-events-actions').then(({ logVehicleEvent }) => logVehicleEvent({
+            companyId: effectiveCompany.id, vehicleId, eventType: 'inspection_completed',
+            description: `${typeLabel} inspection completed`,
+            metadata: { inspection_id: inspectionId, score: scoreResult.score, grade: scoreResult.grade },
+            createdBy: inspectorId ?? null,
+          }))
+        }
+      }).catch(err => console.error('[storage] upsert failed:', err))
     }
 
     onComplete({ ...allData, inspectionId, signature, scoreResult })

@@ -2,6 +2,17 @@
 
 import { createClient } from './supabase/server'
 import { createAdminClient } from './supabase/admin'
+import { logVehicleEvent } from './vehicle-events-actions'
+import { authorizeInspectionAccess, authorizeCompanyAccess } from './inspection-auth'
+
+const LIFECYCLE_STATUS_LABEL: Record<string, string> = {
+  queued: 'Queued',
+  pending_arrival: 'Pending Arrival',
+  on_lot: 'On Lot',
+  pending_pickup: 'Pending Pickup',
+  picked_up: 'Picked Up',
+  completed: 'Completed',
+}
 
 // ── DB helpers use the session-based server client (respects RLS for the
 // authenticated user's own company — no service role key required).
@@ -122,10 +133,21 @@ export async function updateVehicleLifecycleStatusAction(
 
   const { error } = await supabase.from('storage_vehicles').update(updates).eq('id', vehicle.id)
   if (error) console.error('[lifecycle] update error', error)
+  else if (updates.lifecycle_status && updates.lifecycle_status !== vehicle.lifecycle_status) {
+    const label = LIFECYCLE_STATUS_LABEL[updates.lifecycle_status] ?? updates.lifecycle_status
+    logVehicleEvent({
+      companyId, vehicleId: vehicle.id, eventType: 'status_changed',
+      description: `Status changed to ${label}`,
+      metadata: { old_status: vehicle.lifecycle_status, new_status: updates.lifecycle_status, inspection_id: inspectionId },
+    })
+  }
 }
 
 export async function saveReportUrlAction(inspectionId: string, reportUrl: string): Promise<void> {
-  const supabase = createClient()
+  const { ok } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) { console.error('[saveReportUrl] unauthorized', inspectionId); return }
+
+  const supabase = createAdminClient()
   const { error } = await supabase
     .from('vehicle_inspections')
     .update({ report_url: reportUrl, report_generated: true, report_generated_at: new Date().toISOString() })
@@ -145,8 +167,18 @@ export async function fetchFullInspectionAction(inspectionId: string): Promise<R
 }
 
 export async function loadInspectionForResume(inspectionId: string): Promise<Record<string, any> | null> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
+  const admin = createAdminClient()
+  const { data: inspection } = await admin
+    .from('vehicle_inspections')
+    .select('company_id')
+    .eq('id', inspectionId)
+    .maybeSingle()
+  if (!inspection) return null
+
+  const ok = await authorizeCompanyAccess(inspection.company_id)
+  if (!ok) return null
+
+  const { data, error } = await admin
     .from('vehicle_inspections')
     .select('vehicleInfo, bol_data, keys_data, vehicle_function_data, documentation_data, exterior_data, interior_data, engine_data')
     .eq('id', inspectionId)
@@ -180,6 +212,10 @@ export async function getInspectionRequestByToken(token: string) {
 // ── Storage operations — require SUPABASE_SERVICE_ROLE_KEY in Vercel env vars
 
 export async function createSignedUploadUrlAction(path: string): Promise<{ token: string; signedUrl: string } | null> {
+  const inspectionId = path.replace(/\.pdf$/, '')
+  const { ok } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
     .from('inspection-reports')
@@ -189,6 +225,10 @@ export async function createSignedUploadUrlAction(path: string): Promise<{ token
 }
 
 export async function getReportSignedUrlAction(storagePath: string): Promise<string | null> {
+  const inspectionId = storagePath.replace(/\.pdf$/, '')
+  const { ok } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
     .from('inspection-reports')

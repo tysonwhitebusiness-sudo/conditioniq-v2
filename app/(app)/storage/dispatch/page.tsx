@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { getActiveDispatches, dispatchStatus } from '@/lib/storage-actions'
-import { Clock, CheckCircle, AlertTriangle, Send, Copy, Check, ExternalLink, RefreshCw, Lock } from 'lucide-react'
+import { Clock, CheckCircle, AlertTriangle, Send, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import LoadingOverlay from '@/components/ui/loading-overlay'
+import LockedFeatureNotice from '@/components/ui/locked-feature-notice'
 
 function Skeleton({ h = 40, r = 8 }: { h?: number; r?: number }) {
   return <div style={{ height: h, borderRadius: r, background: '#F0F4F8', animation: 'pulse 1.5s ease infinite' }} />
@@ -112,17 +113,7 @@ export default function StorageDispatchPage() {
     return (
       <>
         {!isDesktop && <MobilePageHeader />}
-        <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <Lock size={28} color="#94A3B8" />
-          </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
-            Dispatch is not enabled for your account.
-          </h2>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
-            Contact us to get access.
-          </p>
-        </div>
+        <LockedFeatureNotice featureName="Dispatch" description="Send remote inspection links to drivers or third-party inspectors from anywhere." />
         <BottomNav />
       </>
     )
@@ -142,7 +133,7 @@ export default function StorageDispatchPage() {
       {/* Mobile: Send New Link button */}
       {!isDesktop && (
         <button onClick={() => setShowSendSheet(true)}
-          style={{ width: '100%', height: 48, borderRadius: 12, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+          style={{ width: '100%', height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
           <Send size={16} />Send New Link
         </button>
       )}
@@ -158,7 +149,7 @@ export default function StorageDispatchPage() {
             </button>
           ))}
           <button onClick={() => setShowSendSheet(true)}
-            style={{ marginLeft: 'auto', height: 36, padding: '0 16px', borderRadius: 18, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+            style={{ marginLeft: 'auto', height: 36, padding: '0 16px', borderRadius: 18, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Send size={14} />Send New Link
           </button>
         </div>

@@ -243,8 +243,8 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
                 disabled={!canStart}
                 style={{
                   width: '100%', height: 52, borderRadius: 14, border: 'none',
-                  background: canStart ? '#F4A62A' : '#E1E8F0',
-                  color: canStart ? '#0D1B2A' : '#94A3B8',
+                  background: canStart ? '#00B4D8' : '#E1E8F0',
+                  color: canStart ? '#FFFFFF' : '#94A3B8',
                   fontWeight: 700, fontSize: 16, cursor: canStart ? 'pointer' : 'default',
                   fontFamily: 'inherit', marginBottom: 10,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,

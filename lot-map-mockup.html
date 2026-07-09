@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lot Map Mockup</title>
+<style>
+  :root {
+    --midnight: #0D1B2A;
+    --deep-navy: #1B2D40;
+    --cyan: #00B4D8;
+    --amber: #F4A62A;
+    --bg: #F0F4F8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #d9d9d9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+
+  .phone {
+    position: relative;
+    width: 390px;
+    height: 780px;
+    background: var(--bg);
+    border: 8px solid #111;
+    border-radius: 2.5rem;
+    overflow: hidden;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.35);
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 24px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--midnight);
+  }
+  .status-bar.overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 30;
+    background: transparent;
+  }
+
+  /* Header */
+  .top-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 12px;
+    background: var(--midnight);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-icon {
+    width: 36px; height: 36px;
+    border-radius: 12px;
+    background: var(--deep-navy);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-name {
+    color: #fff; font-size: 15px; font-weight: 700; line-height: 1.2;
+  }
+  .brand-sub {
+    color: var(--cyan); font-size: 11px; line-height: 1.2;
+  }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--cyan);
+    color: #fff; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Title row */
+  .title-row {
+    padding: 16px 16px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .title-row h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--midnight);
+  }
+  .edit-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--midnight);
+    color: var(--cyan);
+    border: none;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Stat tiles */
+  .stats-row {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px;
+    margin-bottom: 16px;
+  }
+  .stat-tile {
+    flex: 1;
+    background: var(--deep-navy);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stat-value-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat-value {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: rgba(240,244,248,0.55);
+  }
+
+  /* Map card */
+  .map-wrap {
+    padding: 0 16px;
+  }
+  .map-card {
+    position: relative;
+    height: 340px;
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid rgba(13,27,42,0.1);
+    box-shadow: 0 10px 24px rgba(13,27,42,0.12);
+  }
+
+  .lot-backdrop {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, #4A5D42 0%, #4A5D42 14%, #C7BFA9 14%, #C7BFA9 100%);
+  }
+  .roof {
+    position: absolute; top: 0; left: 0; width: 100%; height: 13%;
+    background: #DADFE3;
+  }
+  .roof-seams {
+    position: absolute; left: 0; width: 100%; top: 13%; height: 3%;
+    background: repeating-linear-gradient(90deg, #B7BEC4 0px, #B7BEC4 2px, transparent 2px, transparent 26px);
+  }
+  .rows {
+    position: absolute; left: 0; width: 100%; top: 22%; height: 62%;
+  }
+  .row {
+    position: absolute; left: 0; width: 100%; height: 18%;
+    background: repeating-linear-gradient(90deg,
+      rgba(235,238,240,0.9) 0px, rgba(235,238,240,0.9) 14px,
+      rgba(120,128,132,0.5) 14px, rgba(120,128,132,0.5) 16px,
+      transparent 16px, transparent 30px);
+    opacity: 0.85;
+  }
+  .row.r0 { top: 0%; }
+  .row.r1 { top: 24%; }
+  .row.r2 { top: 48%; }
+  .row.r3 { top: 72%; }
+  .access-road {
+    position: absolute; top: 20%; left: 0; width: 100%; height: 3%;
+    background: rgba(255,255,255,0.25);
+  }
+
+  .spot {
+    position: absolute;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-weight: 700;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    color: var(--midnight);
+    font-size: 8px;
+  }
+  .spot.big { font-size: 10px; }
+  .spot.occupied { background: var(--cyan); border: 2px solid rgba(13,27,42,0.35); }
+  .spot.flagged { background: var(--amber); border: 2px solid rgba(13,27,42,0.35); }
+  .spot.empty {
+    background: rgba(13,27,42,0.35);
+    border: 2px solid rgba(255,255,255,0.6);
+    color: #F0F4F8;
+  }
+
+  .expand-btn {
+    position: absolute; top: 12px; right: 12px;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(13,27,42,0.75);
+    border: 1px solid rgba(0,180,216,0.5);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+
+  .legend {
+    position: absolute; bottom: 12px; left: 12px;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(13,27,42,0.75);
+    padding: 6px 10px;
+    border-radius: 999px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.8);
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: absolute;
+    bottom: 0; left: 0; width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 10px 0;
+    background: var(--midnight);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .nav-label {
+    font-size: 10px; font-weight: 500;
+  }
+
+  /* Fullscreen mode */
+  .fullscreen {
+    position: absolute;
+    inset: 0;
+    display: none;
+  }
+  .fullscreen.active { display: block; }
+  .fs-gradient-bar {
+    position: absolute;
+    top: 0; left: 0; width: 100%;
+    padding: 36px 16px 20px;
+    background: linear-gradient(180deg, rgba(13,27,42,0.92) 0%, rgba(13,27,42,0.55) 65%, rgba(13,27,42,0) 100%);
+    z-index: 5;
+  }
+  .fs-top-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .fs-title {
+    color: #fff; font-size: 17px; font-weight: 800; margin-bottom: 6px;
+  }
+  .fs-stats {
+    display: flex; align-items: center; gap: 12px; font-size: 12px;
+  }
+  .fs-stat-strong { font-weight: 700; }
+  .fs-stat-muted { font-weight: 400; color: rgba(255,255,255,0.7); }
+
+  .close-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(13,27,42,0.85);
+    border: 1px solid var(--cyan);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .fs-edit-btn {
+    position: absolute;
+    bottom: 32px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(13,27,42,0.85);
+    border: 1px solid rgba(0,180,216,0.5);
+    border-radius: 999px;
+    padding: 12px 16px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    cursor: pointer;
+    z-index: 5;
+  }
+  .fs-edit-label {
+    color: #fff; font-size: 13px; font-weight: 600;
+  }
+
+  .default-view.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="phone">
+
+  <!-- DEFAULT VIEW -->
+  <div class="default-view" id="defaultView">
+    <div class="status-bar">
+      <span>7:34</span>
+      <span>5G 100%</span>
+    </div>
+
+    <div class="top-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">Condition IQ</div>
+          <div class="brand-sub">Condition IQ</div>
+        </div>
+      </div>
+      <div class="avatar">T</div>
+    </div>
+
+    <div class="title-row">
+      <h1>Lot Map</h1>
+      <button class="edit-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Edit Layout
+      </button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-tile">
+        <div class="stat-value-row" style="color: var(--cyan);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+          <span class="stat-value">8/14</span>
+        </div>
+        <span class="stat-label">Occupied · 6 free</span>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-value-row" style="color: var(--cyan);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <span class="stat-value">$80/d</span>
+        </div>
+        <span class="stat-label">Accruing</span>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-value-row" style="color: var(--amber);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F4A62A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+          <span class="stat-value">$60/d</span>
+        </div>
+        <span class="stat-label">Lost · empty</span>
+      </div>
+    </div>
+
+    <div class="map-wrap">
+      <div class="map-card">
+        <div class="lot-backdrop" id="lotBackdropDefault">
+          <div class="roof"></div>
+          <div class="roof-seams"></div>
+          <div class="rows">
+            <div class="row r0"></div>
+            <div class="row r1"></div>
+            <div class="row r2"></div>
+            <div class="row r3"></div>
+          </div>
+          <div class="access-road"></div>
+          <!-- spots injected by JS -->
+        </div>
+
+        <button class="expand-btn" onclick="toggleFullscreen(true)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+        </button>
+
+        <div class="legend">
+          <div class="legend-item"><span class="dot" style="background: var(--cyan);"></span>Occupied</div>
+          <div class="legend-item"><span class="dot" style="background: var(--amber);"></span>Flagged</div>
+          <div class="legend-item"><span class="dot" style="background: rgba(240,244,248,0.6);"></span>Empty</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,248,0.45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span class="nav-label" style="color: rgba(240,244,248,0.45);">Home</span>
+      </div>
+      <div class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,248,0.45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        <span class="nav-label" style="color: rgba(240,244,248,0.45);">Vehicles</span>
+      </div>
+      <div class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span class="nav-label" style="color: var(--cyan);">Lot</span>
+      </div>
+      <div class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(240,244,248,0.45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+        <span class="nav-label" style="color: rgba(240,244,248,0.45);">Inspections</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULLSCREEN VIEW -->
+  <div class="fullscreen" id="fullscreenView">
+    <div class="lot-backdrop" id="lotBackdropFull" style="height:100%;">
+      <div class="roof"></div>
+      <div class="roof-seams"></div>
+      <div class="rows">
+        <div class="row r0"></div>
+        <div class="row r1"></div>
+        <div class="row r2"></div>
+        <div class="row r3"></div>
+      </div>
+      <div class="access-road"></div>
+      <!-- spots injected by JS -->
+    </div>
+
+    <div class="fs-gradient-bar">
+      <div class="fs-top-row">
+        <div>
+          <div class="fs-title">Lot Map</div>
+          <div class="fs-stats">
+            <span class="fs-stat-strong" style="color: var(--cyan);">8/14 <span class="fs-stat-muted">occupied</span></span>
+            <span class="fs-stat-strong" style="color: var(--cyan);">$80/d <span class="fs-stat-muted">accruing</span></span>
+            <span class="fs-stat-strong" style="color: var(--amber);">$60/d <span class="fs-stat-muted">lost</span></span>
+          </div>
+        </div>
+        <button class="close-btn" onclick="toggleFullscreen(false)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <button class="fs-edit-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00B4D8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="fs-edit-label">Edit Layout</span>
+    </button>
+  </div>
+
+</div>
+
+<script>
+  const SPOTS = [
+    { id: "A1", x: 18, y: 46, status: "occupied" },
+    { id: "A2", x: 26, y: 44, status: "occupied" },
+    { id: "A3", x: 34, y: 47, status: "empty" },
+    { id: "A4", x: 42, y: 44, status: "occupied" },
+    { id: "A5", x: 50, y: 46, status: "flagged" },
+    { id: "A6", x: 58, y: 43, status: "occupied" },
+    { id: "A7", x: 66, y: 46, status: "empty" },
+    { id: "A8", x: 74, y: 44, status: "occupied" },
+    { id: "A9", x: 30, y: 40, status: "empty" },
+    { id: "A10", x: 22, y: 41, status: "occupied" },
+    { id: "A11", x: 14, y: 43, status: "empty" },
+    { id: "A12", x: 82, y: 45, status: "occupied" },
+  ];
+
+  function renderSpots(containerId, big) {
+    const container = document.getElementById(containerId);
+    SPOTS.forEach((s) => {
+      const el = document.createElement("div");
+      el.className = "spot " + s.status + (big ? " big" : "");
+      el.style.left = s.x + "%";
+      el.style.top = s.y + "%";
+      el.style.width = (big ? 30 : 22) + "px";
+      el.style.height = (big ? 30 : 22) + "px";
+      el.textContent = s.id;
+      container.appendChild(el);
+    });
+  }
+
+  renderSpots("lotBackdropDefault", false);
+  renderSpots("lotBackdropFull", true);
+
+  function toggleFullscreen(show) {
+    document.getElementById("fullscreenView").classList.toggle("active", show);
+    document.getElementById("defaultView").classList.toggle("hidden", show);
+    document.querySelector(".status-bar").classList.toggle("overlay", show);
+  }
+</script>
+
+</body>
+</html>

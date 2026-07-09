@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -386,11 +387,26 @@ export async function bulkMarkPaid(
 ): Promise<{ error: string | null }> {
   if (!invoiceIds.length) return { error: null }
   const supabase = createClient()
+  const { data: invoices } = await supabase
+    .from('lot_invoices')
+    .select('vehicle_id, total_amount')
+    .in('id', invoiceIds)
+    .eq('company_id', companyId)
   const { error } = await supabase
     .from('lot_invoices')
     .update({ status: 'paid' })
     .in('id', invoiceIds)
     .eq('company_id', companyId)
   if (error) return { error: error.message }
+
+  for (const inv of invoices ?? []) {
+    if (!inv.vehicle_id) continue
+    logVehicleEvent({
+      companyId, vehicleId: inv.vehicle_id, eventType: 'invoice_paid',
+      description: 'Invoice marked paid (bulk)',
+      metadata: { amount: inv.total_amount },
+    })
+  }
+
   return { error: null }
 }

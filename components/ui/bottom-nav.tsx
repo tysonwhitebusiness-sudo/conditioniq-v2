@@ -69,14 +69,14 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
               style={{
                 position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', zIndex: 51,
                 width: 56, height: 56, borderRadius: '50%',
-                background: '#F4A62A',
-                boxShadow: '0 4px 16px rgba(244,166,42,0.45)',
+                background: '#00B4D8',
+                boxShadow: '0 4px 16px rgba(0,180,216,0.45)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: 'none', cursor: 'pointer',
               }}
               aria-label="Add Vehicle"
             >
-              <Plus size={26} color="#0D1B2A" strokeWidth={2.5} />
+              <Plus size={26} color="#FFFFFF" strokeWidth={2.5} />
             </button>
           </div>
 

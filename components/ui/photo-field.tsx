@@ -29,7 +29,7 @@ export default function PhotoField({ label, value, onChange, required }: PhotoFi
             onClick={() => setShowCamera(true)}
             style={{
               position: 'absolute', bottom: 8, right: 8,
-              background: '#F4A62A', color: '#0D1B2A',
+              background: '#00B4D8', color: '#FFFFFF',
               fontSize: 11, fontWeight: 700,
               borderRadius: 20, padding: '4px 10px',
               border: 'none', cursor: 'pointer',

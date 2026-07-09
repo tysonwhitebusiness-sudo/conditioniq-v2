@@ -55,7 +55,7 @@ export default function AdminFeedback() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <MessageSquare size={22} color="#00B4D8" />
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>Customer Feedback</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', margin: 0 }}>Customer Feedback</h1>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#94A3B8' }}>({feedback.length})</span>
       </div>
 
@@ -64,7 +64,7 @@ export default function AdminFeedback() {
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as FeedbackCategory | '')}
-          style={{ height: 38, padding: '0 10px', border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 13, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+          style={{ height: 38, padding: '0 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, background: '#1B2D40', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
         >
           <option value="">All Categories</option>
           <option value="bug">Bug</option>
@@ -74,7 +74,7 @@ export default function AdminFeedback() {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as FeedbackStatus | '')}
-          style={{ height: 38, padding: '0 10px', border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 13, background: '#FFF', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+          style={{ height: 38, padding: '0 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, background: '#1B2D40', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
         >
           <option value="">All Statuses</option>
           <option value="new">New</option>
@@ -87,14 +87,14 @@ export default function AdminFeedback() {
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} style={{ height: 72, background: '#E2E8F0', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div key={i} style={{ height: 72, background: 'rgba(255,255,255,0.06)', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
           ))}
           <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
         </div>
       ) : feedback.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 24px' }}>
           <MessageSquare size={32} color="#94A3B8" style={{ display: 'block', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 15, fontWeight: 600, color: '#0D1B2A', margin: '0 0 4px' }}>No feedback yet</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: '#F1F5F9', margin: '0 0 4px' }}>No feedback yet</p>
           <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Feedback submitted by customers will appear here.</p>
         </div>
       ) : (
@@ -111,8 +111,8 @@ export default function AdminFeedback() {
             return (
               <div
                 key={item.id}
-                style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 14, overflow: 'hidden', transition: 'box-shadow 150ms' }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(13,27,42,0.07)')}
+                style={{ background: '#1B2D40', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden', transition: 'box-shadow 150ms' }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)')}
                 onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
               >
                 {/* Row */}
@@ -127,7 +127,7 @@ export default function AdminFeedback() {
 
                   {/* Content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.description}
                     </p>
                     <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
@@ -144,7 +144,7 @@ export default function AdminFeedback() {
                       flexShrink: 0,
                       height: 28,
                       padding: '0 6px',
-                      border: `1px solid ${st.bg === '#FFF' ? '#E1E8F0' : st.bg}`,
+                      border: `1px solid ${st.bg === '#FFF' ? 'rgba(255,255,255,0.1)' : st.bg}`,
                       borderRadius: 8,
                       fontSize: 11,
                       fontWeight: 700,
@@ -165,19 +165,19 @@ export default function AdminFeedback() {
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div style={{ padding: '0 18px 16px', borderTop: '1px solid #F0F4F8' }}>
+                  <div style={{ padding: '0 18px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {/* Full description */}
                       <div>
                         <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Description</p>
-                        <p style={{ fontSize: 14, color: '#374151', margin: 0, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{item.description}</p>
+                        <p style={{ fontSize: 14, color: '#CBD5E1', margin: 0, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{item.description}</p>
                       </div>
 
                       {/* Meta */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <div>
                           <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Submitted by</p>
-                          <p style={{ fontSize: 13, color: '#0D1B2A', margin: 0 }}>{submitterName}</p>
+                          <p style={{ fontSize: 13, color: '#F1F5F9', margin: 0 }}>{submitterName}</p>
                         </div>
                         <div>
                           <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Page</p>
@@ -206,7 +206,7 @@ export default function AdminFeedback() {
                               <img
                                 src={screenshotUrl}
                                 alt="feedback screenshot"
-                                style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 10, border: '1px solid #E1E8F0', display: 'block', objectFit: 'contain', cursor: 'pointer' }}
+                                style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', display: 'block', objectFit: 'contain', cursor: 'pointer' }}
                               />
                             </a>
                           ) : (

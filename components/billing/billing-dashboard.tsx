@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { getPlan, calcEstimatedMonthly, calcOverageCost } from '@/lib/pricing'
 import { checkUsageState, createInspectionRequest } from '@/lib/usage-actions'
+import { submitUpgradeRequest } from '@/lib/contact-actions'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, Download, ExternalLink, CreditCard, ArrowUp, X, Check } from 'lucide-react'
 import type { UsageState } from '@/lib/usage-actions'
@@ -173,14 +174,16 @@ export default function BillingDashboard() {
 
       {/* Upgrade Modal */}
       {showUpgradeModal && (
-        <UpgradeModal onClose={() => setShowUpgradeModal(false)} currentPlan={plan.key} companyId={effectiveCompany.id} />
+        <UpgradeModal onClose={() => setShowUpgradeModal(false)} currentPlan={plan.key} companyId={effectiveCompany.id} companyName={effectiveCompany.name} />
       )}
     </div>
   )
 }
 
-function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void; currentPlan: string; companyId: string }) {
+function UpgradeModal({ onClose, currentPlan, companyId, companyName }: { onClose: () => void; currentPlan: string; companyId: string; companyName: string }) {
+  const { userProfile, user } = useAuth()
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const plans = [
     { key: 'starter',    name: 'Starter',    price: 99,  reports: 30,   overage: 3.50, features: ['30 reports/mo',        '$3.50/overage', 'Core inspection workflow', 'PDF reports']               },
     { key: 'growth',     name: 'Growth',     price: 199, reports: 75,   overage: 3.00, features: ['75 reports/mo',        '$3.00/overage', 'Dispatch board',           'Lot billing']               },
@@ -189,11 +192,16 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
   ]
 
   const handleRequest = async (targetPlan: string) => {
-    const supabase = createClient()
-    await supabase.from('contact_requests').insert({
-      message: `Upgrade request: ${currentPlan} → ${targetPlan}`,
-      company: companyId,
+    setErrorMsg(null)
+    const { error } = await submitUpgradeRequest({
+      companyId,
+      companyName,
+      name: userProfile?.full_name || 'Unknown',
+      email: userProfile?.email || user?.email || '',
+      currentPlan,
+      targetPlan,
     })
+    if (error) { setErrorMsg("Couldn't submit your request — please try again."); return }
     setSuccessMsg("Upgrade request submitted! We'll be in touch shortly.")
   }
 
@@ -204,6 +212,9 @@ function UpgradeModal({ onClose, currentPlan, companyId }: { onClose: () => void
           <h2 className="text-xl font-bold">Upgrade Plan</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
+        {errorMsg && (
+          <p style={{ fontSize: 13, color: '#B91C1C', background: '#FEF2F2', borderRadius: 8, padding: '8px 12px', margin: '0 0 12px' }}>{errorMsg}</p>
+        )}
         <div className="space-y-3">
           {plans.map(p => (
             <div key={p.key} className={`border-2 rounded-2xl p-4 ${p.key === currentPlan ? 'border-[#1e3a5f]' : 'border-gray-200'}`}>

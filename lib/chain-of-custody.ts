@@ -1,5 +1,3 @@
-import { createClient } from '@/lib/supabase/client'
-
 export interface GPSLocation {
   lat: number
   lng: number
@@ -63,17 +61,16 @@ export async function buildCustodyRecord({
   signatureUrl: string
   formData: Record<string, any>
 }) {
-  const supabase = createClient()
   const photoHashes = await collectPhotoHashes(formData)
   const fingerprint = getDeviceFingerprint()
 
-  await supabase.from('inspection_custody').upsert({
-    inspection_id: inspectionId,
+  const { upsertCustodyRecordSecure } = await import('./inspection-auth')
+  await upsertCustodyRecordSecure(inspectionId, {
     gps_start: gpsStart,
     gps_end: gpsEnd,
     device_fingerprint: fingerprint,
     signature_url: signatureUrl,
     photo_hashes: photoHashes,
-    completed_at: new Date().toISOString(),
-  }, { onConflict: 'inspection_id' })
+    signed_at: new Date().toISOString(),
+  })
 }

@@ -38,8 +38,8 @@ function ConditionPill({ label, selected, onSelect }: { label: string; selected:
       style={{
         padding: '8px 14px', borderRadius: 20, fontSize: 13, fontWeight: selected ? 600 : 400,
         border: 'none', cursor: 'pointer',
-        background: selected ? '#F4A62A' : '#F0F4F8',
-        color: selected ? '#0D1B2A' : '#4A5568',
+        background: selected ? '#00B4D8' : '#F0F4F8',
+        color: selected ? '#FFFFFF' : '#4A5568',
       }}
     >
       {label}
@@ -55,8 +55,8 @@ function TirePill({ label, selected, onSelect }: { label: string; selected: bool
       style={{
         padding: '5px 10px', borderRadius: 16, fontSize: 12, fontWeight: selected ? 600 : 400,
         border: 'none', cursor: 'pointer',
-        background: selected ? '#FEF3C7' : '#F0F4F8',
-        color: selected ? '#92400E' : '#4A5568',
+        background: selected ? '#E0F7FC' : '#F0F4F8',
+        color: selected ? '#0097B2' : '#4A5568',
       }}
     >
       {label}
@@ -75,7 +75,7 @@ function PhotoSlotCard({ label, value, onTap }: { label: string; value?: string 
             onClick={onTap}
             style={{
               position: 'absolute', bottom: 6, right: 6,
-              background: '#F4A62A', color: '#0D1B2A',
+              background: '#00B4D8', color: '#FFFFFF',
               fontSize: 10, fontWeight: 700,
               borderRadius: 20, padding: '3px 9px',
               border: 'none', cursor: 'pointer',
@@ -137,10 +137,10 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
           onClick={openCaptureAll}
           style={{
             width: '100%', height: 48, borderRadius: 12, border: 'none',
-            background: '#F4A62A', color: '#0D1B2A',
+            background: '#00B4D8', color: '#FFFFFF',
             fontWeight: 700, fontSize: 14, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            marginBottom: 16, boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+            marginBottom: 16, boxShadow: '0 4px 12px rgba(0,180,216,0.3)',
           }}
         >
           <Camera size={18} /> Capture All 4 Photos →
@@ -288,9 +288,9 @@ export default function StepExterior({ data, onChange, onNext, onBack }: Props) 
             style={{
               flex: 1, height: 52, borderRadius: 12, border: 'none',
               fontWeight: 700, fontSize: 15, cursor: canAdvance ? 'pointer' : 'not-allowed',
-              background: canAdvance ? '#F4A62A' : '#E1E8F0',
-              color: canAdvance ? '#0D1B2A' : '#94A3B8',
-              boxShadow: canAdvance ? '0 4px 12px rgba(244,166,42,0.3)' : 'none',
+              background: canAdvance ? '#00B4D8' : '#E1E8F0',
+              color: canAdvance ? '#FFFFFF' : '#94A3B8',
+              boxShadow: canAdvance ? '0 4px 12px rgba(0,180,216,0.3)' : 'none',
             }}
           >
             Continue to Interior →

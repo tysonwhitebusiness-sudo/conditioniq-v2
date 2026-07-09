@@ -5,23 +5,27 @@ import { useRouter } from 'next/navigation'
 import { Loader2, ChevronRight, Users } from 'lucide-react'
 import { getVehicleInvoiceHistory, type VehicleInvoiceRow } from '@/lib/vehicle-invoice-actions'
 import { updateInvoiceGroupStatus, type InvoiceGroupStatus } from '@/lib/invoice-group-actions'
-import { INVOICE_STATUS_LABELS } from '@/lib/invoice-utils'
+import { INVOICE_STATUS_LABELS, INVOICE_STATUS_BADGE_STYLE } from '@/lib/invoice-utils'
+import InvoiceStatusBadge from '@/components/billing/invoice-status-badge'
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  draft:   { bg: '#F0F4F8', color: '#4A5568',  label: 'Draft'   },
-  sent:    { bg: '#E0F7FC', color: '#0097B2',  label: 'Sent'    },
-  paid:    { bg: '#D1FAE5', color: '#065F46',  label: 'Paid'    },
-  overdue: { bg: '#FEE2E2', color: '#DC2626',  label: 'Overdue' },
-  void:    { bg: '#F3F4F6', color: '#9CA3AF',  label: 'Void'    },
-}
-
-function fmtDate(raw: string) {
+function fmtDate(raw: string, opts?: Intl.DateTimeFormatOptions) {
   // Accept both "2026-06-18" and "June 19, 2026"
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw
   const d = new Date(iso)
   return isNaN(d.getTime())
     ? raw
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : d.toLocaleDateString(undefined, opts ?? { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function fmtPeriod(start: string | null, end: string | null): string | null {
+  if (!start || !end) return null
+  const startDate = new Date(start + 'T00:00:00')
+  const endDate = new Date(end + 'T00:00:00')
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null
+  const sameYear = startDate.getFullYear() === endDate.getFullYear()
+  const startLabel = fmtDate(start, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })
+  const endLabel = fmtDate(end, { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${startLabel} – ${endLabel}`
 }
 
 function fmtAmt(n: number) {
@@ -31,23 +35,19 @@ function fmtAmt(n: number) {
 function StatusControl({ row, onChanged }: { row: VehicleInvoiceRow; onChanged: (status: string) => void }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const s = STATUS_STYLE[row.status] ?? STATUS_STYLE.draft
+  const s = INVOICE_STATUS_BADGE_STYLE[row.status as InvoiceGroupStatus] ?? INVOICE_STATUS_BADGE_STYLE.draft
 
   if (!row.groupId) {
-    return (
-      <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: s.bg, color: s.color, display: 'inline-block', marginTop: 2 }}>
-        {s.label.toUpperCase()}
-      </span>
-    )
+    return <InvoiceStatusBadge status={row.status} />
   }
 
   if (!open) {
     return (
       <span
         onClick={e => { e.stopPropagation(); setOpen(true) }}
-        style={{ fontSize: 9, fontWeight: 700, borderRadius: 4, padding: '1px 5px', background: s.bg, color: s.color, display: 'inline-block', marginTop: 2, cursor: 'pointer' }}
+        style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', borderRadius: 20, padding: '3px 8px', background: s.bg, color: s.color, display: 'inline-block', marginTop: 2, cursor: 'pointer' }}
       >
-        {saving ? '…' : s.label.toUpperCase()}
+        {saving ? '…' : s.label}
       </span>
     )
   }
@@ -70,7 +70,7 @@ function StatusControl({ row, onChanged }: { row: VehicleInvoiceRow; onChanged: 
           setOpen(false)
         }
       }}
-      style={{ fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 4px', background: s.bg, color: s.color, border: 'none', outline: 'none', marginTop: 2, cursor: 'pointer' }}
+      style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 6px', background: s.bg, color: s.color, border: 'none', outline: 'none', marginTop: 2, cursor: 'pointer' }}
     >
       {Object.entries(INVOICE_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
     </select>
@@ -81,13 +81,12 @@ interface Props {
   vehicleId: string
   vin: string
   companyId: string
+  billedThroughDate?: string | null
 }
 
-export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Props) {
+export default function VehicleInvoiceHistory({ vehicleId, vin, companyId, billedThroughDate }: Props) {
   const router = useRouter()
   const [rows, setRows] = useState<VehicleInvoiceRow[]>([])
-  const [billedThisMonth, setBilledThisMonth] = useState(false)
-  const [monthLabel, setMonthLabel] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -95,8 +94,6 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
     setLoading(true)
     getVehicleInvoiceHistory(vehicleId, vin, companyId).then(result => {
       setRows(result.rows)
-      setBilledThisMonth(result.billedThisMonth)
-      setMonthLabel(result.currentMonthLabel)
       setLoading(false)
     })
   }, [vehicleId, vin, companyId])
@@ -109,26 +106,23 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
     }
   }
 
-  const statusBadge = billedThisMonth
-    ? { bg: '#D1FAE5', color: '#065F46', text: `Billed for ${monthLabel}` }
-    : { bg: '#FEF3C7', color: '#92400E', text: `Not yet billed for ${monthLabel}` }
-
   return (
     <div>
-      {/* Section header + billing status badge */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
-          Invoice History
-        </p>
-        {!loading && (
-          <span style={{
-            fontSize: 11, fontWeight: 700, borderRadius: 20,
-            padding: '3px 10px', background: statusBadge.bg, color: statusBadge.color,
-          }}>
-            {statusBadge.text}
+      {/* Billed-through date + latest invoice status pill */}
+      {!loading && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>
+            {billedThroughDate ? `Billed through ${fmtDate(billedThroughDate)}` : 'Not yet billed'}
           </span>
-        )}
-      </div>
+          {rows.length === 0 ? (
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', borderRadius: 20, padding: '3px 8px', background: '#F0F4F8', color: '#94A3B8' }}>
+              No invoices yet
+            </span>
+          ) : (
+            <InvoiceStatusBadge status={rows[0].status} />
+          )}
+        </div>
+      )}
 
       {/* Invoice list */}
       <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 14, overflow: 'hidden' }}>
@@ -143,6 +137,13 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
         ) : (
           <div style={{ maxHeight: 280, overflowY: 'auto' }}>
             {rows.map((row, i) => {
+              const periodLabel = fmtPeriod(row.periodStart, row.periodEnd)
+              const secondaryItems: { text: string; mono?: boolean }[] = [
+                { text: row.vehicleVin ?? 'VIN unavailable', mono: true },
+                { text: periodLabel ?? 'No billing period on record' },
+                { text: `Invoiced ${fmtDate(row.invoiceDate)}` },
+              ]
+              if (row.billToName) secondaryItems.push({ text: row.billToName })
               return (
                 <div
                   key={row.id}
@@ -172,8 +173,13 @@ export default function VehicleInvoiceHistory({ vehicleId, vin, companyId }: Pro
                         </span>
                       )}
                     </div>
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>
-                      {fmtDate(row.invoiceDate)}{row.billToName ? ` · ${row.billToName}` : ''}
+                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0', lineHeight: 1.5 }}>
+                      {secondaryItems.map((item, idx) => (
+                        <span key={idx} style={item.mono ? { fontFamily: 'monospace', color: '#4A5568' } : undefined}>
+                          {idx > 0 && ' · '}
+                          {item.text}
+                        </span>
+                      ))}
                     </p>
                   </div>
 

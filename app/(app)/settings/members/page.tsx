@@ -78,7 +78,7 @@ export default function MembersPage() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7,
                 height: 42, padding: '0 20px', borderRadius: 10,
-                background: '#F4A62A', border: 'none', color: '#0D1B2A',
+                background: '#00B4D8', border: 'none', color: '#FFFFFF',
                 fontWeight: 700, fontSize: 14, cursor: 'pointer',
                 fontFamily: 'inherit', textDecoration: 'none', flexShrink: 0,
               }}

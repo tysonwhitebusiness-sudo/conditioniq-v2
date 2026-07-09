@@ -13,7 +13,7 @@ type PageStatus = 'loading' | 'invalid' | 'expired' | 'used' | 'ready' | 'confir
 
 interface FMCRequest {
   id: string
-  company_id: string
+  fmc_account_id: string
   vin?: string
   location_id?: string
   link_token: string
@@ -48,7 +48,7 @@ export default function FMCInspectPage() {
       setRequest(req)
 
       // Load usage state for the modal
-      const usage = await checkUsageState(req.company_id)
+      const usage = await checkUsageState(req.fmc_account_id)
       setUsageState(usage)
 
       setStatus('ready')
@@ -69,7 +69,7 @@ export default function FMCInspectPage() {
 
     const result = await initiateFMCInspection({
       token,
-      companyId: request.company_id,
+      companyId: request.fmc_account_id,
       requestId: request.id,
       vin: request.vin ?? '',
     })
@@ -84,7 +84,7 @@ export default function FMCInspectPage() {
     await completeFMCInspection({
       inspectionId,
       requestId: request.id,
-      fmcAccountId: request.company_id,
+      fmcAccountId: request.fmc_account_id,
       vin: request.vin ?? '',
     })
     await supabase.auth.signOut()
@@ -163,7 +163,7 @@ export default function FMCInspectPage() {
   if (status === 'inspecting' && inspectionId && request) {
     const fakeContext = createFakeAuthContext({
       inspectorName,
-      companyId: request.company_id,
+      companyId: request.fmc_account_id,
     })
     return (
       <AuthContext.Provider value={fakeContext}>

@@ -339,9 +339,9 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
           style={{
             width: '100%', height: 52, borderRadius: 12, border: 'none',
             fontWeight: 700, fontSize: 15, cursor: canAdvance ? 'pointer' : 'not-allowed',
-            background: canAdvance ? '#F4A62A' : '#E1E8F0',
-            color: canAdvance ? '#0D1B2A' : '#94A3B8',
-            boxShadow: canAdvance ? '0 4px 12px rgba(244,166,42,0.3)' : 'none',
+            background: canAdvance ? '#00B4D8' : '#E1E8F0',
+            color: canAdvance ? '#FFFFFF' : '#94A3B8',
+            boxShadow: canAdvance ? '0 4px 12px rgba(0,180,216,0.3)' : 'none',
           }}
         >
           Continue to BOL →

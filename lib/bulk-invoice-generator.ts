@@ -1,4 +1,5 @@
 import type { BulkInvoicePDFData, BulkInvoicePDFRow } from './bulk-invoice-pdf'
+import { logVehicleEvent } from './vehicle-events-actions'
 
 export interface BulkGeneratorRow extends BulkInvoicePDFRow {
   vehicleId: string | null
@@ -111,6 +112,16 @@ export async function generateAndSaveBulkInvoice(params: {
   })
 
   if (error) return { bulkInvoiceId: null, groupId: null, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error }
+
+  for (const row of params.rows) {
+    if (!row.vehicleId) continue
+    logVehicleEvent({
+      companyId: params.companyId, vehicleId: row.vehicleId, eventType: 'invoice_generated',
+      description: `Invoice ${params.invoiceNumber} generated (bulk)`,
+      metadata: { bulk_invoice_id: bulkInvoiceId, group_id: groupId, amount: row.subtotal },
+      createdBy: params.userId,
+    })
+  }
 
   return { bulkInvoiceId, groupId: groupId ?? null, invoiceNumber: params.invoiceNumber, pdfBlob, storagePath, signedUrl, error: null }
 }

@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeCompanyAccess } from '@/lib/inspection-auth'
 
 export interface BulkInvoiceRow {
   vehicleId: string | null
@@ -15,6 +16,9 @@ export interface BulkInvoiceRow {
 }
 
 export async function getNextBulkInvoiceNumber(companyId: string): Promise<string> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) throw new Error('Not authorized')
+
   const supabase = createAdminClient()
   const { data, error } = await supabase.rpc('get_next_invoice_number', { p_company_id: companyId })
   if (!error && data) return data as string
@@ -38,6 +42,9 @@ export async function createBulkInvoiceUploadUrl(
   companyId: string,
   invoiceNumber: string,
 ): Promise<{ path: string; token: string } | null> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const path = `${companyId}/${invoiceNumber}.pdf`
   const { data, error } = await supabase.storage
@@ -72,6 +79,9 @@ export async function saveBulkInvoice({
   createdBy: string | null
   customerId?: string | null
 }): Promise<{ bulkInvoiceId: string | null; groupId: string | null; error: string | null }> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return { bulkInvoiceId: null, groupId: null, error: 'Not authorized' }
+
   const supabase = createAdminClient()
   const bulkInvoiceId = crypto.randomUUID()
 
@@ -123,6 +133,10 @@ export async function saveBulkInvoice({
 }
 
 export async function getBulkInvoiceSignedUrl(storagePath: string): Promise<string | null> {
+  const companyId = storagePath.split('/')[0]
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
     .from('invoices')
@@ -135,6 +149,17 @@ export async function updateBulkInvoiceStatus(
   bulkInvoiceId: string,
   status: 'draft' | 'sent' | 'paid',
 ): Promise<void> {
+  const admin = createAdminClient()
+  const { data: existing } = await admin
+    .from('lot_invoices')
+    .select('company_id')
+    .eq('bulk_invoice_id', bulkInvoiceId)
+    .limit(1)
+    .maybeSingle()
+  if (!existing) return
+  const ok = await authorizeCompanyAccess(existing.company_id)
+  if (!ok) return
+
   const supabase = createAdminClient()
   await supabase.from('lot_invoices').update({ status }).eq('bulk_invoice_id', bulkInvoiceId)
 }

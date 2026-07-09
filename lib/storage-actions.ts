@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 
 export type InspectionType = 'standard' | 'check_in' | 'check_out'
 export type StorageStatus = 'active' | 'pending_inspection' | 'inspected' | 'releasing' | 'released'
@@ -45,9 +46,16 @@ export async function upsertVehicleToInventory(
   inspectionData: Record<string, any>,
   scoreResult: any,
   inspectionType: InspectionType
-): Promise<void> {
-  if (!companyId) return
-  const supabase = createClient()
+): Promise<string | undefined> {
+  'use server'
+  if (!companyId) return undefined
+
+  const { authorizeCompanyAccess } = await import('./inspection-auth')
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return undefined
+
+  const { createAdminClient } = await import('./supabase/admin')
+  const supabase = createAdminClient()
 
   const vin = (inspectionData.vehicleInfo?.vin ?? inspectionData.vin ?? '').trim()
   const year = inspectionData.vehicleInfo?.year ?? inspectionData.year ?? null
@@ -91,6 +99,7 @@ export async function upsertVehicleToInventory(
       }
     }
     await supabase.from('storage_vehicles').update(updates).eq('id', existing.id)
+    return existing.id
   } else {
     const insert: Record<string, any> = {
       company_id: companyId,
@@ -112,7 +121,15 @@ export async function upsertVehicleToInventory(
         insert.checkout_inspection_id = inspectionId
       }
     }
-    await supabase.from('storage_vehicles').insert(insert)
+    const { data: created } = await supabase.from('storage_vehicles').insert(insert).select('id').single()
+    if (created) {
+      logVehicleEvent({
+        companyId, vehicleId: created.id, eventType: 'intake',
+        description: 'Vehicle added to inventory',
+        metadata: { source: 'inspection', inspection_id: inspectionId, vin: vinKey },
+      })
+    }
+    return created?.id
   }
 }
 
@@ -308,7 +325,7 @@ export async function getVehicleInspectionHistory(companyId: string, vin: string
   const supabase = createClient()
   const { data } = await supabase
     .from('vehicle_inspections')
-    .select('id, created_at, status, vehicle_score, inspection_type, exterior_data, interior_data, engine_data, vehicle_function_data')
+    .select('id, created_at, status, vehicle_score, exterior_data, interior_data, engine_data, vehicle_function_data')
     .eq('company_id', companyId)
     .eq('vin', vin)
     .eq('status', 'completed')
@@ -594,6 +611,13 @@ export async function addVehicleToSystem(
     .single()
 
   if (insertError) throw new Error(insertError.message)
+  if (inserted) {
+    logVehicleEvent({
+      companyId, vehicleId: inserted.id, eventType: 'intake',
+      description: 'Vehicle added to inventory',
+      metadata: { source: 'manual', vin },
+    })
+  }
   return inserted?.id
 }
 
@@ -614,30 +638,39 @@ export async function getVehiclesNeedingAttention(companyId: string) {
 export async function releaseVehicle(vehicleId: string): Promise<void> {
   const supabase = createClient()
   const now = new Date()
-  const { error } = await supabase.from('storage_vehicles').update({
+  const { data, error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'picked_up',
     status: 'released',
     released_at: now.toISOString(),
     released_date: now.toISOString().split('T')[0],
     updated_at: now.toISOString(),
-  }).eq('id', vehicleId)
+  }).eq('id', vehicleId).select('company_id').single()
   if (error) throw error
+  if (data) {
+    logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'released', description: 'Vehicle released from lot' })
+  }
 }
 
 export async function markVehiclePendingPickup(vehicleId: string): Promise<void> {
   const supabase = createClient()
-  const { error } = await supabase.from('storage_vehicles').update({
+  const { data, error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'pending_pickup',
     updated_at: new Date().toISOString(),
-  }).eq('id', vehicleId)
+  }).eq('id', vehicleId).select('company_id').single()
   if (error) throw error
+  if (data) {
+    logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'status_changed', description: 'Status changed to Pending Pickup' })
+  }
 }
 
 export async function markVehicleOnLot(vehicleId: string): Promise<void> {
   const supabase = createClient()
-  const { error } = await supabase.from('storage_vehicles').update({
+  const { data, error } = await supabase.from('storage_vehicles').update({
     lifecycle_status: 'on_lot',
     updated_at: new Date().toISOString(),
-  }).eq('id', vehicleId)
+  }).eq('id', vehicleId).select('company_id').single()
   if (error) throw error
+  if (data) {
+    logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'status_changed', description: 'Status changed to On Lot' })
+  }
 }

@@ -8,6 +8,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import BottomNav from '@/components/ui/bottom-nav'
 import ActionSheet from '@/components/ui/action-sheet'
 import HomeDashboard from '@/components/home/home-dashboard'
+import DesktopHomeDashboard from '@/components/home/desktop-home-dashboard'
 import QueuePage from '@/components/queue/queue-page'
 import ProfilePage from '@/components/profile/profile-page'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
@@ -27,7 +28,7 @@ type NavTab = 'home' | 'queue' | 'history' | 'account'
 const SESSION_KEY = 'vcr_in_progress'
 
 const DESKTOP_PAGE_TITLES: Record<NavTab, string> = {
-  home: 'Overview',
+  home: 'Dashboard',
   queue: 'Inspection Queue',
   history: 'History & Reports',
   account: 'My Profile',
@@ -304,11 +305,15 @@ export default function VehicleInspectionApp() {
   const tabContent = (
     <>
       {navTab === 'home' && (
-        <HomeDashboard
-          onStartInspection={() => isDesktop ? handleStartInspection() : setShowVehiclePicker(true)}
-          onResumeInspection={handleResumeInspection}
-          onViewReport={handleViewReport}
-        />
+        isDesktop ? (
+          <DesktopHomeDashboard onStartInspection={() => setShowVehiclePicker(true)} />
+        ) : (
+          <HomeDashboard
+            onStartInspection={() => setShowVehiclePicker(true)}
+            onResumeInspection={handleResumeInspection}
+            onViewReport={handleViewReport}
+          />
+        )
       )}
       {navTab === 'queue' && (
         <QueuePage
@@ -509,7 +514,7 @@ function LockedInspectionModal({ inspection, onClose, onViewReport }: { inspecti
             onClick={onViewReport}
             style={{
               height: 52, borderRadius: 12, border: 'none',
-              background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+              background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}
           >
             View Report

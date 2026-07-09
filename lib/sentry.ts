@@ -18,10 +18,28 @@ import * as Sentry from '@sentry/nextjs'
 export function captureHighSeverityError(
   error: unknown,
   context?: Record<string, unknown>,
+  fingerprintKey?: string,
+): void {
+  captureSecurityEvent(error, 'high', context, fingerprintKey)
+}
+
+/**
+ * Captures a security-relevant rejection (auth denial, rate limit) with a
+ * severity tag and, when a stable source identifier is available (user id,
+ * IP), a custom fingerprint — so repeated rejections from the same source
+ * group into one Sentry issue, making frequency-based alert rules meaningful
+ * per-source rather than per-check-type-globally.
+ */
+export function captureSecurityEvent(
+  error: unknown,
+  severity: 'high' | 'medium',
+  context?: Record<string, unknown>,
+  fingerprintKey?: string,
 ): void {
   Sentry.withScope((scope) => {
-    scope.setTag('severity', 'high')
+    scope.setTag('severity', severity)
     if (context) scope.setContext('details', context)
+    if (fingerprintKey) scope.setFingerprint(['security-event', fingerprintKey])
     Sentry.captureException(error)
   })
 }

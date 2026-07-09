@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getInvoiceGroupByToken } from '@/lib/invoice-group-actions'
-import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/invoice-utils'
+import { PAYMENT_METHOD_LABELS } from '@/lib/invoice-utils'
+import InvoiceStatusBadge from '@/components/billing/invoice-status-badge'
 import type { Metadata } from 'next'
 
 export const dynamic = 'force-dynamic'
@@ -36,14 +37,6 @@ async function getPdfSignedUrl(storagePath: string): Promise<string | null> {
   return data.signedUrl
 }
 
-const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  draft:   { bg: '#F0F4F8', color: '#4A5568', label: 'Draft' },
-  sent:    { bg: '#E0F7FC', color: '#0097B2', label: 'Sent' },
-  paid:    { bg: '#D1FAE5', color: '#065F46', label: 'Paid' },
-  overdue: { bg: '#FEE2E2', color: '#DC2626', label: 'Overdue' },
-  void:    { bg: '#F3F4F6', color: '#9CA3AF', label: 'Void' },
-}
-
 export default async function PublicInvoicePage({ params }: Props) {
   const group = await getInvoiceGroupByToken(params.token)
   if (!group) notFound()
@@ -65,7 +58,6 @@ export default async function PublicInvoicePage({ params }: Props) {
   const grandTotal = lineTotal + adjTotal
   const totalPaid = group.payments.reduce((s, p) => s + (p.amount ?? 0), 0)
   const balanceDue = grandTotal - totalPaid
-  const statusBadge = STATUS_BADGE[group.status] ?? STATUS_BADGE.draft
 
   const firstPdfUrl = uniquePaths.length > 0 ? pdfUrls[uniquePaths[0]] : null
 
@@ -88,9 +80,7 @@ export default async function PublicInvoicePage({ params }: Props) {
               <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>{company?.name ?? ''}</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <span style={{ display: 'inline-block', background: statusBadge.bg, color: statusBadge.color, borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>
-                {statusBadge.label}
-              </span>
+              <InvoiceStatusBadge status={group.status} size="md" />
               <p style={{ fontSize: 28, fontWeight: 800, color: '#00B4D8', margin: '8px 0 0' }}>${grandTotal.toFixed(2)}</p>
               {balanceDue > 0 && group.status !== 'paid' && group.status !== 'void' && (
                 <p style={{ fontSize: 13, color: '#F4A62A', margin: '2px 0 0', fontWeight: 700 }}>Balance Due: ${balanceDue.toFixed(2)}</p>

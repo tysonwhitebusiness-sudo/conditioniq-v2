@@ -9,6 +9,7 @@ const TITLES: Record<string, string> = {
   '/admin/customers':     'Customers',
   '/admin/users':         'Users & Roles',
   '/admin/feedback':      'Feedback',
+  '/admin/activity':      'Activity Log',
   '/admin/crm':           'CRM Dashboard',
   '/admin/crm/queue':     'Outreach Queue',
   '/admin/crm/leads':     'All Leads',
@@ -22,7 +23,7 @@ interface Props {
 
 export default function AdminTopBar({ onHamburgerClick }: Props) {
   const pathname = usePathname()
-  const { userProfile, user } = useAuth()
+  const { userProfile, user, impersonatedCompany } = useAuth()
 
   const title = Object.entries(TITLES).find(([k]) =>
     pathname === k || (k !== '/admin/crm' && pathname.startsWith(k + '/'))
@@ -53,8 +54,15 @@ export default function AdminTopBar({ onHamburgerClick }: Props) {
         >
           <Bell size={16} color="rgba(255,255,255,0.5)" />
         </button>
-        <div style={{ width: 32, height: 32, borderRadius: 16, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#0D1B2A', flexShrink: 0 }}>
-          {initials}
+        {impersonatedCompany && (
+          <span title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 20, background: '#F4A62A', color: '#0D1B2A', whiteSpace: 'nowrap' }}>
+            GHOST
+          </span>
+        )}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 16, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#0D1B2A' }}>
+            {initials}
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,8 @@
 'use server'
 
 import { createAdminClient } from './supabase/admin'
+import { logVehicleEvent } from './vehicle-events-actions'
+import { authorizeCompanyAccess } from './inspection-auth'
 
 export async function createDispatchAction({
   companyId,
@@ -19,6 +21,9 @@ export async function createDispatchAction({
   notes?: string | null
   locationId?: string | null
 }): Promise<{ token: string; error: string | null }> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return { token: '', error: 'Not authorized' }
+
   const supabase = createAdminClient()
   const token = crypto.randomUUID()
 
@@ -74,7 +79,7 @@ export async function createDispatchAction({
       .maybeSingle()
 
     if (!existing) {
-      const { error: vehicleErr } = await supabase
+      const { data: newVeh, error: vehicleErr } = await supabase
         .from('storage_vehicles')
         .insert({
           company_id: companyId,
@@ -86,7 +91,12 @@ export async function createDispatchAction({
           lifecycle_status: 'on_lot',
           arrived_at: new Date().toISOString(),
         })
+        .select('id')
+        .single()
       if (vehicleErr) console.error('[createDispatch] vehicle insert error', vehicleErr)
+      if (newVeh) {
+        logVehicleEvent({ companyId, vehicleId: newVeh.id, eventType: 'intake', description: 'Vehicle added to inventory', metadata: { source: 'dispatch', vin } })
+      }
     }
   } catch (e) {
     console.error('[createDispatch] vehicle upsert error', e)

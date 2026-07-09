@@ -1,6 +1,7 @@
 import type { InvoicePDFData } from './invoice-pdf'
 import type { LotInvoice } from './invoice-actions'
 import { captureHighSeverityError } from './sentry'
+import { logVehicleEvent } from './vehicle-events-actions'
 
 export async function generateAndSaveInvoice(
   data: InvoicePDFData & {
@@ -82,6 +83,8 @@ export async function generateAndSaveInvoice(
       billing_type: data.billingType,
       rate: data.rate,
       total_amount: data.totalAmount,
+      storage_period_start: data.includeStorage ? data.storagePeriodStart ?? null : null,
+      storage_period_end: data.includeStorage ? data.storagePeriodEnd ?? null : null,
       storage_path: storagePath,
       notes: data.notes ?? null,
       status: 'draft',
@@ -92,6 +95,20 @@ export async function generateAndSaveInvoice(
     if (invoice?.group_id && data.charges.length > 0) {
       const { linkChargesToInvoice } = await import('./invoice-charge-actions')
       await linkChargesToInvoice(invoice.group_id, data.companyId, data.charges.map(c => ({ id: c.id, amount: c.amount })))
+    }
+
+    if (invoice && data.includeStorage && data.storagePeriodEnd) {
+      const { advanceBilledThroughDate } = await import('./invoice-charge-actions')
+      await advanceBilledThroughDate(data.vehicleId, data.storagePeriodEnd)
+    }
+
+    if (invoice) {
+      logVehicleEvent({
+        companyId: data.companyId, vehicleId: data.vehicleId, eventType: 'invoice_generated',
+        description: `Invoice ${data.invoiceNumber} generated`,
+        metadata: { invoice_id: invoice.id, amount: data.totalAmount },
+        createdBy: data.userId,
+      })
     }
   } catch (err) {
     captureHighSeverityError(err, { flow: 'saveLotInvoice', invoiceNumber: data.invoiceNumber, companyId: data.companyId })

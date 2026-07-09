@@ -79,7 +79,7 @@ function StepDots({ step }: { step: ModalStep }) {
       {[1, 2, 3, 4, 5].map(n => (
         <div key={n} style={{
           width: n === current ? 20 : 8, height: 8, borderRadius: 4,
-          background: n < current ? '#10B981' : n === current ? '#F4A62A' : '#E1E8F0',
+          background: n < current ? '#10B981' : n === current ? '#00B4D8' : '#E1E8F0',
           transition: 'all 200ms ease',
         }} />
       ))}
@@ -678,7 +678,7 @@ export default function BulkBillingModal({
             <button
               onClick={advance}
               disabled={!canAdvance() || generating}
-              style={{ height: 42, padding: '0 20px', borderRadius: 10, border: 'none', background: canAdvance() && !generating ? '#F4A62A' : '#E1E8F0', color: canAdvance() && !generating ? '#0D1B2A' : '#94A3B8', fontSize: 14, fontWeight: 700, cursor: canAdvance() && !generating ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit' }}>
+              style={{ height: 42, padding: '0 20px', borderRadius: 10, border: 'none', background: canAdvance() && !generating ? '#00B4D8' : '#E1E8F0', color: canAdvance() && !generating ? '#FFFFFF' : '#94A3B8', fontSize: 14, fontWeight: 700, cursor: canAdvance() && !generating ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit' }}>
               {generating
                 ? <><Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Generating…</>
                 : <>{btnLabel} {step !== 5 && <ChevronRight size={15} />}</>}

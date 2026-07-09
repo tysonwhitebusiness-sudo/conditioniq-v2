@@ -112,7 +112,7 @@ export default function StorageOverviewPage() {
             <MapPin size={32} color="#E1E8F0" style={{ margin: '0 auto 10px', display: 'block' }} />
             <p style={{ fontSize: 14, fontWeight: 600, color: '#94A3B8', margin: 0 }}>No locations yet</p>
             <button onClick={() => router.push('/storage/locations')}
-              style={{ marginTop: 12, height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ marginTop: 12, height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
               Add First Location
             </button>
           </div>

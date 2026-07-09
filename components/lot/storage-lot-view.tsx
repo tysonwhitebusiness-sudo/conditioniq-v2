@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { Settings } from 'lucide-react'
+import { Settings, Car, TrendingUp, TrendingDown, Maximize2, X } from 'lucide-react'
 import LotGrid from './lot-grid'
 import LotSetupOverlay from './lot-setup-overlay'
 import AssignVehicleModal from './assign-vehicle-modal'
@@ -11,6 +11,11 @@ import { getLotSpots, getLotBackground, getLotShapes, calculateVehicleBilling } 
 import type { LotSpot, LotShape } from '@/lib/lot-actions'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
+
+const MIDNIGHT = '#0D1B2A'
+const DEEP_NAVY = '#1B2D40'
+const CYAN = '#00B4D8'
+const AMBER = '#F4A62A'
 
 interface Props {
   companyId: string
@@ -35,6 +40,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const [setupOpen, setSetupOpen] = useState(false)
   const [assignSpot, setAssignSpot] = useState<LotSpot | null>(null)
   const [detailSpot, setDetailSpot] = useState<LotSpot | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     const savedPan = typeof window !== 'undefined' ? localStorage.getItem(bgPanKey) : null
@@ -91,7 +97,6 @@ export default function StorageLotView({ companyId, locationId }: Props) {
 
   // Opportunity cost: empty spots × default daily rate
   const dailyOpportunityCost = defaultDailyRate != null ? available * defaultDailyRate : null
-  const hasBillingData = dailyAccruing > 0 || dailyOpportunityCost != null
 
   if (loading) {
     return (
@@ -105,79 +110,152 @@ export default function StorageLotView({ companyId, locationId }: Props) {
 
   return (
     <div style={{ padding: isMobile ? '12px 16px' : 24, maxWidth: 1100 }}>
-      {/* Summary bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16, marginBottom: isMobile ? 12 : 20, flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#0D1B2A', margin: 0, flex: 1 }}>
+      {/* Title row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isMobile ? 12 : 16 }}>
+        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: MIDNIGHT, margin: 0 }}>
           Lot Map
         </h1>
-
-        {isMobile ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-            <span style={{ fontSize: 13, color: '#4A5568', fontWeight: 600 }}>
-              <span style={{ color: '#00B4D8' }}>{occupied}</span>/{total} · <span style={{ color: '#10B981' }}>{available}</span> free
-            </span>
-            {hasBillingData && (
-              <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                {dailyAccruing > 0 && <span style={{ color: '#10B981' }}>${dailyAccruing.toFixed(0)}/d accruing</span>}
-                {dailyAccruing > 0 && dailyOpportunityCost != null && ' · '}
-                {dailyOpportunityCost != null && <span style={{ color: '#F59E0B' }}>${dailyOpportunityCost.toFixed(0)}/d empty</span>}
-              </span>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <StatChip label="Total Spots" value={total} />
-            <StatChip label="Occupied" value={occupied} color="#00B4D8" />
-            <StatChip label="Available" value={available} color="#10B981" />
-            {dailyAccruing > 0 && (
-              <BillingChip label="Accruing/day" value={`$${dailyAccruing.toFixed(2)}`} color="#10B981" bg="#D1FAE5" />
-            )}
-            {dailyOpportunityCost != null && (
-              <BillingChip label="Empty cost/day" value={`$${dailyOpportunityCost.toFixed(2)}`} color="#92400E" bg="#FEF3C7" />
-            )}
-          </div>
-        )}
 
         {canSetup && (
           <button
             onClick={() => setSetupOpen(true)}
             style={{
-              height: isMobile ? 34 : 38, padding: '0 16px', borderRadius: 10,
-              border: '1px solid #E1E8F0', background: '#FFF',
-              color: '#0D1B2A', fontSize: 13, fontWeight: 600,
+              height: isMobile ? 34 : 38, padding: '0 14px', borderRadius: 12,
+              border: 'none', background: MIDNIGHT,
+              color: CYAN, fontSize: 13, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            <Settings size={14} /> Edit Layout
+            <Settings size={15} /> Edit Layout
           </button>
         )}
       </div>
 
-      {/* Legend — desktop only */}
-      {!isMobile && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+      {/* Stat tiles */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: isMobile ? 12 : 16 }}>
+        <StatTile
+          icon={<Car size={14} color={CYAN} />}
+          value={`${occupied}/${total}`}
+          valueColor={CYAN}
+          label={`Occupied · ${available} free`}
+        />
+        <StatTile
+          icon={<TrendingUp size={14} color={CYAN} />}
+          value={`$${dailyAccruing.toFixed(0)}/d`}
+          valueColor={CYAN}
+          label="Accruing"
+        />
+        <StatTile
+          icon={<TrendingDown size={14} color={AMBER} />}
+          value={`$${(dailyOpportunityCost ?? 0).toFixed(0)}/d`}
+          valueColor={AMBER}
+          label="Lost · empty"
+        />
+      </div>
+
+      {/* Map card */}
+      <div style={{
+        position: 'relative', borderRadius: 24, overflow: 'hidden',
+        border: `1px solid rgba(13,27,42,0.1)`, boxShadow: '0 10px 24px rgba(13,27,42,0.12)',
+      }}>
+        <LotGrid
+          spots={spots}
+          shapes={shapes}
+          mode="view"
+          bgUrl={bgUrl}
+          bgPan={bgPan}
+          bgRotation={bgRotation}
+          canSetup={canSetup}
+          onSetupClick={() => setSetupOpen(true)}
+          onSpotClick={handleSpotClick}
+        />
+
+        <button
+          onClick={() => setIsFullscreen(true)}
+          aria-label="Expand map"
+          style={{
+            position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: '50%',
+            background: 'rgba(13,27,42,0.75)', border: '1px solid rgba(0,180,216,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 15,
+          }}
+        >
+          <Maximize2 size={16} color={CYAN} />
+        </button>
+
+        <div style={{
+          position: 'absolute', bottom: 12, left: 12, display: 'flex', flexWrap: 'wrap',
+          alignItems: 'center', gap: '4px 10px', background: 'rgba(13,27,42,0.75)',
+          padding: '6px 10px', borderRadius: 14, maxWidth: 'calc(100% - 24px)', zIndex: 15,
+        }}>
           {LEGEND.map(l => (
-            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: l.color }} />
-              <span style={{ fontSize: 12, color: '#4A5568' }}>{l.label}</span>
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', whiteSpace: 'nowrap' }}>{l.label}</span>
             </div>
           ))}
         </div>
-      )}
+      </div>
 
-      {/* Lot grid */}
-      <LotGrid
-        spots={spots}
-        shapes={shapes}
-        mode="view"
-        bgUrl={bgUrl}
-        bgPan={bgPan}
-        bgRotation={bgRotation}
-        canSetup={canSetup}
-        onSetupClick={() => setSetupOpen(true)}
-        onSpotClick={handleSpotClick}
-      />
+      {/* Fullscreen mode */}
+      {isFullscreen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: MIDNIGHT }}>
+          <LotGrid
+            spots={spots}
+            shapes={shapes}
+            mode="view"
+            bgUrl={bgUrl}
+            bgPan={bgPan}
+            bgRotation={bgRotation}
+            fullBleed
+            onSpotClick={handleSpotClick}
+          />
+
+          <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', padding: '20px 16px 32px',
+            background: 'linear-gradient(180deg, rgba(13,27,42,0.92) 0%, rgba(13,27,42,0.55) 65%, rgba(13,27,42,0) 100%)',
+            zIndex: 5, pointerEvents: 'none',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'auto' }}>
+              <div>
+                <div style={{ color: '#FFF', fontSize: 17, fontWeight: 800, marginBottom: 6 }}>Lot Map</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, flexWrap: 'wrap' }}>
+                  <span style={{ color: CYAN, fontWeight: 700 }}>{occupied}/{total} <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>occupied</span></span>
+                  <span style={{ color: CYAN, fontWeight: 700 }}>${dailyAccruing.toFixed(0)}/d <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>accruing</span></span>
+                  <span style={{ color: AMBER, fontWeight: 700 }}>${(dailyOpportunityCost ?? 0).toFixed(0)}/d <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>lost</span></span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsFullscreen(false)}
+                aria-label="Exit fullscreen"
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: 'rgba(13,27,42,0.85)', border: `1px solid ${CYAN}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                }}
+              >
+                <X size={17} color={CYAN} />
+              </button>
+            </div>
+          </div>
+
+          {canSetup && (
+            <button
+              onClick={() => setSetupOpen(true)}
+              style={{
+                position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(13,27,42,0.85)', border: `1px solid rgba(0,180,216,0.5)`,
+                borderRadius: 999, padding: '12px 16px', boxShadow: '0 6px 16px rgba(0,0,0,0.35)',
+                cursor: 'pointer', fontFamily: 'inherit', zIndex: 5,
+              }}
+            >
+              <Settings size={16} color={CYAN} />
+              <span style={{ color: '#FFF', fontSize: 13, fontWeight: 600 }}>Edit Layout</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Setup overlay */}
       {setupOpen && (
@@ -230,20 +308,14 @@ const LEGEND = [
   { label: 'Completed',       color: '#9333EA' },
 ]
 
-function StatChip({ label, value, color }: { label: string; value: number; color?: string }) {
+function StatTile({ icon, value, valueColor, label }: { icon: ReactNode; value: string; valueColor: string; label: string }) {
   return (
-    <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
-      <p style={{ fontSize: 18, fontWeight: 800, color: color ?? '#0D1B2A', margin: 0 }}>{value}</p>
-      <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{label}</p>
-    </div>
-  )
-}
-
-function BillingChip({ label, value, color, bg }: { label: string; value: string; color: string; bg: string }) {
-  return (
-    <div style={{ background: bg, border: `1px solid ${color}22`, borderRadius: 10, padding: '8px 14px', textAlign: 'center' }}>
-      <p style={{ fontSize: 16, fontWeight: 800, color, margin: 0 }}>{value}</p>
-      <p style={{ fontSize: 11, color, opacity: 0.7, margin: 0 }}>{label}</p>
+    <div style={{ flex: 1, background: DEEP_NAVY, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {icon}
+        <span style={{ fontSize: 15, fontWeight: 700, color: valueColor }}>{value}</span>
+      </div>
+      <span style={{ fontSize: 11, color: 'rgba(240,244,248,0.55)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   )
 }

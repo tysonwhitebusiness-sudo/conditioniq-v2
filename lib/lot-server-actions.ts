@@ -1,7 +1,9 @@
 'use server'
 
 import { createAdminClient } from './supabase/admin'
+import { createClient } from './supabase/server'
 import type { LotShape, LotSpot } from './lot-actions'
+import { authorizeCompanyAccess } from './inspection-auth'
 
 export async function createLotSpotAction(
   companyId: string,
@@ -17,7 +19,7 @@ export async function createLotSpotAction(
     custom_color?: string | null
   },
 ): Promise<LotSpot | null> {
-  const supabase = createAdminClient()
+  const supabase = createClient()
   const { data: spot, error } = await supabase
     .from('lot_spots')
     .insert({
@@ -45,13 +47,13 @@ export async function updateLotSpotAction(
     width: number; height: number; rotation: number; custom_color: string | null
   }>,
 ): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = createClient()
   const { error } = await supabase.from('lot_spots').update(updates).eq('id', spotId)
   if (error) console.error('[lot] updateSpot', error)
 }
 
 export async function deleteLotSpotAction(spotId: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = createClient()
   await supabase.from('lot_spots').delete().eq('id', spotId)
 }
 
@@ -59,6 +61,9 @@ export async function createLotShapeAction(
   companyId: string,
   shape: Omit<LotShape, 'id' | 'company_id' | 'created_at'>,
 ): Promise<LotShape | null> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('lot_shapes')
@@ -73,17 +78,30 @@ export async function updateLotShapeAction(
   id: string,
   updates: Partial<Omit<LotShape, 'id' | 'company_id' | 'created_at'>>,
 ): Promise<void> {
-  const supabase = createAdminClient()
-  const { error } = await supabase.from('lot_shapes').update(updates).eq('id', id)
+  const admin = createAdminClient()
+  const { data: existing } = await admin.from('lot_shapes').select('company_id').eq('id', id).maybeSingle()
+  if (!existing) return
+  const ok = await authorizeCompanyAccess(existing.company_id)
+  if (!ok) return
+
+  const { error } = await admin.from('lot_shapes').update(updates).eq('id', id)
   if (error) console.error('[lot] updateShape', error)
 }
 
 export async function deleteLotShapeAction(id: string): Promise<void> {
-  const supabase = createAdminClient()
-  await supabase.from('lot_shapes').delete().eq('id', id)
+  const admin = createAdminClient()
+  const { data: existing } = await admin.from('lot_shapes').select('company_id').eq('id', id).maybeSingle()
+  if (!existing) return
+  const ok = await authorizeCompanyAccess(existing.company_id)
+  if (!ok) return
+
+  await admin.from('lot_shapes').delete().eq('id', id)
 }
 
 export async function removeLotBackgroundAction(companyId: string, locationId?: string | null): Promise<void> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return
+
   const supabase = createAdminClient()
   const path = locationId ? `${companyId}/${locationId}.jpg` : `${companyId}/main.jpg`
   await supabase.storage.from('lot-backgrounds').remove([path])
@@ -98,6 +116,9 @@ export async function saveLotBillingDefaultsAction(
   },
 ): Promise<{ error: string | null }> {
   if (!companyId) return { error: 'Missing company ID' }
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return { error: 'Not authorized' }
+
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('companies')

@@ -291,11 +291,11 @@ export default function SendLinkSheet({
                 disabled={!vinValid || generating}
                 style={{
                   width: '100%', height: 52, borderRadius: 12, border: 'none',
-                  background: vinValid && !generating ? '#F4A62A' : '#E1E8F0',
-                  color: vinValid && !generating ? '#0D1B2A' : '#94A3B8',
+                  background: vinValid && !generating ? '#00B4D8' : '#E1E8F0',
+                  color: vinValid && !generating ? '#FFFFFF' : '#94A3B8',
                   fontWeight: 700, fontSize: 15, cursor: vinValid && !generating ? 'pointer' : 'not-allowed',
                   fontFamily: 'inherit',
-                  boxShadow: vinValid ? '0 4px 12px rgba(244,166,42,0.3)' : 'none',
+                  boxShadow: vinValid ? '0 4px 12px rgba(0,180,216,0.3)' : 'none',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   marginBottom: 16,
                 }}>

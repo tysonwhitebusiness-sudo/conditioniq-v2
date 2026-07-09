@@ -56,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading || !user || platformRole !== 'super_admin') return null
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F0F4F8' }}>
+    <div style={{ minHeight: '100vh', background: '#0D1B2A' }}>
       <style>{ADMIN_CSS}</style>
       <AdminSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
       <AdminTopBar onHamburgerClick={() => setSidebarOpen(true)} />

@@ -410,8 +410,8 @@ export default function InspectTokenPage() {
           disabled={!inspectorName.trim()}
           style={{
             width: '100%', height: 52, borderRadius: 12, border: 'none',
-            background: inspectorName.trim() ? '#F4A62A' : '#E1E8F0',
-            color: inspectorName.trim() ? '#0D1B2A' : '#94A3B8',
+            background: inspectorName.trim() ? '#00B4D8' : '#E1E8F0',
+            color: inspectorName.trim() ? '#FFFFFF' : '#94A3B8',
             fontWeight: 700, fontSize: 16, cursor: inspectorName.trim() ? 'pointer' : 'default',
             transition: 'background 150ms ease, color 150ms ease',
             fontFamily: 'inherit',

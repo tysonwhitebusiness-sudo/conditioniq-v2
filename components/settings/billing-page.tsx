@@ -151,7 +151,7 @@ function PlanChangeModal({ currentPlan, companyId, userId, onClose, onSubmitted 
           <button
             onClick={handleSubmit}
             disabled={submitting || !requestedPlan}
-            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: submitting || !requestedPlan ? '#E1E8F0' : '#F4A62A', color: submitting || !requestedPlan ? '#94A3B8' : '#0D1B2A', fontSize: 14, fontWeight: 700, cursor: submitting || !requestedPlan ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: submitting || !requestedPlan ? '#E1E8F0' : '#00B4D8', color: submitting || !requestedPlan ? '#94A3B8' : '#FFFFFF', fontSize: 14, fontWeight: 700, cursor: submitting || !requestedPlan ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           >
             {submitting ? <><Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />Submitting…</> : 'Send Request'}
           </button>

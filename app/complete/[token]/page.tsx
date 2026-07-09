@@ -11,7 +11,7 @@ type RequestStatus = 'loading' | 'invalid' | 'expired' | 'used' | 'ready'
 
 interface InspectionRequest {
   id: string
-  inspection_id: string
+  report_id: string
   token: string
   expires_at: string
   used_at?: string
@@ -189,7 +189,7 @@ export default function RemoteInspectionPage() {
     return (
       <AuthContext.Provider value={fakeContext}>
         <InspectionWizard
-          inspectionId={request.inspection_id}
+          inspectionId={request.report_id}
           onComplete={handleComplete}
           isRemote
         />

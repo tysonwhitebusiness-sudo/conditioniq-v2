@@ -4,6 +4,7 @@ import { withSentryConfig } from '@sentry/nextjs'
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  poweredByHeader: false,
   images: {
     remotePatterns: [
       {
@@ -17,6 +18,32 @@ const nextConfig = {
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false
     return config
+  },
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://*.supabase.co",
+      "font-src 'self'",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "upgrade-insecure-requests",
+    ].join('; ')
+
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Security-Policy-Report-Only', value: csp },
+        ],
+      },
+    ]
   },
 }
 

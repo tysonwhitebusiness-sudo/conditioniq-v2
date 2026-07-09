@@ -37,6 +37,15 @@ export async function getCustomers(companyId: string): Promise<Customer[]> {
   return (data ?? []) as Customer[]
 }
 
+export async function getCustomerCount(companyId: string): Promise<number> {
+  const supabase = createClient()
+  const { count } = await supabase
+    .from('customers')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+  return count ?? 0
+}
+
 export async function getCustomerById(id: string): Promise<Customer | null> {
   const supabase = createClient()
   const { data } = await supabase

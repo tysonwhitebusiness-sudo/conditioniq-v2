@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from 'react'
 import { Upload, Check, Trash2, AlertTriangle, X, Minus, Plus, Grid3X3, Settings2, Copy } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import {
-  uploadLotBackground, generateNextLabel,
+  uploadLotBackground, generateNextLabel, generateNextLabels,
 } from '@/lib/lot-actions'
 import {
   createLotSpotAction, updateLotSpotAction, deleteLotSpotAction,
@@ -14,7 +14,7 @@ import {
 import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
 import { SPOT_COLOR, EMPTY_COLOR } from './lot-grid'
 
-type Tool = 'select' | 'spot' | 'zone' | 'border' | 'marker'
+type Tool = 'select' | 'spot' | 'row' | 'zone' | 'border' | 'marker'
 type SelEl = { type: 'spot'; id: string } | { type: 'shape'; id: string } | null
 
 const ZONE_COLORS  = ['#00B4D8','#10B981','#F4A62A','#EF4444','#F97316','#8B5CF6','#FFFFFF','#64748B']
@@ -24,17 +24,44 @@ const MARKER_COLOR: Record<string, string> = { entrance: '#10B981', exit: '#EF44
 const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
   { id: 'select', label: 'Select',  key: 'S', icon: '↖' },
   { id: 'spot',   label: 'Spot',    key: 'P', icon: '▪' },
+  { id: 'row',    label: 'Row',     key: 'R', icon: '⋯' },
   { id: 'zone',   label: 'Zone',    key: 'Z', icon: '⬜' },
   { id: 'border', label: 'Border',  key: 'B', icon: '⬡' },
   { id: 'marker', label: 'Marker',  key: 'M', icon: '⬤' },
 ]
 
 const HINT: Record<Tool, string> = {
-  select: 'Click to select · Drag spot to move · Drag canvas to pan',
+  select: 'Click to select · Shift-drag to box-select · Shift-click to multi-select · Drag canvas to pan',
   spot:   'Click canvas to place spot · Drag to move any spot',
+  row:    'Click start point, then end point · Enter spot count to place a row',
   zone:   'Drag to draw highlighted area',
   border: 'Click to add points · Finish ✓ to close',
   marker: 'Click to place entrance/exit marker',
+}
+
+// ── geometry helpers ────────────────────────────────────────────────────────────
+
+function angleDeg(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.atan2(b.y - a.y, b.x - a.x) * (180 / Math.PI)
+}
+
+function placeRowPoints(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  count: number,
+): { x: number; y: number; rotation: number }[] {
+  const rot = Math.round(((angleDeg(start, end) % 360) + 360) % 360)
+  if (count <= 1) return [{ x: start.x, y: start.y, rotation: rot }]
+  const pts: { x: number; y: number; rotation: number }[] = []
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1)
+    pts.push({
+      x: Math.max(0.5, Math.min(99.5, start.x + (end.x - start.x) * t)),
+      y: Math.max(0.5, Math.min(99.5, start.y + (end.y - start.y) * t)),
+      rotation: rot,
+    })
+  }
+  return pts
 }
 
 interface Props {
@@ -100,6 +127,30 @@ export default function LotSetupOverlay({
   const [saving, setSaving]   = useState(false)
   const [mSettingsOpen, setMSettingsOpen] = useState(false)
 
+  // multi-select
+  const [multiIds, setMultiIds] = useState<Set<string>>(new Set())
+  const [hoveredSpotId, setHoveredSpotId] = useState<string | null>(null)
+  const [marqueeDraw, setMarqueeDraw] = useState<{sx:number;sy:number;ex:number;ey:number}|null>(null)
+  const marqueeRef = useRef<{sx:number;sy:number}|null>(null)
+  const groupDragRef = useRef<{ start: Record<string,{x:number;y:number}>; startPt:{x:number;y:number} }|null>(null)
+
+  // row/line tool
+  const [rowPts, setRowPts] = useState<{x:number;y:number}[]>([])
+  const [rowCount, setRowCount] = useState('6')
+
+  // copy/paste
+  type ClipboardItem = { dx: number; dy: number; width: number; height: number; rotation: number; custom_color: string | null }
+  const [clipboard, setClipboard] = useState<ClipboardItem[] | null>(null)
+  const [pasteArmed, setPasteArmed] = useState(false)
+
+  // duplicate-with-array
+  const [arrayCount, setArrayCount] = useState('3')
+  const [arraySpacing, setArraySpacing] = useState('6')
+  const [arrayAngle, setArrayAngle] = useState('0')
+
+  // templates
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => { setLivePan(bgPan) }, [bgPan.x, bgPan.y])
@@ -112,17 +163,28 @@ export default function LotSetupOverlay({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+        if (multiIds.size > 0 || selected?.type === 'spot') { e.preventDefault(); handleCopySelection() }
+        return
+      }
+
       const t = TOOLS.find(t => t.key === e.key.toUpperCase())
-      if (t) { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }
-      if (e.key === 'Escape') { setSelected(null); setBorderPts([]); setZoneDraw(null) }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
-        if (selected.type === 'spot') { const sp = spotsRef.current.find(s => s.id === selected.id); if (sp && !sp.active_assignment) handleDeleteSpot() }
-        if (selected.type === 'shape') handleDeleteShape()
+      if (t) { setTool(t.id); if (t.id !== 'border') setBorderPts([]); if (t.id !== 'row') setRowPts([]) }
+      if (e.key === 'Escape') {
+        setSelected(null); setBorderPts([]); setZoneDraw(null)
+        setRowPts([]); setMultiIds(new Set()); setMarqueeDraw(null)
+        setPasteArmed(false); setClipboard(null)
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace')) {
+        if (multiIds.size > 0) { handleDeleteMulti() }
+        else if (selected?.type === 'spot') { const sp = spotsRef.current.find(s => s.id === selected.id); if (sp && !sp.active_assignment) handleDeleteSpot() }
+        else if (selected?.type === 'shape') handleDeleteShape()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selected])
+  }, [selected, multiIds])
 
   // ── coordinate helper ──────────────────────────────────────────────────────
   const cpt = (clientX: number, clientY: number) => {
@@ -153,6 +215,7 @@ export default function LotSetupOverlay({
 
   // ── canvas events ──────────────────────────────────────────────────────────
   const handleCanvasDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (templatesOpen) setTemplatesOpen(false)
     const tgt = e.target as HTMLElement
     const sId  = tgt.dataset.spot
     const shId = tgt.dataset.shapeId
@@ -180,11 +243,32 @@ export default function LotSetupOverlay({
       return
     }
 
-    // select tool — pan on background
+    // row tool: click start point, then end point
+    if (tool === 'row') {
+      if (!sId && !shId) {
+        if (rowPts.length === 0) setRowPts([pt])
+        else if (rowPts.length === 1) setRowPts([rowPts[0], pt])
+      }
+      return
+    }
+
+    // select tool
     if (tool === 'select' && !sId && !shId) {
+      // paste-armed: click places the clipboard group here
+      if (pasteArmed && clipboard) { handlePasteAt(pt.x, pt.y); return }
+
+      // shift-drag on empty canvas: marquee (box) select
+      if (e.shiftKey) {
+        marqueeRef.current = { sx: pt.x, sy: pt.y }
+        setMarqueeDraw({ sx: pt.x, sy: pt.y, ex: pt.x, ey: pt.y })
+        ;(e.currentTarget).setPointerCapture(e.pointerId)
+        return
+      }
+
+      // plain drag on empty canvas — pan
       panRef.current = { cxs: e.clientX, cys: e.clientY, pxs: livePan.x, pys: livePan.y }
       ;(e.currentTarget).setPointerCapture(e.pointerId)
-      setSelected(null)
+      setSelected(null); setMultiIds(new Set())
     }
   }
 
@@ -200,6 +284,10 @@ export default function LotSetupOverlay({
     if (zoneRef.current) {
       setZoneDraw({ sx: zoneRef.current.sx, sy: zoneRef.current.sy, ex: pt.x, ey: pt.y })
     }
+
+    if (marqueeRef.current) {
+      setMarqueeDraw({ sx: marqueeRef.current.sx, sy: marqueeRef.current.sy, ex: pt.x, ey: pt.y })
+    }
   }
 
   const handleCanvasUp = async (e: React.PointerEvent<HTMLDivElement>) => {
@@ -213,6 +301,17 @@ export default function LotSetupOverlay({
       const w = Math.abs(ex - sx), h = Math.abs(ey - sy)
       if (w > 1.5 && h > 0.8) await handleCreateZone(Math.min(sx,ex), Math.min(sy,ey), w, h)
       zoneRef.current = null; setZoneDraw(null)
+    }
+    if (marqueeRef.current && marqueeDraw) {
+      const { sx, sy, ex, ey } = marqueeDraw
+      const minX = Math.min(sx,ex), maxX = Math.max(sx,ex)
+      const minY = Math.min(sy,ey), maxY = Math.max(sy,ey)
+      const hit = spotsRef.current.filter(s => s.x_position >= minX && s.x_position <= maxX && s.y_position >= minY && s.y_position <= maxY)
+      if (hit.length > 0) {
+        setMultiIds(prev => new Set(Array.from(prev).concat(hit.map(s => s.id))))
+        setSelected(null)
+      }
+      marqueeRef.current = null; setMarqueeDraw(null)
     }
   }
 
@@ -311,6 +410,128 @@ export default function LotSetupOverlay({
     selectSpot(sp)
   }
 
+  const handlePlaceRow = async () => {
+    if (rowPts.length < 2) return
+    const count = Math.max(1, Math.min(40, parseInt(rowCount, 10) || 1))
+    const pts = placeRowPoints(rowPts[0], rowPts[1], count)
+    const labels = generateNextLabels(spotsRef.current.map(s => s.label), count)
+    const created = await Promise.all(pts.map((p, i) => createLotSpotAction(companyId, {
+      label: labels[i], x_position: p.x, y_position: p.y, location_id: locationId,
+      width: 4, height: 7, rotation: p.rotation,
+    })))
+    const newSpots = created.filter((s): s is LotSpot => s !== null)
+    if (newSpots.length > 0) {
+      onSpotsChange([...spotsRef.current, ...newSpots])
+      setMultiIds(new Set(newSpots.map(s => s.id))); setSelected(null)
+    }
+    setRowPts([])
+  }
+
+  const handleCopySelection = () => {
+    const ids = multiIds.size > 0 ? Array.from(multiIds) : selected?.type === 'spot' ? [selected.id] : []
+    const srcSpots = ids.map(id => spotsRef.current.find(s => s.id === id)).filter((s): s is LotSpot => !!s)
+    if (srcSpots.length === 0) return
+    const anchorX = srcSpots.reduce((sum, s) => sum + s.x_position, 0) / srcSpots.length
+    const anchorY = srcSpots.reduce((sum, s) => sum + s.y_position, 0) / srcSpots.length
+    const items: ClipboardItem[] = srcSpots.map(s => ({
+      dx: s.x_position - anchorX, dy: s.y_position - anchorY,
+      width: s.width ?? 4, height: s.height ?? 7, rotation: s.rotation ?? 0, custom_color: s.custom_color,
+    }))
+    setClipboard(items)
+    setPasteArmed(true)
+  }
+
+  const handlePasteAt = async (x: number, y: number) => {
+    if (!clipboard || clipboard.length === 0) return
+    const labels = generateNextLabels(spotsRef.current.map(s => s.label), clipboard.length)
+    const created = await Promise.all(clipboard.map((it, i) => createLotSpotAction(companyId, {
+      label: labels[i],
+      x_position: Math.max(0.5, Math.min(99.5, x + it.dx)),
+      y_position: Math.max(0.5, Math.min(99.5, y + it.dy)),
+      location_id: locationId, width: it.width, height: it.height, rotation: it.rotation, custom_color: it.custom_color,
+    })))
+    const newSpots = created.filter((s): s is LotSpot => s !== null)
+    if (newSpots.length > 0) {
+      onSpotsChange([...spotsRef.current, ...newSpots])
+      setMultiIds(new Set(newSpots.map(s => s.id))); setSelected(null)
+    }
+  }
+
+  const handleDuplicateArray = async (ids: string[]) => {
+    const srcSpots = ids.map(id => spotsRef.current.find(s => s.id === id)).filter((s): s is LotSpot => !!s)
+    if (srcSpots.length === 0) return
+    const count = Math.max(1, Math.min(20, parseInt(arrayCount, 10) || 1))
+    const spacing = parseFloat(arraySpacing) || 0
+    const rad = ((parseFloat(arrayAngle) || 0) * Math.PI) / 180
+    const dirX = Math.cos(rad), dirY = Math.sin(rad)
+
+    const totalNew = count * srcSpots.length
+    const labels = generateNextLabels(spotsRef.current.map(s => s.label), totalNew)
+    let li = 0
+    const toCreate: { label: string; x_position: number; y_position: number; width: number; height: number; rotation: number; custom_color: string | null }[] = []
+    for (let k = 1; k <= count; k++) {
+      for (const sp of srcSpots) {
+        toCreate.push({
+          label: labels[li++],
+          x_position: Math.max(0.5, Math.min(99.5, sp.x_position + dirX * spacing * k)),
+          y_position: Math.max(0.5, Math.min(99.5, sp.y_position + dirY * spacing * k)),
+          width: sp.width ?? 4, height: sp.height ?? 7, rotation: sp.rotation ?? 0, custom_color: sp.custom_color,
+        })
+      }
+    }
+    const created = await Promise.all(toCreate.map(d => createLotSpotAction(companyId, { ...d, location_id: locationId })))
+    const newSpots = created.filter((s): s is LotSpot => s !== null)
+    if (newSpots.length > 0) {
+      onSpotsChange([...spotsRef.current, ...newSpots])
+      setMultiIds(new Set(newSpots.map(s => s.id))); setSelected(null)
+    }
+  }
+
+  const handleDeleteMulti = async () => {
+    const ids = Array.from(multiIds)
+    const deletable = ids.filter(id => {
+      const sp = spotsRef.current.find(s => s.id === id)
+      return sp && !sp.active_assignment
+    })
+    if (deletable.length === 0) return
+    await Promise.all(deletable.map(id => deleteLotSpotAction(id)))
+    onSpotsChange(spotsRef.current.filter(s => !deletable.includes(s.id)))
+    setMultiIds(new Set())
+  }
+
+  const handleApplyTemplate = async (kind: 'single' | 'double' | 'angled' | 'perimeter') => {
+    setTemplatesOpen(false)
+    if (kind === 'perimeter') {
+      const sh = await createLotShapeAction(companyId, {
+        location_id: locationId ?? null, shape_type: 'border',
+        label: 'Lot Border', color: '#FFFFFF', fill_opacity: 0.05, stroke_width: 2,
+        config: { points: [{x:5,y:8},{x:95,y:8},{x:95,y:92},{x:5,y:92}], closed: true },
+      })
+      if (sh) { onShapesChange([...shapesRef.current, sh]); selectShape(sh) }
+      return
+    }
+    const rows: { start: {x:number;y:number}; end: {x:number;y:number} }[] =
+      kind === 'single'  ? [{ start:{x:15,y:50}, end:{x:85,y:50} }] :
+      kind === 'double'  ? [{ start:{x:15,y:35}, end:{x:85,y:35} }, { start:{x:15,y:65}, end:{x:85,y:65} }] :
+      /* angled */         [{ start:{x:15,y:20}, end:{x:60,y:80} }]
+    const count = 6
+    const allSpots: { label: string; x: number; y: number; rotation: number }[] = []
+    const existingLabels = spotsRef.current.map(s => s.label)
+    for (const row of rows) {
+      const pts = placeRowPoints(row.start, row.end, count)
+      const labels = generateNextLabels([...existingLabels, ...allSpots.map(s => s.label)], count)
+      pts.forEach((p, i) => allSpots.push({ label: labels[i], x: p.x, y: p.y, rotation: p.rotation }))
+    }
+    const created = await Promise.all(allSpots.map(s => createLotSpotAction(companyId, {
+      label: s.label, x_position: s.x, y_position: s.y, location_id: locationId, width: 4, height: 7, rotation: s.rotation,
+    })))
+    const newSpots = created.filter((s): s is LotSpot => s !== null)
+    if (newSpots.length > 0) {
+      onSpotsChange([...spotsRef.current, ...newSpots])
+      setMultiIds(new Set(newSpots.map(s => s.id))); setSelected(null)
+    }
+  }
+
   const handleSaveShape = async () => {
     if (!selShape) return
     const base: Partial<LotShape> = { color: eSColor, fill_opacity: eSOp, stroke_width: eSStroke, label: eLabel || null }
@@ -359,17 +580,62 @@ export default function LotSetupOverlay({
   // ── spot drag ──────────────────────────────────────────────────────────────
   const startSpotDrag = (e: React.PointerEvent<HTMLDivElement>, spot: LotSpot) => {
     e.stopPropagation()
+
+    // shift-click: toggle spot in/out of the multi-selection, no drag
+    if (e.shiftKey) {
+      setSelected(null)
+      setMultiIds(prev => {
+        const next = new Set(prev)
+        if (next.has(spot.id)) next.delete(spot.id); else next.add(spot.id)
+        return next
+      })
+      return
+    }
+
     ;(e.currentTarget).setPointerCapture(e.pointerId)
+
+    // dragging a spot that's part of an active multi-selection moves the whole group
+    if (multiIds.has(spot.id) && multiIds.size > 1) {
+      const pt = cpt(e.clientX, e.clientY)
+      const start: Record<string,{x:number;y:number}> = {}
+      for (const id of Array.from(multiIds)) {
+        const sp = spotsRef.current.find(s => s.id === id)
+        if (sp) start[id] = { x: sp.x_position, y: sp.y_position }
+      }
+      groupDragRef.current = { start, startPt: pt }
+      return
+    }
+
+    setMultiIds(new Set())
     dragRef.current = { id: spot.id, lastX: spot.x_position, lastY: spot.y_position, moved: false }
     selectSpot(spot)
   }
   const moveSpotDrag = (e: React.PointerEvent<HTMLDivElement>, spotId: string) => {
+    if (groupDragRef.current) {
+      const pt = cpt(e.clientX, e.clientY)
+      const dx = pt.x - groupDragRef.current.startPt.x
+      const dy = pt.y - groupDragRef.current.startPt.y
+      const start = groupDragRef.current.start
+      onSpotsChange(spotsRef.current.map(s => start[s.id]
+        ? { ...s, x_position: Math.max(0.5, Math.min(99.5, start[s.id].x + dx)), y_position: Math.max(0.5, Math.min(99.5, start[s.id].y + dy)) }
+        : s))
+      return
+    }
     if (!dragRef.current || dragRef.current.id !== spotId) return
     const pt = cpt(e.clientX, e.clientY)
     dragRef.current.lastX = pt.x; dragRef.current.lastY = pt.y; dragRef.current.moved = true
     onSpotsChange(spotsRef.current.map(s => s.id === spotId ? { ...s, x_position: pt.x, y_position: pt.y } : s))
   }
   const endSpotDrag = (_e: React.PointerEvent<HTMLDivElement>, spotId: string) => {
+    if (groupDragRef.current) {
+      const ids = Object.keys(groupDragRef.current.start)
+      for (const id of ids) {
+        const sp = spotsRef.current.find(s => s.id === id)
+        if (sp) updateLotSpotAction(id, { x_position: sp.x_position, y_position: sp.y_position })
+      }
+      groupDragRef.current = null
+      return
+    }
     if (!dragRef.current || dragRef.current.id !== spotId) return
     if (dragRef.current.moved) {
       updateLotSpotAction(spotId, { x_position: dragRef.current.lastX, y_position: dragRef.current.lastY })
@@ -451,6 +717,38 @@ export default function LotSetupOverlay({
             <TBtn label="Grid" icon={<Grid3X3 size={12}/>} active={showGrid} onClick={() => setShowGrid(g=>!g)}/>
             <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
             <Sep/>
+            <div style={{ position:'relative' }}>
+              <TBtn label="Templates" active={templatesOpen} onClick={() => setTemplatesOpen(o=>!o)}/>
+              {templatesOpen && (
+                <div style={{ position:'absolute', top:'110%', left:0, background:'#1B2D40', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:4, display:'flex', flexDirection:'column', gap:2, zIndex:50, minWidth:140, boxShadow:'0 8px 20px rgba(0,0,0,0.4)' }}>
+                  {([
+                    ['single','Single Row'],['double','Double Row'],['angled','Angled Row'],['perimeter','Perimeter Border'],
+                  ] as const).map(([kind,label]) => (
+                    <button key={kind} onClick={() => handleApplyTemplate(kind)}
+                      style={{ textAlign:'left', height:30, padding:'0 10px', borderRadius:6, border:'none', background:'transparent', color:'rgba(255,255,255,0.75)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+                      onMouseEnter={e => (e.currentTarget.style.background='rgba(0,180,216,0.12)')}
+                      onMouseLeave={e => (e.currentTarget.style.background='transparent')}
+                    >{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {multiIds.size > 0 && (
+              <>
+                <Sep/>
+                <span style={{ fontSize:11, color:'#00B4D8' }}>{multiIds.size} selected</span>
+                <TBtn label="Copy" icon={<Copy size={12}/>} onClick={handleCopySelection}/>
+                <TBtn label="Clear" onClick={() => setMultiIds(new Set())}/>
+              </>
+            )}
+            {pasteArmed && clipboard && (
+              <>
+                <Sep/>
+                <span style={{ fontSize:11, color:'#F4A62A' }}>Click to paste {clipboard.length} spot{clipboard.length===1?'':'s'}</span>
+                <TBtn label="✕ Cancel" danger onClick={() => { setPasteArmed(false); setClipboard(null) }}/>
+              </>
+            )}
+            <Sep/>
             <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
             <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
             <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color="rgba(255,255,255,0.55)"/></button>
@@ -506,7 +804,7 @@ export default function LotSetupOverlay({
           <div style={{ width:58, background:'#131D2B', borderRight:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', alignItems:'center', paddingTop:10, gap:2, flexShrink:0 }}>
             {TOOLS.map(t => (
               <button key={t.id} title={`${t.label} (${t.key})`}
-                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }}
+                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]); if (t.id !== 'row') setRowPts([]) }}
                 style={{ width:44, height:44, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}
               >
                 <span style={{ fontSize:16, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
@@ -514,7 +812,7 @@ export default function LotSetupOverlay({
               </button>
             ))}
             <div style={{ height:1, width:36, background:'rgba(255,255,255,0.07)', margin:'4px 0' }}/>
-            <span style={{ fontSize:8, color:'rgba(255,255,255,0.2)', textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P Z B M</span>
+            <span style={{ fontSize:8, color:'rgba(255,255,255,0.2)', textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P R Z B M</span>
           </div>
         )}
 
@@ -531,7 +829,7 @@ export default function LotSetupOverlay({
                 background:'#1B2D40',
                 borderRadius:10, overflow:'visible',
                 border:'1px solid rgba(255,255,255,0.12)',
-                cursor: tool==='spot'||tool==='zone' ? 'crosshair' : tool==='border' ? 'cell' : tool==='marker' ? 'copy' : 'default',
+                cursor: tool==='spot'||tool==='zone'||tool==='row' ? 'crosshair' : tool==='border' ? 'cell' : tool==='marker' ? 'copy' : 'default',
                 userSelect:'none',
               }}
             >
@@ -673,18 +971,68 @@ export default function LotSetupOverlay({
                   />
                 )}
 
+                {/* Marquee (box) select preview */}
+                {marqueeDraw && (
+                  <rect
+                    x={Math.min(marqueeDraw.sx,marqueeDraw.ex)} y={Math.min(marqueeDraw.sy,marqueeDraw.ey)}
+                    width={Math.abs(marqueeDraw.ex-marqueeDraw.sx)} height={Math.abs(marqueeDraw.ey-marqueeDraw.sy)}
+                    fill="rgba(0,180,216,0.1)" stroke="#00B4D8" strokeWidth={0.3} strokeDasharray="1.5,1" pointerEvents="none"
+                  />
+                )}
+
+                {/* Row tool preview */}
+                {tool==='row' && rowPts.length===1 && previewPt && (
+                  <line x1={rowPts[0].x} y1={rowPts[0].y} x2={previewPt.x} y2={previewPt.y} stroke="#F4A62A" strokeWidth={0.4} strokeDasharray="2,1" pointerEvents="none"/>
+                )}
+                {tool==='row' && rowPts.length===2 && (() => {
+                  const count = Math.max(1, Math.min(40, parseInt(rowCount, 10) || 1))
+                  const pts = placeRowPoints(rowPts[0], rowPts[1], count)
+                  return (
+                    <>
+                      <line x1={rowPts[0].x} y1={rowPts[0].y} x2={rowPts[1].x} y2={rowPts[1].y} stroke="#F4A62A" strokeWidth={0.4} pointerEvents="none"/>
+                      {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r={1.4} fill="rgba(244,166,42,0.5)" stroke="#F4A62A" strokeWidth={0.25} pointerEvents="none"/>)}
+                    </>
+                  )
+                })()}
+
                 {/* Snap cursor */}
                 {snapGrid && previewPt && tool!=='select' && (
                   <circle cx={previewPt.x} cy={previewPt.y} r={0.9} fill="rgba(255,255,255,0.45)" pointerEvents="none"/>
                 )}
               </svg>
 
-              {/* Spots — always draggable, show rotation handle when selected */}
+              {/* Row tool: inline spot-count input, appears after 2nd click */}
+              {tool==='row' && rowPts.length===2 && (
+                <div
+                  onPointerDown={e => e.stopPropagation()}
+                  style={{
+                    position:'absolute', left:`${rowPts[1].x}%`, top:`${rowPts[1].y}%`, transform:'translate(12px, -50%)',
+                    background:'#0D1B2A', border:'1px solid #F4A62A', borderRadius:8, padding:'6px 8px',
+                    display:'flex', alignItems:'center', gap:6, zIndex:40, boxShadow:'0 6px 16px rgba(0,0,0,0.5)', whiteSpace:'nowrap',
+                  }}
+                >
+                  <span style={{ fontSize:11, color:'rgba(255,255,255,0.6)' }}>Spots</span>
+                  <input
+                    autoFocus
+                    type="number" min={1} max={40} value={rowCount}
+                    onChange={e => setRowCount(e.target.value)}
+                    onKeyDown={e => { if (e.key==='Enter') handlePlaceRow(); if (e.key==='Escape') setRowPts([]) }}
+                    style={{ width:44, height:26, background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:5, color:'#FFF', fontSize:12, textAlign:'center', outline:'none', fontFamily:'inherit' }}
+                  />
+                  <button onClick={handlePlaceRow} style={{ height:26, padding:'0 10px', borderRadius:5, border:'none', background:'#00B4D8', color:'#FFF', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Place</button>
+                  <button onClick={() => setRowPts([])} style={{ height:26, padding:'0 8px', borderRadius:5, border:'none', background:'transparent', color:'rgba(255,255,255,0.4)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>✕</button>
+                </div>
+              )}
+
+              {/* Spots — small circular markers, always draggable, show rotation handle when selected */}
               {spots.map(sp => {
                 const status = sp.active_assignment?.vehicle?.lifecycle_status
                 const bg = sp.custom_color ?? (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
                 const isSel = selected?.id === sp.id
-                const w = sp.width ?? 4, h = sp.height ?? 7
+                const isMultiSel = multiIds.has(sp.id)
+                const isHovered = hoveredSpotId === sp.id
+                const showLabel = isSel || isMultiSel || isHovered
+                const DOT = 18, HIT = 32
                 return (
                   <div
                     key={sp.id}
@@ -692,23 +1040,39 @@ export default function LotSetupOverlay({
                     onPointerDown={e => startSpotDrag(e, sp)}
                     onPointerMove={e => moveSpotDrag(e, sp.id)}
                     onPointerUp={e => endSpotDrag(e, sp.id)}
+                    onPointerEnter={() => setHoveredSpotId(sp.id)}
+                    onPointerLeave={() => setHoveredSpotId(id => id === sp.id ? null : id)}
                     style={{
                       position:'absolute', left:`${sp.x_position}%`, top:`${sp.y_position}%`,
-                      width:`${w}%`, height:`${h*0.5625}%`,
+                      width:HIT, height:HIT,
                       transform:`translate(-50%,-50%) rotate(${sp.rotation??0}deg)`,
-                      background:bg, borderRadius:'10%',
-                      border: isSel ? '2px solid #00B4D8' : `1.5px solid ${bg===EMPTY_COLOR?'#CBD5E0':'rgba(0,0,0,0.1)'}`,
-                      boxShadow: isSel ? '0 0 0 3px rgba(0,180,216,0.4)' : '0 1px 5px rgba(0,0,0,0.3)',
-                      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                      display:'flex', alignItems:'center', justifyContent:'center',
                       cursor: 'grab',
-                      zIndex: isSel ? 10 : 3, userSelect:'none',
-                      transition:'box-shadow 100ms',
+                      zIndex: isSel || isMultiSel ? 10 : 3, userSelect:'none',
                       overflow: 'visible',
                     }}
                   >
-                    <span style={{ fontSize:Math.max(7, w*2.2), fontWeight:800, color: bg===EMPTY_COLOR?'#94A3B8':'#FFF', lineHeight:1, textAlign:'center', pointerEvents:'none' }}>
-                      {sp.label}
-                    </span>
+                    {/* visual dot — purely decorative, the hit area is the parent */}
+                    <div style={{
+                      width:DOT, height:DOT, borderRadius:'50%',
+                      background:bg,
+                      border: isSel || isMultiSel ? '2px solid #00B4D8' : `1.5px solid ${bg===EMPTY_COLOR?'#CBD5E0':'rgba(0,0,0,0.25)'}`,
+                      boxShadow: isMultiSel ? '0 0 0 3px rgba(0,180,216,0.25)' : isSel ? '0 0 0 3px rgba(0,180,216,0.4)' : '0 1px 4px rgba(0,0,0,0.35)',
+                      transition:'box-shadow 100ms',
+                      pointerEvents:'none',
+                    }}/>
+
+                    {/* Label — shown on hover/select rather than crammed inside the dot */}
+                    {showLabel && (
+                      <div style={{
+                        position:'absolute', left:'50%', top:-2, transform:'translate(-50%, -100%)',
+                        background:'#0D1B2A', border:'1px solid rgba(255,255,255,0.15)', borderRadius:4,
+                        padding:'2px 6px', fontSize:10, fontWeight:800, color:'#FFF', lineHeight:1.2,
+                        whiteSpace:'nowrap', pointerEvents:'none', zIndex:20,
+                      }}>
+                        {sp.label}
+                      </div>
+                    )}
 
                     {/* Rotation handle — appears above selected spot */}
                     {isSel && (
@@ -752,7 +1116,18 @@ export default function LotSetupOverlay({
         {/* ── Properties panel (desktop only) ───────────────────────────────── */}
         {!isMobile && (
           <div style={{ width:254, background:'#1B2D40', borderLeft:'1px solid rgba(255,255,255,0.06)', flexShrink:0, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-            {selSpot ? (
+            {multiIds.size > 0 ? (
+              <MultiSelectPanel
+                count={multiIds.size}
+                arrayCount={arrayCount} setArrayCount={setArrayCount}
+                arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+                arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+                onCopy={handleCopySelection}
+                onApplyArray={() => handleDuplicateArray(Array.from(multiIds))}
+                onDelete={handleDeleteMulti}
+                onClose={() => setMultiIds(new Set())}
+              />
+            ) : selSpot ? (
               <SpotPanel
                 spot={selSpot}
                 eLabel={eLabel} setELabel={setELabel}
@@ -767,6 +1142,11 @@ export default function LotSetupOverlay({
                 onDelete={handleDeleteSpot}
                 onDuplicate={handleDuplicateSpot}
                 onClose={() => setSelected(null)}
+                arrayCount={arrayCount} setArrayCount={setArrayCount}
+                arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+                arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+                onApplyArray={() => handleDuplicateArray([selSpot.id])}
+                onCopy={handleCopySelection}
               />
             ) : selShape ? (
               <ShapePanel
@@ -796,7 +1176,7 @@ export default function LotSetupOverlay({
           <div style={{ background:'#131D2B', borderTop:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 8px', flexShrink:0, gap:4 }}>
             {TOOLS.map(t => (
               <button key={t.id}
-                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]) }}
+                onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]); if (t.id !== 'row') setRowPts([]) }}
                 style={{ flex:1, height:48, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none', padding:0 }}
               >
                 <span style={{ fontSize:18, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
@@ -845,9 +1225,20 @@ export default function LotSetupOverlay({
         )}
 
         {/* ── Mobile properties bottom sheet ────────────────────────────────── */}
-        {isMobile && (selSpot || selShape) && (
+        {isMobile && (multiIds.size > 0 || selSpot || selShape) && (
           <div style={{ background:'#1B2D40', borderTop:'1px solid rgba(255,255,255,0.1)', maxHeight:'55vh', overflowY:'auto', flexShrink:0 }}>
-            {selSpot ? (
+            {multiIds.size > 0 ? (
+              <MultiSelectPanel
+                count={multiIds.size}
+                arrayCount={arrayCount} setArrayCount={setArrayCount}
+                arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+                arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+                onCopy={handleCopySelection}
+                onApplyArray={() => handleDuplicateArray(Array.from(multiIds))}
+                onDelete={handleDeleteMulti}
+                onClose={() => setMultiIds(new Set())}
+              />
+            ) : selSpot ? (
               <SpotPanel
                 spot={selSpot}
                 eLabel={eLabel} setELabel={setELabel}
@@ -862,6 +1253,11 @@ export default function LotSetupOverlay({
                 onDelete={handleDeleteSpot}
                 onDuplicate={handleDuplicateSpot}
                 onClose={() => setSelected(null)}
+                arrayCount={arrayCount} setArrayCount={setArrayCount}
+                arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+                arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+                onApplyArray={() => handleDuplicateArray([selSpot.id])}
+                onCopy={handleCopySelection}
               />
             ) : selShape ? (
               <ShapePanel
@@ -889,7 +1285,7 @@ export default function LotSetupOverlay({
 
 // ── Spot properties panel ─────────────────────────────────────────────────────
 
-function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, confirmDel, setConfirmDel, saving, onSave, onDelete, onDuplicate, onClose }: any) {
+function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, confirmDel, setConfirmDel, saving, onSave, onDelete, onDuplicate, onClose, arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onApplyArray, onCopy }: any) {
   const SPOT_COLORS = ['#94A3B8','#00B4D8','#8B5CF6','#F97316','#F4A62A','#10B981','#EF4444','#1B2D40']
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
@@ -944,6 +1340,19 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
         </button>
       </div>
 
+      <button onClick={onCopy} style={{ height:30, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'rgba(255,255,255,0.65)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+        Copy (then click canvas to paste)
+      </button>
+
+      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+
+      <ArrayDuplicateForm
+        arrayCount={arrayCount} setArrayCount={setArrayCount}
+        arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+        arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+        onApply={onApplyArray}
+      />
+
       <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
 
       {!confirmDel ? (
@@ -963,6 +1372,65 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Multi-select panel ────────────────────────────────────────────────────────
+
+function MultiSelectPanel({ count, arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onCopy, onApplyArray, onDelete, onClose }: any) {
+  return (
+    <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ fontSize:13, fontWeight:700, color:'#FFF' }}>{count} spots selected</span>
+        <button onClick={onClose} style={closeBtnStyle}><X size={13} color="rgba(255,255,255,0.4)"/></button>
+      </div>
+
+      <p style={{ fontSize:11, color:'rgba(255,255,255,0.35)', margin:0, lineHeight:1.5 }}>
+        Drag any selected spot to move the whole group · Delete removes all selected
+      </p>
+
+      <button onClick={onCopy} style={{ height:34, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+        <Copy size={13}/> Copy (then click canvas to paste)
+      </button>
+
+      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+
+      <ArrayDuplicateForm
+        arrayCount={arrayCount} setArrayCount={setArrayCount}
+        arraySpacing={arraySpacing} setArraySpacing={setArraySpacing}
+        arrayAngle={arrayAngle} setArrayAngle={setArrayAngle}
+        onApply={onApplyArray}
+      />
+
+      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+
+      <button onClick={onDelete}
+        style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:'#EF4444', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+        <Trash2 size={12}/> Delete Selected
+      </button>
+    </div>
+  )
+}
+
+function ArrayDuplicateForm({ arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onApply }: any) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Duplicate as Array</span>
+      <div style={{ display:'flex', gap:6 }}>
+        <Field label="Repeat">
+          <input type="number" min={1} max={20} value={arrayCount} onChange={(e:any)=>setArrayCount(e.target.value)} style={inputStyle}/>
+        </Field>
+        <Field label="Spacing %">
+          <input type="number" min={0} step={0.5} value={arraySpacing} onChange={(e:any)=>setArraySpacing(e.target.value)} style={inputStyle}/>
+        </Field>
+      </div>
+      <Field label="Direction °">
+        <input type="number" min={0} max={359} value={arrayAngle} onChange={(e:any)=>setArrayAngle(e.target.value)} style={inputStyle}/>
+      </Field>
+      <button onClick={onApply} style={{ height:32, background:'rgba(0,180,216,0.15)', border:'1px solid rgba(0,180,216,0.5)', borderRadius:8, color:'#00B4D8', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+        Apply Array
+      </button>
     </div>
   )
 }
@@ -1065,8 +1533,9 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
 
 function EmptyPanel({ tool }: { tool: Tool }) {
   const tips: Record<Tool, { title: string; items: string[] }> = {
-    select: { title: 'Select Tool', items: ['Click any element to select it','Drag spots to reposition (any tool)','Drag zones to move them','Drag border points to reshape'] },
+    select: { title: 'Select Tool', items: ['Click any element to select it','Shift-click or shift-drag to multi-select','Drag a selected spot to move the whole group','Drag canvas to pan · Ctrl/Cmd+C to copy'] },
     spot:   { title: 'Spot Tool',   items: ['Click canvas to place a spot','Spots auto-label (A1, A2, B1…)','Drag existing spots to move them','↻ handle rotates the selected spot'] },
+    row:    { title: 'Row Tool',    items: ['Click a start point, then an end point','Enter a spot count and hit Place','Spots auto-space and auto-label','Rotation matches the line angle'] },
     zone:   { title: 'Zone Tool',   items: ['Drag to draw a highlighted area','Great for marking rows or sections','Add a label to identify the zone','Choose color to code by type'] },
     border: { title: 'Border Tool', items: ['Click points to trace lot outline','Shows where your lot boundaries are','Click ✓ Finish when done','Drag points to adjust later'] },
     marker: { title: 'Marker Tool', items: ['Click to place entrance/exit icon','Select it to change type & label','Entrance = green, Exit = red','Custom = yellow'] },
@@ -1081,7 +1550,7 @@ function EmptyPanel({ tool }: { tool: Tool }) {
         ))}
       </ul>
       <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }}/>
-      <p style={{ fontSize:11, color:'rgba(255,255,255,0.2)', margin:0 }}>Shortcuts: S P Z B M · Esc to deselect · Del to remove</p>
+      <p style={{ fontSize:11, color:'rgba(255,255,255,0.2)', margin:0 }}>Shortcuts: S P R Z B M · Esc to deselect · Del to remove · Ctrl/Cmd+C to copy</p>
     </div>
   )
 }

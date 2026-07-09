@@ -64,8 +64,6 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [statusSaving, setStatusSaving] = useState(false)
-  const [showGenerator, setShowGenerator] = useState(false)
-  const [genTouch, setGenTouch] = useState(1)
 
   const load = useCallback(async () => {
     const data = await getCRMLead(leadId)
@@ -199,12 +197,6 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
                         <p style={{ margin: 0, fontSize: 11, color: '#94A3B8' }}>Not sent yet</p>
                       )}
                     </div>
-                    {!touch && (
-                      <button onClick={() => { setGenTouch(num); setShowGenerator(true) }}
-                        style={{ fontSize: 11, fontWeight: 700, color: '#00B4D8', background: 'none', border: '1px solid #00B4D8', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Generate
-                      </button>
-                    )}
                   </div>
                 )
               })}
@@ -276,8 +268,8 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
               <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Add a note…" rows={2}
                 style={{ flex: 1, padding: '8px 10px', border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 13, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
               <button onClick={handleAddNote} disabled={!newNote.trim() || addingNote}
-                style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: newNote.trim() ? '#F4A62A' : '#E1E8F0', border: 'none', borderRadius: 10, cursor: newNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
-                <Plus size={14} color={newNote.trim() ? '#0D1B2A' : '#94A3B8'} />
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', background: newNote.trim() ? '#00B4D8' : '#E1E8F0', border: 'none', borderRadius: 10, cursor: newNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                <Plus size={14} color={newNote.trim() ? '#FFFFFF' : '#94A3B8'} />
               </button>
             </div>
           </Card>
@@ -310,112 +302,6 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
         </div>
       </div>
 
-      {/* Email Generator */}
-      <Card style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showGenerator ? 16 : 0 }}>
-          <SH>Email Generator</SH>
-          <button onClick={() => setShowGenerator(o => !o)}
-            style={{ fontSize: 12, fontWeight: 700, color: '#00B4D8', background: 'none', border: '1px solid #00B4D8', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
-            {showGenerator ? 'Hide' : 'Generate Email'}
-          </button>
-        </div>
-        {showGenerator && <EmailGeneratorInline lead={lead} touchNumber={genTouch} onSent={load} />}
-      </Card>
-    </div>
-  )
-}
-
-function EmailGeneratorInline({ lead, touchNumber, onSent }: { lead: Record<string, unknown>; touchNumber: number; onSent: () => void }) {
-  const [touch, setTouch] = useState(touchNumber)
-  const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
-  const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState('')
-
-  const systemPrompts: Record<string, string> = {
-    storage_facility: `You are a sales development rep for Condition IQ, a vehicle inspection SaaS for storage facilities. Write concise, personalized cold outreach emails. Tone: professional but conversational. No fluff. Focus on: reducing disputes, protecting revenue, streamlining move-in/move-out inspections. Keep under 150 words.`,
-    tow_impound: `You are a sales development rep for Condition IQ, a vehicle inspection SaaS for tow and impound yards. Write concise, personalized cold outreach emails. Tone: direct and practical. No fluff. Focus on: protecting against false damage claims, liability reduction, faster release documentation. Keep under 150 words.`,
-  }
-
-  const generateEmail = async () => {
-    setGenerating(true)
-    setError('')
-    const ct = (lead.company_type as string) ?? 'storage_facility'
-    const sysPt = systemPrompts[ct] ?? systemPrompts.storage_facility
-    const touchDesc = touch === 1 ? 'initial cold outreach (never contacted before)' : touch === 2 ? 'follow-up (sent first email 5 days ago, no response)' : 'third touch (sent 2 emails over 12 days, last chance)'
-    const userPrompt = `Write a ${touchDesc} email to ${lead.first_name} ${lead.last_name} who is the ${lead.job_title ?? 'manager'} at ${lead.company ?? 'their company'}. Return JSON: { "subject": "...", "body": "..." }`
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY ?? '',
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 500,
-          system: sysPt,
-          messages: [{ role: 'user', content: userPrompt }],
-        }),
-      })
-      const data = await res.json()
-      const text = data.content?.[0]?.text ?? ''
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) {
-        const parsed = JSON.parse(match[0])
-        setSubject(parsed.subject ?? '')
-        setBody(parsed.body ?? '')
-      } else {
-        setBody(text)
-      }
-    } catch {
-      setError('Generation failed. Check your API key.')
-    } finally { setGenerating(false) }
-  }
-
-  const openMail = () => {
-    const href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-    window.location.href = href
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {[1, 2, 3].map(n => (
-          <button key={n} onClick={() => setTouch(n)}
-            style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: touch === n ? '#0D1B2A' : '#F0F4F8', color: touch === n ? '#FFF' : '#4A5568', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Touch {n}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <button onClick={generateEmail} disabled={generating}
-          style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-          {generating ? 'Generating…' : '⚡ Generate'}
-        </button>
-      </div>
-      {error && <p style={{ color: '#EF4444', fontSize: 12, marginBottom: 8 }}>{error}</p>}
-      <div style={{ marginBottom: 10 }}>
-        <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Subject</label>
-        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject…"
-          style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Body</label>
-        <textarea value={body} onChange={e => setBody(e.target.value)} rows={8} placeholder="Generated email will appear here…"
-          style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={openMail} disabled={!body}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', background: body ? '#00B4D8' : '#E1E8F0', border: 'none', borderRadius: 10, color: body ? '#FFF' : '#94A3B8', fontWeight: 700, fontSize: 13, cursor: body ? 'pointer' : 'default', fontFamily: 'inherit' }}>
-          <Mail size={14} /> Open in Mail
-        </button>
-        <button onClick={async () => { const { logEmailTouch } = await import('@/lib/crm-actions'); await logEmailTouch(lead.id as string, touch); onSent() }} disabled={!body}
-          style={{ padding: '9px 18px', background: body ? '#F4A62A' : '#E1E8F0', border: 'none', borderRadius: 10, color: body ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 13, cursor: body ? 'pointer' : 'default', fontFamily: 'inherit' }}>
-          Mark Sent
-        </button>
-      </div>
     </div>
   )
 }

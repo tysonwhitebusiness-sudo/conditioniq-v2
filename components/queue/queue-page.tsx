@@ -95,7 +95,7 @@ function QueueCard({ item, isDesktop, onStart, onDelete }: { item: any; isDeskto
                 display: 'flex', alignItems: 'center', gap: 4,
                 height: isDesktop ? 32 : 28, padding: isDesktop ? '0 14px' : '0 12px',
                 borderRadius: 8, border: 'none', cursor: 'pointer',
-                background: '#F4A62A', color: '#0D1B2A',
+                background: '#00B4D8', color: '#FFFFFF',
                 fontSize: isDesktop ? 13 : 12, fontWeight: 600,
               }}
             >
@@ -359,7 +359,7 @@ function AddToQueueSheet({ companyId, existingQueueVins, onClose, onAdded }: {
         <div style={{ padding: '12px 20px', borderTop: '1px solid #E1E8F0', display: 'flex', gap: 10, flexShrink: 0 }}>
           <button onClick={onClose} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: 'none', color: '#4A5568', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
           <button onClick={confirm} disabled={selected.size === 0 || adding}
-            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: selected.size > 0 ? '#F4A62A' : '#E1E8F0', color: selected.size > 0 ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 14, cursor: selected.size > 0 ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: selected.size > 0 ? '#00B4D8' : '#E1E8F0', color: selected.size > 0 ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 14, cursor: selected.size > 0 ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {adding ? 'Adding…' : selected.size > 0 ? `Add ${selected.size} Vehicle${selected.size !== 1 ? 's' : ''}` : 'Select vehicles'}
           </button>
         </div>
@@ -495,7 +495,7 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
         action={
           <button
             onClick={() => onStartInspection()}
-            style={{ padding: '12px 24px', borderRadius: 20, fontWeight: 700, fontSize: 14, background: '#F4A62A', color: '#0D1B2A', border: 'none', cursor: 'pointer' }}
+            style={{ padding: '12px 24px', borderRadius: 20, fontWeight: 700, fontSize: 14, background: '#00B4D8', color: '#FFFFFF', border: 'none', cursor: 'pointer' }}
           >
             Start Inspection
           </button>

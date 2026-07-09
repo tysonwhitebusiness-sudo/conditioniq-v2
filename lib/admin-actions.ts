@@ -2,8 +2,29 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getPlan } from '@/lib/pricing'
+import { captureHighSeverityError } from './sentry'
+
+export async function requireSuperAdmin() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    const err = new Error('requireSuperAdmin: not authenticated')
+    captureHighSeverityError(err, { reason: 'not_authenticated', scope: 'requireSuperAdmin' })
+    throw err
+  }
+
+  const { data: isOwner } = await supabase.rpc('is_platform_owner')
+  if (!isOwner) {
+    const err = new Error('requireSuperAdmin: not authorized')
+    captureHighSeverityError(err, { userId: user.id, reason: 'not_authorized', scope: 'requireSuperAdmin' }, user.id)
+    throw err
+  }
+
+  return user
+}
 
 export async function getAdminStats() {
+  await requireSuperAdmin()
   const supabase = createClient()
   const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -38,6 +59,7 @@ export async function getAdminStats() {
 }
 
 export async function getMRRByMonth() {
+  await requireSuperAdmin()
   const supabase = createClient()
   const { data: companies } = await supabase.from('companies').select('id, subscription_tier, created_at')
   const months = []
@@ -56,6 +78,7 @@ export async function getMRRByMonth() {
 }
 
 export async function getRecentCustomerActivity(limit = 10) {
+  await requireSuperAdmin()
   const supabase = createClient()
   const { data } = await supabase
     .from('companies')
@@ -68,10 +91,19 @@ export async function getRecentCustomerActivity(limit = 10) {
 }
 
 export async function getAllCompanies() {
+  await requireSuperAdmin()
   const supabase = createClient()
   const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
+}
+
+export async function getCompanyById(companyId: string) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+  const { data, error } = await supabase.from('companies').select('*').eq('id', companyId).single()
+  if (error) throw error
+  return data
 }
 
 export async function updateCompanyBilling(
@@ -85,11 +117,13 @@ export async function updateCompanyBilling(
     legacy_pricing?: boolean
   }
 ) {
+  await requireSuperAdmin()
   const supabase = createClient()
   await supabase.from('companies').update(updates).eq('id', companyId)
 }
 
 export async function getCompanyInspections(companyId: string, limit = 10) {
+  await requireSuperAdmin()
   const supabase = createClient()
   const { data } = await supabase
     .from('vehicle_inspections')
@@ -100,18 +134,8 @@ export async function getCompanyInspections(companyId: string, limit = 10) {
   return data ?? []
 }
 
-export async function getCompanyNotes(companyId: string) {
-  const supabase = createClient()
-  const { data } = await supabase.from('company_notes').select('*').eq('company_id', companyId).order('created_at', { ascending: false })
-  return data ?? []
-}
-
-export async function addCompanyNote(companyId: string, note: string) {
-  const supabase = createClient()
-  await supabase.from('company_notes').insert({ company_id: companyId, note })
-}
-
 export async function getOverageTracker() {
+  await requireSuperAdmin()
   const supabase = createClient()
   const { data } = await supabase.from('companies').select('id, name, subscription_tier, reports_used, reports_included').gt('reports_used', 0)
   return (data ?? []).map((c: Record<string, unknown>) => {

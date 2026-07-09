@@ -6,6 +6,15 @@ import type { User } from '@supabase/supabase-js'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
 import { getUserCompanyRole } from '@/lib/auth-server-actions'
 import type { RawCompanyRole } from '@/lib/roles'
+import { logAdminActivity } from '@/lib/admin-activity-actions'
+
+const GHOST_MODE_STORAGE_KEY = 'ciq_ghost_session'
+const GHOST_MODE_TIMEOUT_MS = 4 * 60 * 60 * 1000 // 4 hours — impersonation session safety timeout
+
+interface GhostSession {
+  company: Company
+  startedAt: number
+}
 
 interface UserProfile {
   id: string
@@ -19,7 +28,7 @@ interface UserProfile {
   default_location: string | null
 }
 
-interface Company {
+export interface Company {
   id: string
   name: string
   slug: string | null
@@ -38,7 +47,9 @@ interface AuthContextValue {
   userProfile: UserProfile | null
   company: Company | null
   impersonatedCompany: Company | null
-  setImpersonatedCompany: (c: Company | null) => void
+  impersonatedAt: number | null
+  enterGhostMode: (c: Company) => void
+  exitGhostMode: () => void
   effectiveCompany: Company | null
   platformRole: PlatformRole
   companyRole: CompanyRole | null  // 'admin' | 'inspector' — 'owner' is normalized to 'admin'
@@ -54,7 +65,9 @@ export const AuthContext = createContext<AuthContextValue>({
   userProfile: null,
   company: null,
   impersonatedCompany: null,
-  setImpersonatedCompany: () => {},
+  impersonatedAt: null,
+  enterGhostMode: () => {},
+  exitGhostMode: () => {},
   effectiveCompany: null,
   platformRole: 'user',
   companyRole: null,
@@ -73,7 +86,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [companyRole, setCompanyRole] = useState<CompanyRole | null>(null)
   const [isCompanyOwner, setIsCompanyOwner] = useState(false)
   const [impersonatedCompany, setImpersonatedCompany] = useState<Company | null>(null)
+  const [impersonatedAt, setImpersonatedAt] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const clearGhostStorage = useCallback(() => {
+    try { localStorage.removeItem(GHOST_MODE_STORAGE_KEY) } catch { /* ignore */ }
+  }, [])
+
+  // Restore an in-progress ghost session across reloads / tab close-reopen —
+  // but only within the safety timeout window; a stale session past that is
+  // silently cleared rather than resumed.
+  useEffect(() => {
+    let raw: string | null = null
+    try { raw = localStorage.getItem(GHOST_MODE_STORAGE_KEY) } catch { /* ignore */ }
+    if (!raw) return
+    try {
+      const session: GhostSession = JSON.parse(raw)
+      const expired = Date.now() - session.startedAt > GHOST_MODE_TIMEOUT_MS
+      if (expired) {
+        clearGhostStorage()
+        logAdminActivity({
+          accountId: session.company.id,
+          actionType: 'ghost_mode_exited',
+          description: `Ghost session for ${session.company.name} expired after timeout`,
+          metadata: { reason: 'timeout', durationMs: Date.now() - session.startedAt },
+        })
+      } else {
+        setImpersonatedCompany(session.company)
+        setImpersonatedAt(session.startedAt)
+      }
+    } catch {
+      clearGhostStorage()
+    }
+    // Runs once on mount only — restoring a persisted session, not reacting to state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadProfile = useCallback(async (u: User) => {
     const { data: profile } = await supabase
@@ -122,12 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setCompanyRole(null)
         setIsCompanyOwner(false)
         setImpersonatedCompany(null)
+        setImpersonatedAt(null)
+        clearGhostStorage()
         setLoading(false)
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [supabase, loadProfile])
+  }, [supabase, loadProfile, clearGhostStorage])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -137,9 +186,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await loadProfile(user)
   }, [user, loadProfile])
 
+  const enterGhostMode = useCallback((targetCompany: Company) => {
+    const startedAt = Date.now()
+    setImpersonatedCompany(targetCompany)
+    setImpersonatedAt(startedAt)
+    try {
+      localStorage.setItem(GHOST_MODE_STORAGE_KEY, JSON.stringify({ company: targetCompany, startedAt }))
+    } catch { /* ignore — session still works in-memory for this tab */ }
+    logAdminActivity({
+      accountId: targetCompany.id,
+      actorId: user?.id ?? null,
+      actionType: 'ghost_mode_entered',
+      description: `Entered Ghost Mode for ${targetCompany.name}`,
+    })
+  }, [user])
+
+  const exitGhostMode = useCallback((reason: 'manual' | 'timeout' = 'manual') => {
+    if (!impersonatedCompany) return
+    const durationMs = impersonatedAt ? Date.now() - impersonatedAt : null
+    logAdminActivity({
+      accountId: impersonatedCompany.id,
+      actorId: user?.id ?? null,
+      actionType: 'ghost_mode_exited',
+      description: reason === 'timeout'
+        ? `Ghost session for ${impersonatedCompany.name} ended after timeout`
+        : `Exited Ghost Mode for ${impersonatedCompany.name}`,
+      metadata: { reason, durationMs },
+    })
+    setImpersonatedCompany(null)
+    setImpersonatedAt(null)
+    clearGhostStorage()
+  }, [impersonatedCompany, impersonatedAt, user, clearGhostStorage])
+
   const effectiveCompany = impersonatedCompany ?? company
   const platformRole: PlatformRole = (userProfile?.platform_role as PlatformRole) ?? 'user'
   const isOwnerUser = platformRole === 'super_admin'
+
+  // Enforce the safety timeout while a ghost session is actively open in this tab
+  // (the on-mount restore effect handles the case where the app loads directly
+  // into an already-expired session).
+  useEffect(() => {
+    if (!impersonatedCompany || !impersonatedAt) return
+    const remaining = GHOST_MODE_TIMEOUT_MS - (Date.now() - impersonatedAt)
+    if (remaining <= 0) {
+      exitGhostMode('timeout')
+      return
+    }
+    const timer = setTimeout(() => exitGhostMode('timeout'), remaining)
+    return () => clearTimeout(timer)
+  }, [impersonatedCompany, impersonatedAt, exitGhostMode])
 
   return (
     <AuthContext.Provider value={{
@@ -147,7 +242,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userProfile,
       company,
       impersonatedCompany,
-      setImpersonatedCompany,
+      impersonatedAt,
+      enterGhostMode,
+      exitGhostMode,
       effectiveCompany,
       platformRole,
       companyRole,
@@ -189,7 +286,8 @@ export function createFakeAuthContext(opts?: {
 
   return {
     user: null, userProfile: fakeProfile, company: fakeCompany,
-    impersonatedCompany: null, setImpersonatedCompany: () => {},
+    impersonatedCompany: null, impersonatedAt: null,
+    enterGhostMode: () => {}, exitGhostMode: () => {},
     effectiveCompany: fakeCompany,
     platformRole: 'user', companyRole: null,
     isCompanyOwner: false, isOwnerUser: false, loading: false,

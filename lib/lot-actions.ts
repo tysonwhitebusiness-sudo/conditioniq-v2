@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,23 @@ export function generateNextLabel(existing: string[]): string {
     }
   }
   return `Z${existing.length + 1}`
+}
+
+export function generateNextLabels(existing: string[], count: number): string[] {
+  const used = new Set(existing)
+  const result: string[] = []
+  for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    for (let n = 1; n <= 20; n++) {
+      if (result.length >= count) return result
+      const label = `${letter}${n}`
+      if (!used.has(label)) { used.add(label); result.push(label) }
+    }
+  }
+  while (result.length < count) {
+    const label = `Z${existing.length + result.length + 1}`
+    result.push(label)
+  }
+  return result
 }
 
 // ── Spots ─────────────────────────────────────────────────────────────────────
@@ -178,15 +196,41 @@ export async function assignVehicleToSpot(
   assignedBy: string,
 ): Promise<void> {
   const supabase = createClient()
-  await supabase.from('lot_vehicle_assignments').insert({ spot_id: spotId, vehicle_id: vehicleId, assigned_by: assignedBy })
+  const [{ error }, { data: spot }] = await Promise.all([
+    supabase.from('lot_vehicle_assignments').insert({ spot_id: spotId, vehicle_id: vehicleId, assigned_by: assignedBy }),
+    supabase.from('lot_spots').select('label, company_id').eq('id', spotId).single(),
+  ])
+  if (!error && spot) {
+    logVehicleEvent({
+      companyId: spot.company_id, vehicleId, eventType: 'spot_assigned',
+      description: `Assigned to ${spot.label}`,
+      metadata: { spot_id: spotId }, createdBy: assignedBy,
+    })
+  }
 }
 
-export async function unassignVehicleFromSpot(assignmentId: string): Promise<void> {
+export async function unassignVehicleFromSpot(assignmentId: string, unassignedBy?: string): Promise<void> {
   const supabase = createClient()
-  await supabase
+  const { data: assignment } = await supabase
+    .from('lot_vehicle_assignments')
+    .select('vehicle_id, spot:lot_spots(label, company_id)')
+    .eq('id', assignmentId)
+    .single()
+
+  const { error } = await supabase
     .from('lot_vehicle_assignments')
     .update({ unassigned_at: new Date().toISOString() })
     .eq('id', assignmentId)
+
+  if (!error && assignment) {
+    const spot = assignment.spot as unknown as { label: string; company_id: string } | null
+    if (spot) {
+      logVehicleEvent({
+        companyId: spot.company_id, vehicleId: assignment.vehicle_id, eventType: 'spot_unassigned',
+        description: `Removed from ${spot.label}`, createdBy: unassignedBy ?? null,
+      })
+    }
+  }
 }
 
 export async function getAvailableVehicles(companyId: string): Promise<AvailableVehicle[]> {

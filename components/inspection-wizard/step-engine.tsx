@@ -191,8 +191,8 @@ export default function StepEngine({ data, onChange, onNext, onBack }: Props) {
                     padding: '8px 14px', borderRadius: 20, fontSize: 13,
                     border: 'none', cursor: 'pointer',
                     fontWeight: data.noiseType === t ? 600 : 400,
-                    background: data.noiseType === t ? '#F4A62A' : '#F0F4F8',
-                    color: data.noiseType === t ? '#0D1B2A' : '#4A5568',
+                    background: data.noiseType === t ? '#00B4D8' : '#F0F4F8',
+                    color: data.noiseType === t ? '#FFFFFF' : '#4A5568',
                   }}
                 >
                   {t}
@@ -251,8 +251,8 @@ export default function StepEngine({ data, onChange, onNext, onBack }: Props) {
             style={{
               flex: 1, height: 52, borderRadius: 12, border: 'none',
               fontWeight: 700, fontSize: 15, cursor: 'pointer',
-              background: '#F4A62A', color: '#0D1B2A',
-              boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+              background: '#00B4D8', color: '#FFFFFF',
+              boxShadow: '0 4px 12px rgba(0,180,216,0.3)',
             }}
           >
             Continue to Review →

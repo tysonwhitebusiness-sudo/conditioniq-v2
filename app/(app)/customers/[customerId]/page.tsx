@@ -134,7 +134,7 @@ function EditSlideOver({ customer, onClose, onSaved }: {
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={onClose} style={{ flex: 1, height: 46, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
             <button onClick={save} disabled={saving || !form.name.trim()}
-              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? '#F4A62A' : '#E1E8F0', color: form.name.trim() ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? '#00B4D8' : '#E1E8F0', color: form.name.trim() ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
           </div>

@@ -60,6 +60,8 @@ export interface InvoicePDFData {
   intakeDate?: string | null
   includeStorage: boolean
   daysOnLot: number
+  storagePeriodStart?: string | null
+  storagePeriodEnd?: string | null
   billingType: 'daily' | 'monthly'
   rate: number
   storageAmount: number
@@ -70,7 +72,8 @@ export interface InvoicePDFData {
 
 export default function InvoicePDF({ data }: { data: InvoicePDFData }) {
   const vehicleTitle = [data.vehicleYear, data.vehicleMake, data.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'
-  const rateLabel = data.billingType === 'daily' ? `${data.daysOnLot} days × $${data.rate.toFixed(2)}/day` : `${data.daysOnLot} days (${(data.daysOnLot / 30).toFixed(2)} mo) × $${data.rate.toFixed(2)}/mo`
+  const periodLabel = data.storagePeriodStart && data.storagePeriodEnd ? ` (${data.storagePeriodStart} – ${data.storagePeriodEnd})` : ''
+  const rateLabel = (data.billingType === 'daily' ? `${data.daysOnLot} days × $${data.rate.toFixed(2)}/day` : `${data.daysOnLot} days (${(data.daysOnLot / 30).toFixed(2)} mo) × $${data.rate.toFixed(2)}/mo`) + periodLabel
 
   return (
     <Document>

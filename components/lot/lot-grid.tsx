@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Minimize2 } from 'lucide-react'
 import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
 import { useMediaQuery } from '@/hooks/use-media-query'
 
@@ -15,6 +16,51 @@ export const SPOT_COLOR: Record<string, string> = {
 }
 export const EMPTY_COLOR = '#E1E8F0'
 
+// ── Fullscreen zoom/pan math (fullBleed only) ───────────────────────────────────
+
+const FS_MIN_SCALE = 1
+const FS_MAX_SCALE = 4
+
+function fsClampPan(pan: { x: number; y: number }, scale: number, vw: number, vh: number) {
+  if (scale <= FS_MIN_SCALE || vw === 0 || vh === 0) return { x: 0, y: 0 }
+  const minX = vw - vw * scale
+  const minY = vh - vh * scale
+  return {
+    x: Math.min(0, Math.max(minX, pan.x)),
+    y: Math.min(0, Math.max(minY, pan.y)),
+  }
+}
+
+function fsZoomToPoint(
+  prevScale: number, prevPan: { x: number; y: number }, nextScaleRaw: number,
+  cx: number, cy: number, vw: number, vh: number,
+) {
+  const nextScale = Math.max(FS_MIN_SCALE, Math.min(FS_MAX_SCALE, nextScaleRaw))
+  const ux = (cx - prevPan.x) / prevScale
+  const uy = (cy - prevPan.y) / prevScale
+  const rawPan = { x: cx - ux * nextScale, y: cy - uy * nextScale }
+  return { scale: nextScale, pan: fsClampPan(rawPan, nextScale, vw, vh) }
+}
+
+// ── Marker size — scales with the map's actual measured width instead of a
+// fixed px value, so 300+ spots stay legible without merging on narrow
+// screens while desktop keeps roughly its old size. Visual dot and label
+// font both derive from the same measured width; the tap/click target is
+// kept larger than the visual dot so small dots stay easy to hit on touch.
+const MARKER_MIN_VISUAL = 9
+const MARKER_MAX_VISUAL = 28
+const MARKER_MIN_HIT = 32
+
+function computeMarkerSize(containerWidth: number) {
+  const fallback = 22 // used for one frame before ResizeObserver reports a real width
+  const raw = containerWidth > 0 ? containerWidth * 0.02 : fallback
+  const visual = Math.max(MARKER_MIN_VISUAL, Math.min(MARKER_MAX_VISUAL, raw))
+  const hit = Math.max(visual + 12, MARKER_MIN_HIT)
+  const fontSize = Math.max(6, Math.min(11, visual * 0.42))
+  const borderWidth = visual <= 14 ? 1 : 2
+  return { visual, hit, fontSize, borderWidth }
+}
+
 interface Props {
   spots: LotSpot[]
   shapes?: LotShape[]
@@ -24,6 +70,7 @@ interface Props {
   bgRotation?: number
   selectedSpotId?: string | null
   canSetup?: boolean
+  fullBleed?: boolean
   onSetupClick?: () => void
   onSpotClick?: (spot: LotSpot) => void
   onCanvasClick?: (xPct: number, yPct: number) => void
@@ -34,7 +81,7 @@ interface Props {
 
 export default function LotGrid({
   spots, shapes = [], mode, bgUrl, bgPan, bgRotation = 0, selectedSpotId,
-  canSetup, onSetupClick,
+  canSetup, fullBleed, onSetupClick,
   onSpotClick, onCanvasClick, onBgPanChange, onSpotDragMove, onSpotDragEnd,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -46,6 +93,117 @@ export default function LotGrid({
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => { setLivePan(bgPan ?? { x: 0, y: 0 }) }, [bgPan?.x, bgPan?.y])
+
+  // ── Fullscreen zoom/pan state — only used when fullBleed is true ─────────────
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 })
+  const [fsScale, setFsScale] = useState(1)
+  const [fsPan, setFsPan] = useState({ x: 0, y: 0 })
+  const fsPinchRef = useRef<{ dist: number; baseScale: number; midX: number; midY: number; basePan: { x: number; y: number } } | null>(null)
+  const fsDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null)
+  const lastTapRef = useRef(0)
+
+  // Measured in every mode (not just fullBleed) — card view needs the real
+  // rendered width too, to size markers relative to the map instead of a
+  // fixed px value that only ever recognized "mobile" vs "desktop".
+  useLayoutEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const update = () => setViewportSize({ w: el.clientWidth, h: el.clientHeight })
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const fsResetZoom = () => { setFsScale(1); setFsPan({ x: 0, y: 0 }) }
+
+  // React registers onWheel as a passive listener by default, which silently
+  // ignores e.preventDefault() — so ctrl/cmd+scroll would fight the browser's
+  // own native page-zoom instead of driving ours. A native, explicitly
+  // non-passive listener is the only reliable way to intercept it. Refs keep
+  // the handler reading current scale/pan without re-attaching on every tick.
+  const fsScaleRef = useRef(fsScale)
+  const fsPanRef = useRef(fsPan)
+  fsScaleRef.current = fsScale
+  fsPanRef.current = fsPan
+
+  useEffect(() => {
+    if (!fullBleed) return
+    const el = viewportRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return // plain scroll must keep working normally
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top
+      const factor = Math.exp(-e.deltaY * 0.002)
+      const { scale, pan } = fsZoomToPoint(fsScaleRef.current, fsPanRef.current, fsScaleRef.current * factor, cx, cy, rect.width, rect.height)
+      setFsScale(scale); setFsPan(pan)
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  }, [fullBleed])
+
+  const fsGetPinchDist = (t1: React.Touch, t2: React.Touch) => {
+    const dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  const handleFsTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    if (e.touches.length === 2) {
+      fsDragRef.current = null
+      fsPinchRef.current = {
+        dist: fsGetPinchDist(e.touches[0], e.touches[1]),
+        baseScale: fsScale, basePan: fsPan,
+        midX: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+        midY: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top,
+      }
+    }
+  }
+
+  const handleFsTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    if (e.touches.length === 2 && fsPinchRef.current) {
+      const { dist: baseDist, baseScale, midX, midY, basePan } = fsPinchRef.current
+      const ratio = fsGetPinchDist(e.touches[0], e.touches[1]) / baseDist
+      const { scale, pan } = fsZoomToPoint(baseScale, basePan, baseScale * ratio, midX, midY, rect.width, rect.height)
+      setFsScale(scale); setFsPan(pan)
+    }
+  }
+
+  const handleFsTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length < 2) fsPinchRef.current = null
+    if (e.touches.length === 0 && !fsDragRef.current?.moved) {
+      const now = Date.now()
+      if (now - lastTapRef.current < 300) { fsResetZoom(); lastTapRef.current = 0 }
+      else lastTapRef.current = now
+    }
+    if (e.touches.length === 0) fsDragRef.current = null
+  }
+
+  const handleFsPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).dataset.spot) return
+    if (fsScale <= FS_MIN_SCALE) return
+    if (fsPinchRef.current) return // a 2-finger pinch already owns this gesture
+    ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+    fsDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: fsPan.x, startPanY: fsPan.y, moved: false }
+  }
+
+  const handleFsPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!fsDragRef.current || fsPinchRef.current) return
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const dx = e.clientX - fsDragRef.current.startX
+    const dy = e.clientY - fsDragRef.current.startY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) fsDragRef.current.moved = true
+    setFsPan(fsClampPan({ x: fsDragRef.current.startPanX + dx, y: fsDragRef.current.startPanY + dy }, fsScale, rect.width, rect.height))
+  }
+
+  const handleFsPointerUp = () => { fsDragRef.current = null }
 
   const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (mode !== 'setup') return
@@ -123,14 +281,83 @@ export default function LotGrid({
 
   const aspectRatio = isMobile ? '75%' : '56.25%'
 
+  // Marker size is derived from the map's actual measured width (viewportSize.w
+  // at scale=1) — not fsScale, so markers stay visually constant-sized while
+  // zoomed, matching the position-scales-but-size-doesn't split from before.
+  const { visual: markerVisual, hit: markerHit, fontSize: markerFont, borderWidth: markerBorder } = computeMarkerSize(viewportSize.w)
+
+  const markerElements = spots.map(spot => {
+    const status = spot.active_assignment?.vehicle?.lifecycle_status
+    const isInspecting = (spot.active_assignment?.vehicle as any)?._inspecting === true
+    const isEmpty = !spot.active_assignment
+    const defaultColor = isEmpty ? 'rgba(13,27,42,0.35)' : (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
+    const bg = spot.custom_color ?? defaultColor
+    const isDefaultEmpty = isEmpty && !spot.custom_color
+    const isSelected = selectedSpotId === spot.id
+    const pos = fullBleed
+      ? { left: (spot.x_position / 100) * viewportSize.w * fsScale + fsPan.x, top: (spot.y_position / 100) * viewportSize.h * fsScale + fsPan.y }
+      : { left: `${spot.x_position}%`, top: `${spot.y_position}%` }
+    return (
+      <div
+        key={spot.id}
+        data-spot="true"
+        onPointerDown={e => mode === 'setup'
+          ? handleSpotPointerDown(e, spot)
+          : (e.stopPropagation(), onSpotClick?.(spot))
+        }
+        onPointerMove={e => handleSpotPointerMove(e, spot)}
+        onPointerUp={e => handleSpotPointerUp(e, spot)}
+        style={{
+          position: 'absolute',
+          left: pos.left,
+          top: pos.top,
+          width: markerHit,
+          height: markerHit,
+          transform: 'translate(-50%, -50%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: mode === 'setup' ? 'grab' : 'pointer',
+          zIndex: isSelected ? 10 : 2,
+          pointerEvents: 'auto',
+        }}
+      >
+        {/* Visual dot — sized independently of the (larger) tap/click target above */}
+        <div style={{
+          position: 'relative',
+          width: markerVisual, height: markerVisual,
+          background: bg, borderRadius: '50%',
+          border: isSelected ? `${markerBorder}px solid #0D1B2A` : isDefaultEmpty ? `${markerBorder}px solid rgba(255,255,255,0.7)` : `${markerBorder}px solid rgba(13,27,42,0.35)`,
+          boxShadow: isSelected ? '0 0 0 3px rgba(0,180,216,0.35)' : '0 2px 6px rgba(13,27,42,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'box-shadow 120ms',
+          pointerEvents: 'none',
+        }}>
+          <span style={{
+            fontSize: markerFont, fontWeight: 700, lineHeight: 1,
+            color: isDefaultEmpty ? '#F0F4F8' : '#0D1B2A', textAlign: 'center',
+          }}>
+            {spot.label}
+          </span>
+          {isInspecting && (
+            <span title="Inspection in progress" style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 4, background: '#F59E0B', border: '1.5px solid #FFF', animation: 'lot-pulse 1.5s ease-in-out infinite' }} />
+          )}
+        </div>
+      </div>
+    )
+  })
+
   return (
     <>
     <style>{`@keyframes lot-pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
     <div
-      style={{ position: 'relative', width: '100%', overflow: 'hidden', touchAction: 'none' }}
-      onTouchStart={mode === 'view' ? handleTouchStart : undefined}
-      onTouchMove={mode === 'view' ? handleTouchMove : undefined}
-      onTouchEnd={mode === 'view' ? handleTouchEnd : undefined}
+      ref={viewportRef}
+      style={{ position: 'relative', width: '100%', height: fullBleed ? '100%' : undefined, overflow: 'hidden', touchAction: 'none' }}
+      onTouchStart={fullBleed ? handleFsTouchStart : mode === 'view' ? handleTouchStart : undefined}
+      onTouchMove={fullBleed ? handleFsTouchMove : mode === 'view' ? handleTouchMove : undefined}
+      onTouchEnd={fullBleed ? handleFsTouchEnd : mode === 'view' ? handleTouchEnd : undefined}
+      onPointerDown={fullBleed ? handleFsPointerDown : undefined}
+      onPointerMove={fullBleed ? handleFsPointerMove : undefined}
+      onPointerUp={fullBleed ? handleFsPointerUp : undefined}
+      onDoubleClick={fullBleed ? fsResetZoom : undefined}
     >
     <div
       ref={containerRef}
@@ -138,14 +365,18 @@ export default function LotGrid({
       onPointerMove={handleContainerPointerMove}
       onPointerUp={handleContainerPointerUp}
       style={{
-        position: 'relative', width: '100%', paddingBottom: aspectRatio,
+        position: 'relative', width: '100%',
+        ...(fullBleed ? { height: '100%' } : { paddingBottom: aspectRatio }),
         background: bgUrl ? undefined : '#F0F4F8',
-        borderRadius: 12, overflow: 'hidden', border: '1px solid #E1E8F0',
-        cursor: mode === 'setup' ? 'crosshair' : 'default',
+        borderRadius: fullBleed ? 0 : 12, overflow: 'hidden',
+        border: fullBleed ? 'none' : '1px solid #E1E8F0',
+        cursor: mode === 'setup' ? 'crosshair' : fullBleed && fsScale > 1 ? 'grab' : 'default',
         userSelect: 'none',
-        transform: mode === 'view' && viewScale !== 1 ? `scale(${viewScale})` : undefined,
-        transformOrigin: '50% 0',
-        transition: 'transform 0.05s',
+        transform: fullBleed
+          ? (fsScale !== 1 ? `translate(${fsPan.x}px, ${fsPan.y}px) scale(${fsScale})` : undefined)
+          : (mode === 'view' && viewScale !== 1 ? `scale(${viewScale})` : undefined),
+        transformOrigin: fullBleed ? '0 0' : '50% 0',
+        transition: fullBleed ? undefined : 'transform 0.05s',
       }}
     >
       {/* Background image with pan + rotation */}
@@ -233,64 +464,41 @@ export default function LotGrid({
         </div>
       )}
 
-      {spots.map(spot => {
-        const status = spot.active_assignment?.vehicle?.lifecycle_status
-        const isInspecting = (spot.active_assignment?.vehicle as any)?._inspecting === true
-        const bg = spot.custom_color ?? (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
-        const isSelected = selectedSpotId === spot.id
-        const label2 = spot.active_assignment?.vehicle
-          ? [spot.active_assignment.vehicle.make, spot.active_assignment.vehicle.model].filter(Boolean).join(' ') || spot.active_assignment.vehicle.vin.slice(-6)
-          : null
-        const w = spot.width ?? 4
-        const h = spot.height ?? 7
-        return (
-          <div
-            key={spot.id}
-            data-spot="true"
-            onPointerDown={e => mode === 'setup'
-              ? handleSpotPointerDown(e, spot)
-              : (e.stopPropagation(), onSpotClick?.(spot))
-            }
-            onPointerMove={e => handleSpotPointerMove(e, spot)}
-            onPointerUp={e => handleSpotPointerUp(e, spot)}
-            style={{
-              position: 'absolute',
-              left: `${spot.x_position}%`,
-              top: `${spot.y_position}%`,
-              width: `${w}%`,
-              height: `${h * 0.5625}%`,
-              transform: `translate(-50%, -50%) rotate(${spot.rotation ?? 0}deg)`,
-              background: bg,
-              borderRadius: '8%',
-              border: isSelected ? '2px solid #0D1B2A' : `2px solid ${bg === EMPTY_COLOR ? '#CBD5E0' : 'transparent'}`,
-              boxShadow: isSelected ? '0 0 0 3px rgba(0,180,216,0.35)' : '0 2px 6px rgba(13,27,42,0.15)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '2px 4px',
-              cursor: mode === 'setup' ? 'grab' : 'pointer',
-              transition: 'box-shadow 120ms',
-              zIndex: isSelected ? 10 : 2,
-            }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 800, color: bg === EMPTY_COLOR ? '#94A3B8' : '#FFF', lineHeight: 1.2, textAlign: 'center' }}>
-              {spot.label}
-            </span>
-            {label2 && (
-              <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', lineHeight: 1.2, textAlign: 'center', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {label2}
-              </span>
-            )}
-            {isInspecting && (
-              <span title="Inspection in progress" style={{ position: 'absolute', top: 3, right: 3, width: 7, height: 7, borderRadius: 4, background: '#F59E0B', animation: 'lot-pulse 1.5s ease-in-out infinite' }} />
-            )}
-          </div>
-        )
-      })}
+      {!fullBleed && markerElements}
     </div>
-    {/* Double-tap reset hint on mobile */}
-    {isMobile && mode === 'view' && viewScale !== 1 && (
+
+    {/* Fullscreen: markers rendered in an un-scaled overlay so they stay a constant size */}
+    {fullBleed && viewportSize.w > 0 && (
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+        {markerElements}
+      </div>
+    )}
+
+    {/* Fullscreen: persistent reset-zoom button, shown only when zoomed in */}
+    {fullBleed && fsScale > 1 && (
+      <button
+        onPointerDown={e => { e.stopPropagation(); fsResetZoom() }}
+        title="Reset zoom"
+        style={{
+          position: 'absolute', top: 12, left: 12, zIndex: 20,
+          width: 34, height: 34, borderRadius: '50%',
+          background: 'rgba(13,27,42,0.75)', border: '1px solid rgba(0,180,216,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}
+      >
+        <Minimize2 size={15} color="#00B4D8" />
+      </button>
+    )}
+
+    {/* Double-tap reset hint on mobile — non-fullscreen card view only */}
+    {isMobile && !fullBleed && mode === 'view' && viewScale !== 1 && (
       <button
         onPointerDown={e => { e.stopPropagation(); setViewScale(1) }}
-        style={{ position: 'absolute', top: 8, right: 8, zIndex: 20, height: 28, padding: '0 10px', borderRadius: 8, background: 'rgba(13,27,42,0.75)', border: 'none', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+        style={{
+          position: 'absolute', zIndex: 20, height: 28, padding: '0 10px', borderRadius: 8,
+          background: 'rgba(13,27,42,0.75)', border: 'none', color: '#FFF', fontSize: 11, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit', top: 8, right: 8,
+        }}
       >Reset zoom</button>
     )}
     </div>

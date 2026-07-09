@@ -183,7 +183,7 @@ function CustomerSlideOver({ companyId, customer, onClose, onSaved }: {
               Cancel
             </button>
             <button onClick={save} disabled={saving || !form.name.trim()}
-              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? '#F4A62A' : '#E1E8F0', color: form.name.trim() ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? '#00B4D8' : '#E1E8F0', color: form.name.trim() ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
               {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Customer'}
             </button>
           </div>
@@ -250,7 +250,7 @@ export default function CustomersPage() {
             <p style={{ fontSize: 13, color: '#94A3B8', margin: '2px 0 0' }}>{customers.length} total</p>
           </div>
           <button onClick={() => setSlideOver({ open: true, customer: null })}
-            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <Plus size={16} /> Add Customer
           </button>
         </div>

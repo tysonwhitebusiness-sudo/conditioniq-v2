@@ -8,7 +8,7 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import {
   ArrowLeft, ExternalLink, Copy, Check, Eye, EyeOff,
-  DollarSign, Plus, Trash2, Pencil, Loader2, X,
+  DollarSign, Plus, Trash2, Pencil, Loader2, X, Mail,
 } from 'lucide-react'
 import {
   getInvoiceGroupDetail,
@@ -18,33 +18,15 @@ import {
   deleteInvoicePayment,
   addInvoiceAdjustment,
   deleteInvoiceAdjustment,
+  logInvoiceSentEvent,
   type InvoiceGroupDetail,
   type InvoicePayment,
   type InvoiceAdjustment,
   type InvoiceGroupStatus,
 } from '@/lib/invoice-group-actions'
-import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/invoice-utils'
+import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS, INVOICE_STATUS_BADGE_STYLE } from '@/lib/invoice-utils'
 import { getInvoiceSignedUrl } from '@/lib/invoice-actions'
-
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  draft:   { bg: '#F0F4F8', color: '#4A5568' },
-  sent:    { bg: '#E0F7FC', color: '#0097B2' },
-  paid:    { bg: '#D1FAE5', color: '#065F46' },
-  overdue: { bg: '#FEE2E2', color: '#DC2626' },
-  void:    { bg: '#F3F4F6', color: '#9CA3AF' },
-}
-
-function SectionCard({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden', marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #F0F4F8' }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{title}</p>
-        {action}
-      </div>
-      <div style={{ padding: '14px 18px' }}>{children}</div>
-    </div>
-  )
-}
+import SectionCard from '@/components/ui/section-card'
 
 export default function InvoiceGroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -120,7 +102,7 @@ export default function InvoiceGroupDetailPage() {
     )
   }
 
-  const sc = STATUS_COLORS[group.status] ?? STATUS_COLORS.draft
+  const sc = INVOICE_STATUS_BADGE_STYLE[group.status] ?? INVOICE_STATUS_BADGE_STYLE.draft
   const lineTotal = group.line_items.reduce((s, li) => s + (li.total_amount ?? 0), 0)
   const adjTotal = group.adjustments.reduce((s, a) => s + (a.amount ?? 0), 0)
   const grandTotal = lineTotal + adjTotal
@@ -130,6 +112,14 @@ export default function InvoiceGroupDetailPage() {
   const portalUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/invoice/${group.portal_token}`
     : `/invoice/${group.portal_token}`
+
+  const customerEmail = group.customer?.email ?? null
+  const customerName = group.customer?.name ?? group.bill_to_name ?? 'there'
+  const mailtoUrl = customerEmail
+    ? `mailto:${customerEmail}?subject=${encodeURIComponent(`Invoice #${group.invoice_number} from Condition IQ`)}&body=${encodeURIComponent(
+        `Hi ${customerName},\n\nYour invoice #${group.invoice_number} for $${grandTotal.toFixed(2)} is ready to view here:\n${portalUrl}\n\nThank you.`
+      )}`
+    : null
 
   async function handleStatusChange(status: InvoiceGroupStatus) {
     setStatusSaving(true)
@@ -214,6 +204,11 @@ export default function InvoiceGroupDetailPage() {
     })
   }
 
+  function handleSendInvoiceClick() {
+    if (!effectiveCompany || !group) return
+    logInvoiceSentEvent(groupId, effectiveCompany.id, group.invoice_number, user?.id ?? null).catch(() => {})
+  }
+
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 38, border: '1.5px solid #E1E8F0', borderRadius: 9,
     padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit',
@@ -251,9 +246,10 @@ export default function InvoiceGroupDetailPage() {
               onChange={e => handleStatusChange(e.target.value as InvoiceGroupStatus)}
               disabled={statusSaving}
               style={{
-                height: 32, border: `1.5px solid ${sc.bg}`, borderRadius: 8,
+                height: 32, border: 'none', borderRadius: 20,
                 background: sc.bg, color: sc.color, fontSize: 12, fontWeight: 700,
-                fontFamily: 'inherit', padding: '0 10px', cursor: 'pointer', outline: 'none',
+                letterSpacing: '0.03em', textTransform: 'uppercase',
+                fontFamily: 'inherit', padding: '0 14px', cursor: 'pointer', outline: 'none',
               }}
             >
               {Object.entries(INVOICE_STATUS_LABELS).map(([v, l]) => (
@@ -288,7 +284,7 @@ export default function InvoiceGroupDetailPage() {
             </SectionCard>
 
             {/* Line items */}
-            <SectionCard title={`Line Items (${group.line_items.length})`}>
+            <SectionCard title="Line Items" count={group.line_items.length}>
               {group.line_items.length === 0 ? (
                 <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No line items.</p>
               ) : (
@@ -397,7 +393,7 @@ export default function InvoiceGroupDetailPage() {
           <div>
 
             {/* Total card */}
-            <div style={{ background: '#0D1B2A', borderRadius: 16, padding: 18, marginBottom: 16 }}>
+            <div style={{ background: 'linear-gradient(135deg, #1B2D40, #0D1B2A)', borderRadius: 16, padding: 18, marginBottom: 16 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Invoice Total</p>
               <p style={{ fontSize: 28, fontWeight: 800, color: '#00B4D8', margin: '0 0 12px' }}>${grandTotal.toFixed(2)}</p>
               {group.payments.length > 0 && (
@@ -478,7 +474,7 @@ export default function InvoiceGroupDetailPage() {
               <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 10px', wordBreak: 'break-all', lineHeight: 1.5 }}>
                 {portalUrl}
               </p>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <button onClick={copyPortalLink} style={{ flex: 1, height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: copied ? '#10B981' : '#0D1B2A', fontFamily: 'inherit' }}>
                   {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy Link</>}
                 </button>
@@ -486,6 +482,21 @@ export default function InvoiceGroupDetailPage() {
                   <ExternalLink size={13} color="#00B4D8" />
                 </button>
               </div>
+              {mailtoUrl ? (
+                <a
+                  href={mailtoUrl}
+                  onClick={handleSendInvoiceClick}
+                  style={{ height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0D1B2A', fontFamily: 'inherit', textDecoration: 'none' }}
+                >
+                  <Mail size={13} color="#00B4D8" /> Send Invoice
+                </a>
+              ) : (
+                <button disabled title="Add a customer email to send this invoice"
+                  style={{ height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'not-allowed', fontSize: 12, fontWeight: 700, color: '#94A3B8', fontFamily: 'inherit' }}
+                >
+                  <Mail size={13} color="#94A3B8" /> Send Invoice
+                </button>
+              )}
             </SectionCard>
 
           </div>

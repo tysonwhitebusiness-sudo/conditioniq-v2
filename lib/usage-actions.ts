@@ -3,6 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getPlan } from '@/lib/pricing'
 import { captureHighSeverityError } from '@/lib/sentry'
+import { logVehicleEvent } from '@/lib/vehicle-events-actions'
+import { authorizeInspectionAccess } from './inspection-auth'
 
 export interface UsageState {
   used: number
@@ -110,27 +112,33 @@ export async function initiateInspection({
     if (existingVeh) {
       supabase.from('storage_vehicles').update({ status: 'pending_inspection', latest_inspection_id: inspection.id, updated_at: new Date().toISOString() }).eq('id', existingVeh.id).then(() => {})
     } else {
-      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'on_lot', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).then(() => {})
+      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'on_lot', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).select('id').single().then(({ data: newVeh }) => {
+        if (newVeh) logVehicleEvent({ companyId, vehicleId: newVeh.id, eventType: 'intake', description: 'Vehicle added to inventory', metadata: { source: 'inspection_start', inspection_id: inspection.id, vin: vinKey } })
+      })
     }
   }
 
   return { inspectionId: inspection.id, isOverage }
 }
 
-export async function completeInspection(inspectionId: string): Promise<void> {
-  const supabase = createClient()
+export async function completeInspection(inspectionId: string, score?: number | null): Promise<void> {
+  const { ok, companyId } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) throw new Error('Not authorized to complete this inspection')
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
   try {
-    const { data: inspection, error: updateError } = await supabase
+    const updates: Record<string, any> = { usage_status: 'completed', status: 'completed' }
+    if (score !== undefined) updates.vehicle_score = score
+
+    const { error: updateError } = await supabase
       .from('vehicle_inspections')
-      .update({ usage_status: 'completed', status: 'completed' })
+      .update(updates)
       .eq('id', inspectionId)
-      .select('company_id')
-      .single()
 
     if (updateError) throw updateError
 
-    if (inspection?.company_id) {
-      const companyId = inspection.company_id
+    if (companyId) {
       const { data: company } = await supabase
         .from('companies')
         .select('reports_used, subscription_tier')
@@ -152,7 +160,11 @@ export async function completeInspection(inspectionId: string): Promise<void> {
 }
 
 export async function abandonInspection(inspectionId: string): Promise<void> {
-  const supabase = createClient()
+  const { ok } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) throw new Error('Not authorized to abandon this inspection')
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
   await supabase
     .from('vehicle_inspections')
     .update({ usage_status: 'abandoned', status: 'abandoned' })
@@ -194,7 +206,8 @@ export async function initiateFMCInspection({
   requestId: string
   vin: string
 }): Promise<{ inspectionId: string }> {
-  const supabase = createClient()
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
 
   const { data: inspection, error } = await supabase
     .from('vehicle_inspections')
@@ -230,25 +243,26 @@ export async function completeFMCInspection({
   fmcAccountId: string
   vin: string
 }): Promise<void> {
-  const supabase = createClient()
+  const { ok, companyId } = await authorizeInspectionAccess(inspectionId)
+  if (!ok) throw new Error('Not authorized to complete this inspection')
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
   const now = new Date().toISOString()
 
-  const [inspectionResult] = await Promise.all([
+  await Promise.all([
     supabase
       .from('vehicle_inspections')
       .update({ usage_status: 'completed', status: 'completed' })
-      .eq('id', inspectionId)
-      .select('company_id')
-      .single(),
+      .eq('id', inspectionId),
     supabase
       .from('fmc_inspection_requests')
-      .update({ status: 'completed', completed_at: now })
+      .update({ status: 'completed' })
       .eq('id', requestId),
   ])
 
-  if (inspectionResult.data?.company_id) {
+  if (companyId) {
     try {
-      const companyId = inspectionResult.data.company_id
       const { data: company } = await supabase
         .from('companies')
         .select('reports_used, subscription_tier')
@@ -325,7 +339,7 @@ export async function initiateInspectionRequest({
 
     await supabase
       .from('inspection_requests')
-      .update({ used_at: new Date().toISOString() })
+      .update({ used_at: new Date().toISOString(), report_id: inspection.id })
       .eq('id', requestId)
 
     if (vinKey) {

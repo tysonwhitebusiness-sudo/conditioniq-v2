@@ -189,7 +189,7 @@ export default function AllLeads() {
       {selected.size > 0 && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#0D1B2A', borderRadius: 14, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 8px 32px rgba(13,27,42,0.3)', zIndex: 20 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#FFF' }}>{selected.size} selected</span>
-          <button style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Change Status</button>
+          <button style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Change Status</button>
           <button style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Export CSV</button>
           <button onClick={() => setSelected(new Set())}
             style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontFamily: 'inherit', display: 'flex' }}>
@@ -233,7 +233,7 @@ export default function AllLeads() {
               </div>
             </div>
             <button onClick={handleAddLead} disabled={saving || !newLead.first_name || !newLead.email}
-              style={{ width: '100%', height: 42, background: newLead.first_name && newLead.email ? '#F4A62A' : '#E1E8F0', color: newLead.first_name && newLead.email ? '#0D1B2A' : '#94A3B8', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: newLead.first_name && newLead.email ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+              style={{ width: '100%', height: 42, background: newLead.first_name && newLead.email ? '#00B4D8' : '#E1E8F0', color: newLead.first_name && newLead.email ? '#FFFFFF' : '#94A3B8', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: newLead.first_name && newLead.email ? 'pointer' : 'default', fontFamily: 'inherit' }}>
               {saving ? 'Adding...' : 'Add Lead'}
             </button>
           </div>

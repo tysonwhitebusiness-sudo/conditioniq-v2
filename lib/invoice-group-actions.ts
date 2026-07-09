@@ -2,6 +2,22 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logVehicleEvent, type VehicleEventType } from '@/lib/vehicle-events-actions'
+
+async function logEventForGroupVehicles(
+  supabase: ReturnType<typeof createClient>,
+  companyId: string,
+  groupId: string,
+  build: (vehicleCount: number) => { description: string; eventType: VehicleEventType; metadata?: Record<string, unknown>; createdBy?: string | null },
+): Promise<void> {
+  const { data: lineItems } = await supabase.from('lot_invoices').select('vehicle_id').eq('group_id', groupId)
+  const vehicleIds = Array.from(new Set((lineItems ?? []).map(r => r.vehicle_id).filter((id): id is string => !!id)))
+  if (vehicleIds.length === 0) return
+  const { description, eventType, metadata, createdBy } = build(vehicleIds.length)
+  for (const vehicleId of vehicleIds) {
+    logVehicleEvent({ companyId, vehicleId, eventType, description, metadata: { ...metadata, group_id: groupId }, createdBy })
+  }
+}
 
 export type InvoiceGroupStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void'
 
@@ -180,6 +196,22 @@ export async function getInvoiceGroupByToken(token: string): Promise<InvoiceGrou
   return data as unknown as InvoiceGroupDetail
 }
 
+// ── Manual send (mailto) ───────────────────────────────────────────────────────
+
+export async function logInvoiceSentEvent(
+  groupId: string,
+  companyId: string,
+  invoiceNumber: string,
+  sentBy: string | null,
+): Promise<void> {
+  const supabase = createClient()
+  logEventForGroupVehicles(supabase, companyId, groupId, () => ({
+    eventType: 'invoice_sent',
+    description: `Invoice ${invoiceNumber} sent to customer`,
+    createdBy: sentBy,
+  }))
+}
+
 // ── Status & Notes ────────────────────────────────────────────────────────────
 
 export async function updateInvoiceGroupStatus(
@@ -189,8 +221,14 @@ export async function updateInvoiceGroupStatus(
   const supabase = createClient()
   const update: Record<string, unknown> = { status }
   if (status === 'sent') update.sent_at = new Date().toISOString()
-  const { error } = await supabase.from('lot_invoice_groups').update(update).eq('id', groupId)
+  const { data, error } = await supabase.from('lot_invoice_groups').update(update).eq('id', groupId).select('company_id').single()
   if (error) throw error
+  if (status === 'paid' && data) {
+    logEventForGroupVehicles(supabase, data.company_id, groupId, (count) => ({
+      eventType: 'invoice_paid',
+      description: count > 1 ? `Invoice group marked paid (${count} vehicles)` : 'Invoice marked paid',
+    }))
+  }
 }
 
 export async function updateInvoiceGroupNotes(
@@ -228,6 +266,16 @@ export async function addInvoicePayment(params: {
     .select()
     .single()
   if (error) { console.error('[invoice-groups] add-payment', error); return null }
+
+  logEventForGroupVehicles(supabase, params.companyId, params.groupId, (count) => ({
+    eventType: 'payment_logged',
+    description: count > 1
+      ? `$${params.amount.toFixed(2)} payment logged (shared across ${count} vehicles)`
+      : `$${params.amount.toFixed(2)} payment logged`,
+    metadata: { amount: params.amount, payment_method: params.paymentMethod, vehicle_count: count },
+    createdBy: params.createdBy,
+  }))
+
   return data as InvoicePayment
 }
 

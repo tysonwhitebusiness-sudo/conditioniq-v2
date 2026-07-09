@@ -117,7 +117,7 @@ function FeeForm({ initial, onSave, onCancel, saving }: {
         </button>
         <button onClick={() => onSave({ name: name.trim(), default_amount: parseFloat(amount), is_recurring: recurring })}
           disabled={!valid || saving}
-          style={{ flex: 2, height: 36, borderRadius: 9, border: 'none', background: valid ? '#F4A62A' : '#E1E8F0', color: valid ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 13, cursor: valid ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          style={{ flex: 2, height: 36, borderRadius: 9, border: 'none', background: valid ? '#00B4D8' : '#E1E8F0', color: valid ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 13, cursor: valid ? 'pointer' : 'default', fontFamily: 'inherit' }}>
           {saving ? 'Saving…' : initial?.id ? 'Save Changes' : 'Add Fee'}
         </button>
       </div>

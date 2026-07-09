@@ -8,7 +8,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 
 export default function MobilePageHeader() {
-  const { effectiveCompany, user, userProfile, isOwnerUser, companyRole, platformRole, signOut } = useAuth()
+  const { effectiveCompany, user, userProfile, isOwnerUser, companyRole, platformRole, signOut, impersonatedCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
   const whiteLabelEnabled = useFeatureFlag('white_label')
@@ -81,7 +81,12 @@ export default function MobilePageHeader() {
           </div>
           <div>
             <p style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF', margin: 0, lineHeight: 1.2 }}>Condition IQ</p>
-            <p style={{ fontSize: 11, color: '#00B4D8', margin: 0, lineHeight: 1 }}>{effectiveCompany?.name ?? '—'}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <p style={{ fontSize: 11, color: '#00B4D8', margin: 0, lineHeight: 1 }}>{effectiveCompany?.name ?? '—'}</p>
+              {impersonatedCompany && (
+                <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 20, background: '#F4A62A', color: '#0D1B2A', flexShrink: 0 }}>GHOST</span>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -110,6 +115,9 @@ export default function MobilePageHeader() {
               <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0', textTransform: 'capitalize' }}>
                 {effectiveCompany?.name} · {userProfile?.role ?? 'inspector'}
               </p>
+              {impersonatedCompany && (
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#C2820A', margin: '4px 0 0' }}>Ghost Mode active</p>
+              )}
             </div>
 
             {/* Nav items */}

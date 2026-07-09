@@ -14,19 +14,15 @@ export async function getBilledChargeIds(vehicleId: string): Promise<Set<string>
   return new Set((data ?? []).map(r => r.vehicle_charge_id as string))
 }
 
-export async function getAlreadyBilledStorageDays(vehicleId: string, companyId: string): Promise<number> {
-  const { data, error } = await createClient()
-    .from('lot_invoices')
-    .select('days_on_lot, status, lot_invoice_groups!group_id(status)')
-    .eq('vehicle_id', vehicleId)
-    .eq('company_id', companyId)
+// billed_through_date on storage_vehicles is the single source of truth for how
+// far a vehicle's storage has been invoiced. It only advances when a new invoice
+// includes storage, and is never touched by invoice status changes.
+export async function advanceBilledThroughDate(vehicleId: string, throughDate: string): Promise<void> {
+  const { error } = await createClient()
+    .from('storage_vehicles')
+    .update({ billed_through_date: throughDate })
+    .eq('id', vehicleId)
   if (error) throw error
-  return (data ?? []).reduce((sum, r) => {
-    const group = Array.isArray(r.lot_invoice_groups) ? r.lot_invoice_groups[0] : r.lot_invoice_groups as { status: string } | null
-    const effectiveStatus = group?.status ?? r.status
-    if (effectiveStatus === 'void') return sum
-    return sum + (r.days_on_lot ?? 0)
-  }, 0)
 }
 
 export async function linkChargesToInvoice(

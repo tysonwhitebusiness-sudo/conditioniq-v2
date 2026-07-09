@@ -203,12 +203,12 @@ export default function CameraCapture({
             >
               <div style={{
                 width: 56, height: 56, borderRadius: 28,
-                background: '#F4A62A',
+                background: '#00B4D8',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <RotateCcw size={24} color="#0D1B2A" />
+                <RotateCcw size={24} color="#FFFFFF" />
               </div>
-              <span style={{ color: '#F4A62A', fontSize: 12, fontWeight: 600 }}>Retake</span>
+              <span style={{ color: '#00B4D8', fontSize: 12, fontWeight: 600 }}>Retake</span>
             </button>
             <button
               onClick={accept}

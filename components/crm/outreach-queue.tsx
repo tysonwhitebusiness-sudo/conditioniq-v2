@@ -3,68 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getQueueLeads, updateLeadPin, markEmailSent, getTodayGoals, incrementDailyGoal, addCRMNote, logLinkedInRequest } from '@/lib/crm-actions'
 import { sendEmail } from '@/lib/send-email'
-import { Pin, SkipForward, Mail, Check, X, Wand2, RefreshCw, ChevronDown, Link2, Filter, Zap } from 'lucide-react'
+import { Pin, SkipForward, Mail, Check, X, ChevronDown, Link2, Filter, Zap } from 'lucide-react'
 
 const PRIORITY_CFG: Record<string, { label: string; bg: string; color: string }> = {
   P0: { label: 'P0', bg: '#FEE2E2', color: '#DC2626' },
   P1: { label: 'P1', bg: '#FEF3C7', color: '#D97706' },
   P2: { label: 'P2', bg: '#F0F4F8', color: '#4A5568' },
 }
-const CT_LABELS: Record<string, string> = { storage_facility: 'Storage', tow_impound: 'Tow/Impound', fleet: 'Fleet', fmc: 'FMC', other: 'Other' }
-
-const STORAGE_PROMPT = `You write short cold outreach emails for Condition IQ, a vehicle condition reporting SaaS.
-
-THE CORE PROBLEM:
-Storage facilities are sending informal phone photos to document vehicle condition instead of professional reports. This creates liability exposure and leaves money on the table — facilities can charge tenants $25-45 per report as a professional service.
-
-THE SECONDARY BENEFIT:
-Transparent subscription pricing starting at $99/mo. No enterprise contracts, no setup fees.
-
-Write a short personalized cold email using the prospect name, company, and job title provided.
-
-Rules:
-- Under 75 words including subject line
-- Do not start with I
-- No em dashes anywhere in the email
-- No bullet points in body
-- Casual and direct, not salesy
-- Open with something relevant to their role
-- One value prop
-- End with a yes or no question
-- Subject line 5 words or less
-- No signature
-
-Format:
-Subject: [subject line]
-
-[email body]`
-
-const TOW_PROMPT = `You write short cold outreach emails for Condition IQ, a vehicle condition reporting SaaS.
-
-THE CORE PROBLEM:
-Tow and impound operators face damage claim disputes with no documentation to back them up. Pre-tow condition reports with timestamped photos and inspector certification protect against false claims and give operators a defensible paper trail.
-
-THE SECONDARY BENEFIT:
-Transparent subscription pricing starting at $99/mo. Runs on any phone or tablet, averages 11 minutes per inspection.
-
-Write a short personalized cold email using the prospect name, company, and job title provided.
-
-Rules:
-- Under 75 words including subject line
-- Do not start with I
-- No em dashes anywhere in the email
-- No bullet points in body
-- Casual and direct, not salesy
-- Open with something relevant to their role
-- One value prop
-- End with a yes or no question
-- Subject line 5 words or less
-- No signature
-
-Format:
-Subject: [subject line]
-
-[email body]`
 
 const TOUCH_LABELS = ['Initial Outreach', 'Day 5 Follow-up', 'Day 12 Final']
 
@@ -120,60 +65,13 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
   const [touchNum, setTouchNum] = useState(nextTouch)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
-  const [prevBody, setPrevBody] = useState('')
-  const [generating, setGenerating] = useState(false)
   const [mailOpened, setMailOpened] = useState(false)
   const [marking, setMarking] = useState(false)
   const [marked, setMarked] = useState(false)
   const [error, setError] = useState('')
   const [dmText, setDmText] = useState('')
   const [dmOpen, setDmOpen] = useState(false)
-  const [genDm, setGenDm] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-
-  const generate = useCallback(async () => {
-    setGenerating(true); setError('')
-    setPrevBody(body)
-    const system = template === 'storage' ? STORAGE_PROMPT : TOW_PROMPT
-    const userMsg = `Write a ${TOUCH_LABELS[touchNum - 1]} email for:\nName: ${lead.first_name} ${lead.last_name}\nCompany: ${lead.company}\nJob Title: ${lead.job_title ?? 'N/A'}\nCompany Type: ${CT_LABELS[lead.company_type] ?? lead.company_type}`
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 256, system, messages: [{ role: 'user', content: userMsg }] }),
-      })
-      if (!res.ok) throw new Error(`API ${res.status}`)
-      const data = await res.json()
-      const text: string = data.content?.[0]?.text ?? ''
-      const lines = text.split('\n')
-      const subjLine = lines.find((l: string) => l.startsWith('Subject:'))?.replace('Subject:', '').trim() ?? ''
-      const bodyStart = lines.findIndex((l: string) => l.startsWith('Subject:'))
-      setSubject(subjLine)
-      setBody(lines.slice(bodyStart + 2).join('\n').trim())
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Generation failed')
-    } finally { setGenerating(false) }
-  }, [template, touchNum, lead, body])
-
-  const generateDm = useCallback(async () => {
-    setGenDm(true)
-    const system = template === 'storage' ? STORAGE_PROMPT : TOW_PROMPT
-    const userMsg = `Write a short LinkedIn DM (under 50 words) for ${lead.first_name} ${lead.last_name} at ${lead.company}. No subject line needed. Reference their role: ${lead.job_title ?? 'N/A'}.`
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 128, system, messages: [{ role: 'user', content: userMsg }] }),
-      })
-      const data = await res.json()
-      setDmText(data.content?.[0]?.text ?? '')
-    } finally { setGenDm(false) }
-  }, [template, lead])
 
   const handleOpenMail = useCallback(() => {
     sendEmail({ to: lead.email, subject, body })
@@ -197,15 +95,13 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'g' || e.key === 'G') generate()
       if ((e.key === 'm' || e.key === 'M') && subject) handleOpenMail()
       if ((e.key === 's' || e.key === 'S') && mailOpened && subject) handleMarkSent()
-      if (e.key === 'r' || e.key === 'R') generate()
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [generate, handleOpenMail, handleMarkSent, onClose, subject, mailOpened])
+  }, [handleOpenMail, handleMarkSent, onClose, subject, mailOpened])
 
   if (marked) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', gap: 12 }}>
@@ -253,49 +149,31 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
         ))}
       </div>
 
-      {/* Generate */}
-      <button onClick={generate} disabled={generating}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 0', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 14, cursor: generating ? 'default' : 'pointer', fontFamily: 'inherit', marginBottom: 12, opacity: generating ? 0.7 : 1 }}>
-        {generating ? <RefreshCw size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Wand2 size={15} />}
-        {generating ? 'Generating...' : 'Generate Email (G)'}
-      </button>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
       {error && <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 10px' }}>{error}</p>}
 
       {/* Email fields */}
-      {(subject || body) && (
-        <>
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Subject</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)}
-              style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', boxSizing: 'border-box' }} />
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Body</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} rows={7}
-              style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', resize: 'vertical', boxSizing: 'border-box' }} />
-          </div>
-          {prevBody && (
-            <button onClick={() => { setBody(prevBody); setPrevBody('') }}
-              style={{ fontSize: 12, color: '#94A3B8', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 10px', fontFamily: 'inherit' }}>
-              Restore previous version
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button onClick={handleOpenMail}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#0D1B2A', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Mail size={14} /> Open in Mail (M)
-            </button>
-            {mailOpened && (
-              <button onClick={handleMarkSent} disabled={marking}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, border: 'none', background: '#10B981', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: marking ? 'default' : 'pointer', fontFamily: 'inherit', opacity: marking ? 0.7 : 1 }}>
-                <Check size={14} /> Mark Sent (S)
-              </button>
-            )}
-          </div>
-        </>
-      )}
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Subject</label>
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject…"
+          style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', boxSizing: 'border-box' }} />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Body</label>
+        <textarea value={body} onChange={e => setBody(e.target.value)} rows={7} placeholder="Write the email…"
+          style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', resize: 'vertical', boxSizing: 'border-box' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button onClick={handleOpenMail} disabled={!subject && !body}
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#0D1B2A', fontSize: 13, fontWeight: 600, cursor: (subject || body) ? 'pointer' : 'default', fontFamily: 'inherit', opacity: (subject || body) ? 1 : 0.5 }}>
+          <Mail size={14} /> Open in Mail (M)
+        </button>
+        {mailOpened && (
+          <button onClick={handleMarkSent} disabled={marking}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, border: 'none', background: '#10B981', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: marking ? 'default' : 'pointer', fontFamily: 'inherit', opacity: marking ? 0.7 : 1 }}>
+            <Check size={14} /> Mark Sent (S)
+          </button>
+        )}
+      </div>
 
       {/* LinkedIn DM */}
       <div style={{ borderTop: '1px solid #F0F4F8', paddingTop: 12 }}>
@@ -305,27 +183,18 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
         </button>
         {dmOpen && (
           <div style={{ marginTop: 10 }}>
-            <button onClick={generateDm} disabled={genDm}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#0077B5', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 8, opacity: genDm ? 0.7 : 1 }}>
-              {genDm ? <RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Wand2 size={13} />}
-              Generate DM
-            </button>
-            {dmText && (
-              <>
-                <textarea value={dmText} onChange={e => setDmText(e.target.value)} rows={4}
-                  style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', resize: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => navigator.clipboard.writeText(dmText)}
-                    style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Copy
-                  </button>
-                  <button onClick={handleLogLi}
-                    style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', background: '#0077B5', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Log Request
-                  </button>
-                </div>
-              </>
-            )}
+            <textarea value={dmText} onChange={e => setDmText(e.target.value)} rows={4} placeholder="Type a LinkedIn DM…"
+              style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 8, padding: '8px 10px', fontSize: 12, outline: 'none', fontFamily: 'inherit', background: '#F5F8FA', resize: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => navigator.clipboard.writeText(dmText)} disabled={!dmText}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 12, fontWeight: 600, cursor: dmText ? 'pointer' : 'default', fontFamily: 'inherit', opacity: dmText ? 1 : 0.5 }}>
+                Copy
+              </button>
+              <button onClick={handleLogLi} disabled={!dmText}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', background: '#0077B5', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: dmText ? 'pointer' : 'default', fontFamily: 'inherit', opacity: dmText ? 1 : 0.5 }}>
+                Log Request
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -338,10 +207,8 @@ function QuickSendPanel({ lead, onClose, onSent }: { lead: QueueLead; onClose: (
         </button>
         {shortcutsOpen && (
           <div style={{ position: 'absolute', bottom: 28, right: 0, background: '#0D1B2A', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: 'rgba(255,255,255,0.8)', width: 160, lineHeight: 1.8 }}>
-            <div>G — Generate</div>
             <div>M — Open in Mail</div>
             <div>S — Mark Sent</div>
-            <div>R — Regenerate</div>
             <div>ESC — Close</div>
           </div>
         )}
@@ -405,7 +272,7 @@ export default function OutreachQueue() {
         <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#0D1B2A', fontFamily: 'inherit' }}>
           <Filter size={14} /> Filters
         </button>
-        <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+        <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           <Zap size={14} /> Quick Send Mode
         </button>
       </div>
@@ -494,7 +361,7 @@ export default function OutreachQueue() {
                           <SkipForward size={14} color="#94A3B8" />
                         </button>
                         <button onClick={e => { e.stopPropagation(); setOpenLead(lead) }}
-                          style={{ padding: '6px 14px', borderRadius: 20, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          style={{ padding: '6px 14px', borderRadius: 20, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                           Send
                         </button>
                       </div>
@@ -525,7 +392,7 @@ export default function OutreachQueue() {
               setBatchGenerating(false)
             }}
             disabled={batchGenerating}
-            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
             {batchGenerating ? 'Generating...' : `Generate Selected (${selected.size})`}
           </button>
           <button onClick={() => setSelected(new Set())}

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, ExternalLink, CheckCircle, Car, Receipt, Lock, UserPlus } from 'lucide-react'
+import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, CheckCircle, Car, Receipt, Lock, UserPlus } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -66,52 +66,52 @@ const INSP_BADGE: Record<string, { label: string; bg: string; color: string }> =
 }
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null, status: LifecycleStatus): number | null {
-  if (status === 'completed') return null
+  if (status === 'completed' || status === 'pending_arrival') return null
   const end = releasedAt ? new Date(releasedAt) : new Date()
   return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
 }
 
-function daysColor(d: number) { return d < 30 ? '#059669' : d < 60 ? '#D97706' : '#DC2626' }
+const DAYS_ON_LOT_COLOR = '#4A5568'
 
-function scoreInfo(score: number | null) {
-  if (score === null) return null
-  if (score >= 90) return { color: '#065F46', bg: '#D1FAE5', grade: 'A' }
-  if (score >= 80) return { color: '#0369A1', bg: '#DBEAFE', grade: 'B' }
-  if (score >= 70) return { color: '#92400E', bg: '#FEF3C7', grade: 'C' }
-  if (score >= 60) return { color: '#9A3412', bg: '#FED7AA', grade: 'D' }
-  return { color: '#991B1B', bg: '#FEE2E2', grade: 'F' }
+function BilledThroughValue({ date }: { date: string | null | undefined }) {
+  if (!date) {
+    return (
+      <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
+        Unbilled
+      </span>
+    )
+  }
+  return (
+    <span style={{ color: '#0D1B2A', fontWeight: 600, fontSize: 13 }}>
+      {new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+    </span>
+  )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function ScoreBadge({ score, inspectionId }: { score: number | null; inspectionId?: string }) {
-  const si = scoreInfo(score)
-  if (!si) return <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
+function SpotBadge({ label }: { label: string | null | undefined }) {
+  if (!label) return <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
   return (
-    <span
-      onClick={inspectionId ? (e) => { e.stopPropagation(); window.open(`/reports/${inspectionId}`, '_blank') } : undefined}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: si.bg, color: si.color, borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, cursor: inspectionId ? 'pointer' : 'default' }}
-    >
-      {score}/{si.grade}
+    <span style={{ background: '#F0F4F8', color: '#374151', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+      {label}
     </span>
   )
 }
 
 // ── Expanded Row ──────────────────────────────────────────────────────────────
 
-function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }) {
-  const [history, setHistory] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckIn, onAssignSpot, onAddCharge }: {
+  vehicle: any
+  spotLabel: string | null
+  dispatchEnabled: boolean | null | undefined
+  onDispatch: () => void
+  onCheckIn: () => void
+  onAssignSpot: () => void
+  onAddCharge: () => void
+}) {
   const [note, setNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
   const [localNotes, setLocalNotes] = useState(vehicle.notes ?? '')
-
-  useEffect(() => {
-    setLoading(true)
-    const ids = Array.from(new Set([vehicle.checkin_inspection_id, vehicle.checkout_inspection_id, ...(vehicle.inspection_ids ?? [])].filter(Boolean)))
-    if (!ids.length) { setHistory([]); setLoading(false); return }
-    fetchInspectionsByIds(ids).then(data => { setHistory(data); setLoading(false) })
-  }, [vehicle.id])
+  const isPendingArrival = effectiveStatus(vehicle) === 'pending_arrival'
 
   const saveNote = async () => {
     if (!note.trim()) return
@@ -124,38 +124,35 @@ function ExpandedRow({ vehicle, companyId }: { vehicle: any; companyId: string }
     setSavingNote(false)
   }
 
+  const actionBtnStyle = { height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 } as const
+
   return (
     <div style={{ background: '#F8FAFC', borderTop: '1px solid #E1E8F0', padding: '20px 24px' }}>
 
-      {/* Timeline */}
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Inspection Timeline</p>
-      {loading
-        ? <div style={{ padding: '12px 0' }}><Loader2 size={18} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></div>
-        : history.length === 0
-          ? <p style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic', margin: '0 0 20px' }}>No inspections recorded.</p>
-          : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
-              {history.map(h => {
-                return (
-                  <div key={h.id} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ background: '#EFF6FF', color: '#1D4ED8', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>Inspection</span>
-                    <span style={{ fontSize: 12, color: '#4A5568' }}>{new Date(h.created_at).toLocaleDateString()}</span>
-                    {h.status === 'in_progress' && <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>IN PROGRESS</span>}
-                    {h.report_url && (
-                      <button onClick={async () => {
-                        const url = h.report_url.startsWith('http') ? h.report_url : await getReportSignedUrlAction(h.report_url)
-                        if (url) window.open(url, '_blank')
-                      }}
-                        style={{ marginLeft: 'auto', fontSize: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        View <ExternalLink size={11} />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )
-      }
+      {/* Spot / Billed Through */}
+      <div style={{ display: 'flex', gap: 32, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Spot</p>
+          {spotLabel ? <SpotBadge label={spotLabel} /> : <span style={{ fontSize: 13, color: '#94A3B8' }}>Not assigned</span>}
+        </div>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Billed Through</p>
+          <BilledThroughValue date={vehicle.billed_through_date} />
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        <button onClick={onAssignSpot} style={actionBtnStyle}>Assign Spot</button>
+        <button onClick={onAddCharge} style={actionBtnStyle}>Add Charge</button>
+        {isPendingArrival ? (
+          <button onClick={onCheckIn} style={actionBtnStyle}>Check In</button>
+        ) : (
+          <button onClick={onDispatch} disabled={dispatchEnabled === false} style={{ ...actionBtnStyle, opacity: dispatchEnabled === false ? 0.5 : 1 }}>
+            {dispatchEnabled === false && <Lock size={11} color="#374151" />}Send to Inspector
+          </button>
+        )}
+      </div>
 
       {/* Notes */}
       <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Notes</p>
@@ -376,7 +373,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
           )}
           <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => save(false)} disabled={!cleanVin || !!dupeVehicleId || saving}
-            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#F4A62A' : '#E1E8F0', color: cleanVin && !dupeVehicleId ? '#0D1B2A' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#00B4D8' : '#E1E8F0', color: cleanVin && !dupeVehicleId ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {saving ? 'Adding…' : 'Add Vehicle'}
           </button>
           <button onClick={() => save(true)} disabled={!cleanVin || !!dupeVehicleId || saving}
@@ -520,7 +517,7 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
           {step !== 'done' && <button onClick={onClose} style={{ height: 42, padding: '0 18px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>}
           {step === 'preview' && (
             <button onClick={doImport} disabled={importing || toImport.length === 0}
-              style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               {importing ? 'Importing…' : `Import ${toImport.length} Vehicle${toImport.length !== 1 ? 's' : ''}`}
             </button>
           )}
@@ -551,6 +548,7 @@ export default function VehiclesPage() {
 
   // Table state
   const [vehicles, setVehicles] = useState<any[]>([])
+  const [spotLabels, setSpotLabels] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('all')
   const [search, setSearch] = useState('')
@@ -607,6 +605,24 @@ export default function VehiclesPage() {
     if (error) console.error('[vehicles] load error:', error)
     setVehicles(data ?? [])
     setLoading(false)
+
+    const ids = (data ?? []).map(v => v.id)
+    if (ids.length > 0) {
+      const { data: assignments, error: assignError } = await createClient()
+        .from('lot_vehicle_assignments')
+        .select('vehicle_id, spot:lot_spots(label)')
+        .in('vehicle_id', ids)
+        .is('unassigned_at', null)
+      if (assignError) console.error('[vehicles] spot load error:', assignError)
+      const labels: Record<string, string> = {}
+      for (const a of (assignments ?? [])) {
+        const spot = a.spot as unknown as { label: string } | null
+        if (spot?.label) labels[a.vehicle_id] = spot.label
+      }
+      setSpotLabels(labels)
+    } else {
+      setSpotLabels({})
+    }
   }, [companyId])
 
   useEffect(() => { loadVehicles() }, [loadVehicles])
@@ -644,6 +660,23 @@ export default function VehiclesPage() {
   const statsReleasedMonth = allTagged.filter(v => v._status === 'picked_up' && v.released_at >= monthStart).length
   const existingVins = new Set(allTagged.filter(v => v._status !== 'completed').map(v => v.vin?.toUpperCase() ?? ''))
 
+  function getPrimaryAction(v: any): { label: string; onClick: () => void; locked?: boolean } {
+    switch (v._status as LifecycleStatus) {
+      case 'pending_arrival':
+        return { label: 'Start', onClick: () => router.push(`/inventory/${v.id}`) }
+      case 'on_lot':
+        return {
+          label: 'Dispatch',
+          onClick: () => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch'),
+          locked: dispatchEnabled === false,
+        }
+      case 'pending_pickup':
+        return { label: 'Resume', onClick: () => router.push(`/inventory/${v.id}`) }
+      default:
+        return { label: 'Reports', onClick: () => handleOpenReports(v) }
+    }
+  }
+
   const handleOpenReports = async (v: any) => {
     setReportsVehicle(v)
     setReportsLoading(true)
@@ -676,10 +709,10 @@ export default function VehiclesPage() {
     if (inspIds.size > 0) {
       const { data: inspRows } = await createClient()
         .from('vehicle_inspections')
-        .select('id, vehicle_score, completed_at, created_at')
+        .select('id, vehicle_score, created_at')
         .in('id', Array.from(inspIds))
       for (const row of (inspRows ?? [])) {
-        scoreMap.set(row.id, { score: row.vehicle_score ?? null, date: row.completed_at ?? row.created_at ?? null })
+        scoreMap.set(row.id, { score: row.vehicle_score ?? null, date: row.created_at ?? null })
       }
     }
 
@@ -820,7 +853,7 @@ export default function VehiclesPage() {
               {reportingExportEnabled === false ? <Lock size={14} color="#CBD5E1" /> : <Download size={14} />}Export
             </button>
             <button onClick={() => setShowCSV(true)} style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
-            <button onClick={() => setShowAddVehicle(true)} style={{ height: 38, padding: '0 14px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
+            <button onClick={() => setShowAddVehicle(true)} style={{ height: 38, padding: '0 14px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
           </div>
         </div>
       ) : (
@@ -834,7 +867,7 @@ export default function VehiclesPage() {
           {/* Mobile action row */}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowCSV(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
-            <button onClick={() => setShowAddVehicle(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
+            <button onClick={() => setShowAddVehicle(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
           </div>
         </div>
       )}
@@ -849,31 +882,43 @@ export default function VehiclesPage() {
                   <th style={{ padding: '11px 10px 11px 14px', width: 36 }}>
                     <input type="checkbox" checked={sorted.length > 0 && sorted.every(v => selectedVehicleIds.has(v.id))}
                       onChange={e => setSelectedVehicleIds(e.target.checked ? new Set(sorted.map(v => v.id)) : new Set())}
-                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F4A62A' }} />
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#00B4D8' }} />
                   </th>
                 )}
-                {['Vehicle', 'Status', 'Days', 'Picked Up', 'Check-In', 'Check-Out', 'Reports', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                {[
+                  { label: 'Vehicle', align: 'left' },
+                  { label: 'Spot', align: 'left' },
+                  { label: 'Status', align: 'left' },
+                  { label: 'Days on Lot', align: 'right' },
+                  { label: 'Billed Through', align: 'right' },
+                  { label: 'Reports', align: 'right' },
+                  { label: 'Actions', align: 'left' },
+                ].map(h => (
+                  <th key={h.label} style={{ padding: '11px 14px', textAlign: h.align as 'left' | 'right', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
-              {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
+              {loading && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
+              {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
               {!loading && sorted.map(v => {
                 const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
                 const days = daysOnLot(v.arrived_at, v.released_at, v._status)
                 const isExp = expandedId === v.id
                 const reportCount = v.inspection_ids?.length ?? ([v.checkin_inspection_id, v.checkout_inspection_id].filter(Boolean).length)
+                const isTerminal = v._status === 'picked_up' || v._status === 'completed'
+                const tertiaryDate = v._status === 'pending_arrival' ? null : isTerminal ? (v.released_date ?? v.released_at) : v.arrived_at
+                const tertiaryLabel = isTerminal ? 'Picked up' : 'Arrived'
+                const primary = getPrimaryAction(v)
                 return (
                   <Fragment key={v.id}>
                     <tr className="veh-row" onClick={() => { setExpandedId(isExp ? null : v.id); setOpenKebab(null) }}
-                      style={{ borderBottom: isExp ? 'none' : '1px solid #F0F4F8', cursor: 'pointer', background: selectedVehicleIds.has(v.id) ? '#FFFBEB' : isExp ? '#F8FAFC' : undefined }}>
+                      style={{ borderBottom: isExp ? 'none' : '1px solid #F0F4F8', cursor: 'pointer', background: selectedVehicleIds.has(v.id) ? '#E0F7FC' : isExp ? '#F8FAFC' : undefined }}>
                       {/* Checkbox */}
                       {lotMapEnabled && (
                         <td style={{ padding: '13px 10px 13px 14px', width: 36 }} onClick={e => { e.stopPropagation(); toggleVehicleSelect(v.id) }}>
                           <input type="checkbox" checked={selectedVehicleIds.has(v.id)} onChange={() => toggleVehicleSelect(v.id)}
-                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#F4A62A' }} />
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#00B4D8' }} />
                         </td>
                       )}
                       {/* Vehicle */}
@@ -881,7 +926,16 @@ export default function VehiclesPage() {
                         {(v.make || v.model)
                           ? <><p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{[v.year, v.make, v.model].filter(Boolean).join(' ')}</p><p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p></>
                           : <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>}
+                        {tertiaryDate && (
+                          <p style={{ fontSize: 10, color: '#CBD5E1', margin: 0 }}>
+                            {tertiaryLabel} {new Date(tertiaryDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        )}
                         {v.location?.name && <p style={{ fontSize: 10, color: '#CBD5E1', margin: 0 }}>{v.location.name}</p>}
+                      </td>
+                      {/* Spot */}
+                      <td style={{ padding: '13px 14px' }}>
+                        <SpotBadge label={spotLabels[v.id]} />
                       </td>
                       {/* Status */}
                       <td style={{ padding: '13px 14px' }}>
@@ -890,50 +944,28 @@ export default function VehiclesPage() {
                           {sc.label}
                         </span>
                       </td>
-                      {/* Days */}
-                      <td style={{ padding: '13px 14px', fontSize: 13 }}>
-                        {days !== null ? <span style={{ color: daysColor(days), fontWeight: 600 }}>{days}d</span> : <span style={{ color: '#CBD5E1' }}>—</span>}
+                      {/* Days on Lot */}
+                      <td style={{ padding: '13px 14px', fontSize: 13, textAlign: 'right' }}>
+                        {v._status === 'pending_arrival'
+                          ? <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>Pending</span>
+                          : days !== null
+                            ? <span style={{ color: DAYS_ON_LOT_COLOR, fontWeight: 600 }}>{days}d</span>
+                            : <span style={{ color: '#CBD5E1' }}>—</span>}
                       </td>
-                      {/* Released Date */}
-                      <td style={{ padding: '13px 14px', fontSize: 13 }}>
-                        {(v.released_date || v.released_at) ? (
-                          <span style={{ color: '#10B981', fontWeight: 600 }}>
-                            {new Date(v.released_date ?? v.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </span>
-                        ) : <span style={{ color: '#CBD5E1' }}>—</span>}
-                      </td>
-                      {/* Check-In */}
-                      <td style={{ padding: '13px 14px' }}>
-                        <ScoreBadge score={null} inspectionId={v.checkin_inspection_id ?? undefined} />
-                      </td>
-                      {/* Check-Out */}
-                      <td style={{ padding: '13px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <ScoreBadge score={null} inspectionId={v.checkout_inspection_id ?? undefined} />
-                          {v.condition_delta != null && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: v.condition_delta > 0 ? '#059669' : v.condition_delta < 0 ? '#DC2626' : '#94A3B8' }}>
-                              {v.condition_delta > 0 ? '+' : ''}{v.condition_delta}
-                            </span>
-                          )}
-                        </div>
+                      {/* Billed Through */}
+                      <td style={{ padding: '13px 14px', textAlign: 'right' }}>
+                        <BilledThroughValue date={v.billed_through_date} />
                       </td>
                       {/* Reports */}
-                      <td style={{ padding: '13px 14px' }}>
+                      <td style={{ padding: '13px 14px', textAlign: 'right' }}>
                         <span style={{ background: '#F0F4F8', color: '#4A5568', borderRadius: 8, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>{reportCount} report{reportCount !== 1 ? 's' : ''}</span>
                       </td>
                       {/* Actions */}
                       <td style={{ padding: '13px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                          {v._status === 'pending_arrival' && <>
-                            <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>
-                            <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch
-                            </button>
-                          </>}
-                          {v._status === 'on_lot' && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
-                          {v._status === 'pending_pickup' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                          {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 28, padding: '0 12px', borderRadius: 14, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
-                          <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
+                          <button onClick={primary.onClick} disabled={primary.locked} style={{ height: 28, padding: '0 12px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: primary.locked ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {primary.locked && <Lock size={10} color="#FFF" />}{primary.label}
+                          </button>
                           {/* Kebab */}
                           <div style={{ position: 'relative' }}>
                             <button onClick={e => { e.stopPropagation(); setOpenKebab(openKebab === v.id ? null : v.id) }}
@@ -942,7 +974,8 @@ export default function VehiclesPage() {
                             </button>
                             {openKebab === v.id && (
                               <div style={{ position: 'absolute', right: 0, top: 32, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 150, padding: '4px 0' }}>
-                                {v._status !== 'picked_up' && v._status !== 'completed' && (
+                                <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
+                                {v._status !== 'pending_arrival' && v._status !== 'picked_up' && v._status !== 'completed' && (
                                   <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
                                 )}
                                 <button onClick={() => { setConfirmDeleteId(v.id); setOpenKebab(null) }}
@@ -955,8 +988,16 @@ export default function VehiclesPage() {
                     </tr>
                     {isExp && (
                       <tr>
-                        <td colSpan={lotMapEnabled ? 9 : 8} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
-                          <ExpandedRow vehicle={v} companyId={companyId} />
+                        <td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
+                          <ExpandedRow
+                            vehicle={v}
+                            spotLabel={spotLabels[v.id] ?? null}
+                            dispatchEnabled={dispatchEnabled}
+                            onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
+                            onCheckIn={() => router.push(`/inventory/${v.id}`)}
+                            onAssignSpot={() => router.push('/lot')}
+                            onAddCharge={() => router.push(`/inventory/${v.id}`)}
+                          />
                         </td>
                       </tr>
                     )}
@@ -974,6 +1015,7 @@ export default function VehiclesPage() {
               const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
               const days = daysOnLot(v.arrived_at, v.released_at, v._status)
               const isExp = expandedId === v.id
+              const primary = getPrimaryAction(v)
               return (
                 <div key={v.id} style={{ borderBottom: '1px solid #F0F4F8' }}>
                   <div onClick={() => setExpandedId(isExp ? null : v.id)}
@@ -987,17 +1029,28 @@ export default function VehiclesPage() {
                       <span style={{ background: sc.bg, color: sc.color, borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 700 }}>{sc.label}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-                      {days !== null && <span style={{ fontSize: 12, color: daysColor(days), fontWeight: 600 }}>{days}d on lot</span>}
+                      {v._status === 'pending_arrival'
+                        ? <span style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>Pending</span>
+                        : days !== null && <span style={{ fontSize: 12, color: DAYS_ON_LOT_COLOR, fontWeight: 600 }}>{days}d on lot</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                      {v._status === 'pending_arrival' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Start</button>}
-                      {(v._status === 'pending_arrival' || v._status === 'on_lot') && <button onClick={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: dispatchEnabled === false ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>{dispatchEnabled === false && <Lock size={10} color="#FFF" />}Dispatch</button>}
-                      {v._status === 'pending_pickup' && <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Resume</button>}
-                      {(v._status === 'picked_up' || v._status === 'completed') && <button onClick={e => { e.stopPropagation(); handleOpenReports(v) }} style={{ height: 30, padding: '0 12px', borderRadius: 15, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Reports</button>}
+                      <button onClick={primary.onClick} disabled={primary.locked} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: primary.locked ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {primary.locked && <Lock size={10} color="#FFF" />}{primary.label}
+                      </button>
                       <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                     </div>
                   </div>
-                  {isExp && <ExpandedRow vehicle={v} companyId={companyId} />}
+                  {isExp && (
+                    <ExpandedRow
+                      vehicle={v}
+                      spotLabel={spotLabels[v.id] ?? null}
+                      dispatchEnabled={dispatchEnabled}
+                      onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
+                      onCheckIn={() => router.push(`/inventory/${v.id}`)}
+                      onAssignSpot={() => router.push('/lot')}
+                      onAddCharge={() => router.push(`/inventory/${v.id}`)}
+                    />
+                  )}
                 </div>
               )
             })}
@@ -1090,7 +1143,7 @@ export default function VehiclesPage() {
             {selectedVehicleIds.size} vehicle{selectedVehicleIds.size !== 1 ? 's' : ''} selected
           </span>
           <button onClick={() => setShowBulkBilling(true)}
-            style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: '#F4A62A', color: '#0D1B2A', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <Receipt size={14} /> Bulk Bill
           </button>
           <button onClick={clearSelection}

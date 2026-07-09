@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeCompanyAccess } from '@/lib/inspection-auth'
 
 export interface LotInvoice {
   id: string
@@ -18,6 +19,8 @@ export interface LotInvoice {
   billing_type: 'daily' | 'monthly'
   rate: number
   total_amount: number
+  storage_period_start: string | null
+  storage_period_end: string | null
   storage_path: string | null
   notes: string | null
   status: 'draft' | 'sent' | 'paid'
@@ -48,6 +51,9 @@ export async function getNextInvoiceNumber(companyId: string): Promise<string> {
 }
 
 export async function createInvoiceUploadUrl(companyId: string, invoiceNumber: string): Promise<{ path: string; token: string } | null> {
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const path = `${companyId}/${invoiceNumber}.pdf`
   const { data, error } = await supabase.storage
@@ -58,6 +64,10 @@ export async function createInvoiceUploadUrl(companyId: string, invoiceNumber: s
 }
 
 export async function getInvoiceSignedUrl(storagePath: string): Promise<string | null> {
+  const companyId = storagePath.split('/')[0]
+  const ok = await authorizeCompanyAccess(companyId)
+  if (!ok) return null
+
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
     .from('invoices')

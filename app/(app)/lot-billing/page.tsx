@@ -7,7 +7,7 @@ import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import LotBillingPage from '@/components/settings/lot-billing-page'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { Lock } from 'lucide-react'
+import LockedFeatureNotice from '@/components/ui/locked-feature-notice'
 import LoadingOverlay from '@/components/ui/loading-overlay'
 
 export default function LotBillingRoutePage() {
@@ -26,17 +26,7 @@ export default function LotBillingRoutePage() {
     return (
       <>
         <MobilePageHeader />
-        <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 32, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <Lock size={28} color="#94A3B8" />
-          </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px', textAlign: 'center' }}>
-            Lot Billing is not enabled for your account.
-          </h2>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0, textAlign: 'center' }}>
-            Contact us to get access.
-          </p>
-        </div>
+        <LockedFeatureNotice featureName="Lot Billing" description="Generate and track storage invoices, log payments, and manage overdue balances." />
         <BottomNav />
       </>
     )

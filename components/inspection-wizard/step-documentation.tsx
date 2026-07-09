@@ -203,8 +203,8 @@ export default function StepDocumentation({ data, onChange, onNext, onBack }: Pr
             style={{
               flex: 1, height: 52, borderRadius: 12, border: 'none',
               fontWeight: 700, fontSize: 15, cursor: 'pointer',
-              background: '#F4A62A', color: '#0D1B2A',
-              boxShadow: '0 4px 12px rgba(244,166,42,0.3)',
+              background: '#00B4D8', color: '#FFFFFF',
+              boxShadow: '0 4px 12px rgba(0,180,216,0.3)',
             }}
           >
             Continue to Exterior →

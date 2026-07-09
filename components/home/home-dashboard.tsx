@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
-import { createClient } from '@/lib/supabase/client'
-import { checkUsageState } from '@/lib/usage-actions'
-import { useMediaQuery } from '@/hooks/use-media-query'
-import StatusBadge, { ScoreBadge } from '@/components/ui/status-badge'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
-import { Car, ChevronRight, AlertTriangle, X, Loader2 } from 'lucide-react'
+import { StatChip, FeatureCard, DEEP_NAVY, CYAN, type StatChipData } from '@/components/home/dashboard-primitives'
+import { useDashboardData } from '@/components/home/use-dashboard-data'
+import {
+  Car, ChevronRight, AlertTriangle, X, ClipboardList, MapPin, MapPinned,
+  Receipt, Send, Users, RefreshCw, FileText, DollarSign, Pencil, LogOut,
+} from 'lucide-react'
 
 interface Props {
   onStartInspection: () => void
@@ -16,170 +17,65 @@ interface Props {
   onViewReport: (data: any) => void
 }
 
-type VehicleStatus = 'pending_arrival' | 'on_lot' | 'picked_up'
-
-function daysOnLot(arrivedAt: string, releasedAt: string | null) {
-  if (!arrivedAt) return null
-  const end = releasedAt ? new Date(releasedAt) : new Date()
-  return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
+const EVENT_ICON: Record<string, { icon: typeof Car; color: string }> = {
+  intake:                { icon: Car,        color: CYAN },
+  spot_assigned:         { icon: MapPin,     color: CYAN },
+  spot_unassigned:       { icon: MapPin,     color: CYAN },
+  status_changed:        { icon: RefreshCw,  color: CYAN },
+  inspection_completed:  { icon: ClipboardList, color: CYAN },
+  invoice_generated:     { icon: FileText,   color: '#00B4D8' },
+  invoice_sent:          { icon: Send,       color: '#00B4D8' },
+  invoice_paid:          { icon: DollarSign, color: '#00B4D8' },
+  payment_logged:        { icon: DollarSign, color: '#00B4D8' },
+  note_added:            { icon: Pencil,     color: CYAN },
+  released:              { icon: LogOut,     color: CYAN },
 }
 
-function effectiveStatus(v: any): VehicleStatus | null {
-  const s = v.lifecycle_status || v.status
-  if (s === 'queued' || s === 'pending_arrival' || s === 'pending_inspection') return 'pending_arrival'
-  if (s === 'on_lot' || s === 'inspected' || s === 'releasing' || s === 'pending_pickup') return 'on_lot'
-  if (s === 'released' || s === 'picked_up') return 'picked_up'
-  return null
+function relativeTime(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return days === 1 ? 'Yesterday' : `${days}d ago`
 }
 
-interface StatCardProps {
-  value: number
-  label: string
-  selected: boolean
-  accent?: string
-  onClick: () => void
-  loading?: boolean
-}
-
-function StatCard({ value, label, selected, accent, onClick, loading }: StatCardProps) {
-  const bg = selected ? (accent ?? '#00B4D8') : '#FFFFFF'
-  const textColor = selected ? '#FFFFFF' : '#0D1B2A'
-  const subColor = selected ? 'rgba(255,255,255,0.7)' : '#94A3B8'
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: 1, minWidth: 80, padding: 16, borderRadius: 18, cursor: 'pointer',
-        background: bg,
-        border: selected ? 'none' : '1px solid #E1E8F0',
-        boxShadow: selected ? '0 4px 16px rgba(0,0,0,0.15)' : '0 1px 3px rgba(13,27,42,0.06)',
-        textAlign: 'left', fontFamily: 'inherit',
-        transition: 'background 150ms, box-shadow 150ms',
-      } as React.CSSProperties}
-    >
-      {loading ? (
-        <div style={{ height: 36, display: 'flex', alignItems: 'center' }}>
-          <div style={{ width: 28, height: 8, borderRadius: 4, background: selected ? 'rgba(255,255,255,0.3)' : '#E1E8F0' }} />
-        </div>
-      ) : (
-        <p style={{ fontSize: 30, fontWeight: 900, color: textColor, margin: 0, lineHeight: 1 }}>{value}</p>
-      )}
-      <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: subColor, margin: '8px 0 0' }}>
-        {label}
-      </p>
-    </button>
-  )
-}
-
-export default function HomeDashboard({ onStartInspection, onResumeInspection, onViewReport }: Props) {
-  const { effectiveCompany, user, userProfile, isOwnerUser } = useAuth()
-  const isDesktop = useMediaQuery('(min-width: 768px)')
+export default function HomeDashboard({ onStartInspection }: Props) {
+  const { effectiveCompany } = useAuth()
   const router = useRouter()
-
-  const [statsLoading, setStatsLoading] = useState(true)
-  const [queuedCount, setQueuedCount] = useState(0)
-  const [onLotCount, setOnLotCount] = useState(0)
-  const [pickedUpCount, setPickedUpCount] = useState(0)
-  const [selectedStatus, setSelectedStatus] = useState<VehicleStatus>('on_lot')
-
-  const [vehiclesLoading, setVehiclesLoading] = useState(false)
-  const [vehicleList, setVehicleList] = useState<any[]>([])
-
-  const [usageState, setUsageState] = useState<any>(null)
-  const [expiringCount, setExpiringCount] = useState(0)
+  const companyId = effectiveCompany?.id ?? ''
   const [warningDismissed, setWarningDismissed] = useState(false)
 
-  const supabase = createClient()
+  const {
+    lotMapEnabled, lotBillingEnabled, dispatchEnabled,
+    vehiclesOnLot, usageState, lotOccupancy, dailyAccrual, overdueCount,
+    inspectionsToday, customerCount, events, expiringCount,
+  } = useDashboardData(companyId)
 
-  const name = userProfile?.full_name ?? user?.email ?? 'Inspector'
-  const usagePct = usageState ? Math.min(100, usageState.percentUsed) : 0
   const isUnlimited = (usageState?.included ?? 0) >= 9999
-  const barColor = usagePct >= 100 ? '#EF4444' : usagePct >= 80 ? '#F59E0B' : '#00B4D8'
-  const isOwnerFlag = isOwnerUser
-  const planLabel = isOwnerFlag ? 'OWNER' : (usageState?.planName ?? 'STARTER').toUpperCase()
 
-  function getGreeting() {
-    const h = new Date().getHours()
-    if (h < 12) return 'Good morning'
-    if (h < 18) return 'Good afternoon'
-    return 'Good evening'
-  }
+  const statChips: StatChipData[] = [
+    { label: 'Vehicles on lot', value: String(vehiclesOnLot) },
+    ...(usageState ? [{ label: 'Reports used', value: `${usageState.used}/${isUnlimited ? '∞' : usageState.included}` }] : []),
+    ...(lotMapEnabled && lotOccupancy ? [{ label: 'Lot occupancy', value: `${lotOccupancy.occupied}/${lotOccupancy.total}` }] : []),
+    ...(lotMapEnabled ? [{ label: 'Accruing/day', value: `$${dailyAccrual.toFixed(0)}` }] : []),
+    ...(lotBillingEnabled ? [{ label: 'Invoices overdue', value: String(overdueCount), amber: true }] : []),
+  ]
 
-  const loadStats = useCallback(async () => {
-    if (!effectiveCompany?.id) return
-    setStatsLoading(true)
-    try {
-      const cutoff20h = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString()
-      const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-
-      const [vehiclesRes, uRes, exRes] = await Promise.all([
-        supabase
-          .from('storage_vehicles')
-          .select('id, lifecycle_status, status')
-          .eq('company_id', effectiveCompany.id),
-        checkUsageState(effectiveCompany.id),
-        supabase
-          .from('vehicle_inspections')
-          .select('id', { count: 'exact', head: true })
-          .eq('company_id', effectiveCompany.id)
-          .eq('status', 'in_progress')
-          .is('locked_at', null)
-          .gte('last_active_at', cutoff24h)
-          .lte('last_active_at', cutoff20h),
-      ])
-
-      const all = vehiclesRes.data ?? []
-      let q = 0, o = 0, r = 0
-      for (const v of all) {
-        const s = effectiveStatus(v)
-        if (s === 'pending_arrival') q++
-        else if (s === 'on_lot') o++
-        else if (s === 'picked_up') r++
-      }
-      setQueuedCount(q); setOnLotCount(o); setPickedUpCount(r)
-      setUsageState(uRes)
-      setExpiringCount(exRes.error ? 0 : (exRes.count ?? 0))
-    } finally {
-      setStatsLoading(false)
-    }
-  }, [effectiveCompany?.id])
-
-  const loadVehicles = useCallback(async (status: VehicleStatus) => {
-    if (!effectiveCompany?.id) return
-    setVehiclesLoading(true)
-    try {
-      // Get all vehicles and filter client-side for the selected status
-      const { data } = await supabase
-        .from('storage_vehicles')
-        .select('id, vin, year, make, model, lifecycle_status, status, arrived_at, released_at')
-        .eq('company_id', effectiveCompany.id)
-        .order('arrived_at', { ascending: false })
-      const filtered = (data ?? []).filter(v => effectiveStatus(v) === status)
-      setVehicleList(filtered)
-    } finally {
-      setVehiclesLoading(false)
-    }
-  }, [effectiveCompany?.id])
-
-  useEffect(() => { loadStats() }, [loadStats])
-  useEffect(() => { loadVehicles(selectedStatus) }, [selectedStatus, loadVehicles])
-
-  const handleSelectStatus = (s: VehicleStatus) => {
-    setSelectedStatus(s)
-  }
-
-  const STAT_COLORS: Record<VehicleStatus, string> = {
-    pending_arrival: '#4A5568',
-    on_lot: '#00B4D8',
-    picked_up: '#10B981',
-  }
+  const exploreCards = [
+    { key: 'vehicles', icon: Car, label: 'Vehicles', statLine: `${vehiclesOnLot} on lot`, locked: false, route: '/vehicles' },
+    { key: 'inspections', icon: ClipboardList, label: 'Inspections', statLine: `${inspectionsToday} today`, locked: false, route: '/inspections' },
+    { key: 'lot', icon: MapPinned, label: 'Lot', statLine: lotOccupancy ? `${lotOccupancy.occupied}/${lotOccupancy.total} occupied` : '—', locked: lotMapEnabled === false, route: '/lot' },
+    { key: 'lot_billing', icon: Receipt, label: 'Lot Billing', statLine: `${overdueCount} overdue`, locked: lotBillingEnabled === false, route: '/lot-billing' },
+    { key: 'dispatch', icon: Send, label: 'Dispatch', statLine: 'Send inspection links', locked: dispatchEnabled === false, route: '/storage/dispatch' },
+    { key: 'customers', icon: Users, label: 'Customers', statLine: `${customerCount} customers`, locked: false, route: '/customers' },
+  ]
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F0F4F8', paddingBottom: isDesktop ? 0 : 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
+    <div style={{ minHeight: '100vh', background: '#F0F4F8', paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
+      <MobilePageHeader />
 
-      {!isDesktop && <MobilePageHeader />}
-
-      {/* Expiry warning */}
       {expiringCount > 0 && !warningDismissed && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: '#FEF3C7', borderBottom: '1px solid #F59E0B' }}>
           <AlertTriangle size={16} color="#F59E0B" style={{ flexShrink: 0 }} />
@@ -195,138 +91,55 @@ export default function HomeDashboard({ onStartInspection, onResumeInspection, o
         </div>
       )}
 
-      <div style={{ padding: isDesktop ? 24 : '16px 16px 0', maxWidth: isDesktop ? 1200 : undefined, margin: isDesktop ? '0 auto' : undefined }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Desktop greeting */}
-          {isDesktop && (
-            <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>{getGreeting()}, {name.split(' ')[0]}</h2>
-              <p style={{ fontSize: 14, color: '#94A3B8', marginTop: 4, marginBottom: 0 }}>Here's your inspection overview</p>
-            </div>
-          )}
+        {/* Stat strip — horizontally scrollable */}
+        <div style={{ display: 'flex', gap: 10, overflowX: 'auto', margin: '0 -16px', padding: '0 16px', scrollbarWidth: 'none' }}>
+          {statChips.map(s => <StatChip key={s.label} {...s} />)}
+        </div>
 
-          {/* Stat cards */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <StatCard
-              value={queuedCount}
-              label="Pending Arrival"
-              selected={selectedStatus === 'pending_arrival'}
-              accent={STAT_COLORS.pending_arrival}
-              onClick={() => handleSelectStatus('pending_arrival')}
-              loading={statsLoading}
-            />
-            <StatCard
-              value={onLotCount}
-              label="On Lot"
-              selected={selectedStatus === 'on_lot'}
-              accent={STAT_COLORS.on_lot}
-              onClick={() => handleSelectStatus('on_lot')}
-              loading={statsLoading}
-            />
-            <StatCard
-              value={pickedUpCount}
-              label="Picked Up"
-              selected={selectedStatus === 'picked_up'}
-              accent={STAT_COLORS.picked_up}
-              onClick={() => handleSelectStatus('picked_up')}
-              loading={statsLoading}
-            />
+        {/* Start New Inspection */}
+        <button onClick={onStartInspection}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderRadius: 18, border: 'none', cursor: 'pointer', background: CYAN, boxShadow: '0 4px 16px rgba(0,180,216,0.35)', fontFamily: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Car size={22} color="#FFFFFF" />
+            <span style={{ fontWeight: 700, fontSize: 16, color: '#FFFFFF' }}>Start New Inspection</span>
           </div>
+          <ChevronRight size={20} color="rgba(255,255,255,0.6)" />
+        </button>
 
-          {/* Usage bar */}
-          {usageState && (
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94A3B8' }}>
-                  Reports: {usageState.used} / {isUnlimited ? '∞' : usageState.included}
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, ...(isOwnerFlag ? { background: '#0D1B2A', color: '#FFFFFF' } : { background: '#E0F7FC', color: '#0097B2' }) }}>
-                  {planLabel}
-                </span>
-              </div>
-              <div style={{ height: 8, background: '#F0F4F8', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: isUnlimited ? '8%' : `${usagePct}%`, background: barColor, borderRadius: 4, transition: 'width 500ms ease' }} />
-              </div>
-            </div>
-          )}
+        {/* Explore */}
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: '0 0 10px' }}>Explore</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {exploreCards.map(c => (
+              <FeatureCard key={c.key} icon={c.icon} label={c.label} statLine={c.statLine} locked={c.locked} onClick={() => router.push(c.route)} />
+            ))}
+          </div>
+        </div>
 
-          {/* CTA */}
-          {isDesktop ? (
-            <button onClick={onStartInspection}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 24px', borderRadius: 12, border: 'none', cursor: 'pointer', background: '#F4A62A', color: '#0D1B2A', fontWeight: 700, fontSize: 15, boxShadow: '0 4px 16px rgba(244,166,42,0.25)', fontFamily: 'inherit' }}>
-              <Car size={20} />Start New Inspection
-            </button>
-          ) : (
-            <button onClick={onStartInspection}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderRadius: 18, border: 'none', cursor: 'pointer', background: '#00B4D8', boxShadow: '0 4px 16px rgba(0,180,216,0.35)', fontFamily: 'inherit' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Car size={22} color="#FFFFFF" />
-                <span style={{ fontWeight: 700, fontSize: 16, color: '#FFFFFF' }}>Start New Inspection</span>
-              </div>
-              <ChevronRight size={20} color="rgba(255,255,255,0.6)" />
-            </button>
-          )}
-
-          {/* Vehicle list — filtered by selected status */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: 0 }}>
-                {selectedStatus === 'pending_arrival' ? 'Pending Arrival Vehicles' : selectedStatus === 'on_lot' ? 'Vehicles On Lot' : 'Picked Up Vehicles'}
-              </p>
-              {!vehiclesLoading && (
-                <span style={{ fontSize: 11, fontWeight: 700, background: '#F0F4F8', color: '#4A5568', padding: '1px 7px', borderRadius: 8 }}>
-                  {vehicleList.length}
-                </span>
-              )}
-            </div>
-
-            {vehiclesLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[0, 1, 2].map(i => (
-                  <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: 16, display: 'flex', gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ height: 16, width: '55%', background: '#F0F4F8', borderRadius: 6, marginBottom: 8 }} />
-                      <div style={{ height: 12, width: '35%', background: '#F5F8FA', borderRadius: 4 }} />
-                    </div>
-                    <div style={{ height: 20, width: 60, background: '#F0F4F8', borderRadius: 8 }} />
+        {/* Recent Activity */}
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: '0 0 10px' }}>Recent Activity</p>
+          <div style={{ background: DEEP_NAVY, borderRadius: 18, padding: events.length ? '4px 16px' : 20 }}>
+            {events.length === 0 ? (
+              <p style={{ fontSize: 13, color: 'rgba(240,244,248,0.5)', margin: 0, textAlign: 'center' }}>No recent activity yet.</p>
+            ) : events.map((ev, i) => {
+              const cfg = EVENT_ICON[ev.event_type] ?? { icon: ClipboardList, color: CYAN }
+              const Icon = cfg.icon
+              return (
+                <div key={ev.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)' }}>
+                  <Icon size={15} color={cfg.color} style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, color: '#FFF', margin: 0 }}>
+                      {ev.vehicle_label && <span style={{ fontWeight: 700 }}>{ev.vehicle_label}: </span>}
+                      {ev.description}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'rgba(240,244,248,0.45)', margin: '2px 0 0' }}>{relativeTime(ev.created_at)}</p>
                   </div>
-                ))}
-              </div>
-            ) : vehicleList.length === 0 ? (
-              <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: '40px 20px', textAlign: 'center' }}>
-                <Car size={36} color="#E1E8F0" style={{ margin: '0 auto 10px', display: 'block' }} />
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#94A3B8', margin: 0 }}>
-                  No {selectedStatus === 'pending_arrival' ? 'pending arrival' : selectedStatus === 'on_lot' ? 'on-lot' : 'picked up'} vehicles
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {vehicleList.map(v => {
-                  const title = [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unknown Vehicle'
-                  const days = daysOnLot(v.arrived_at, v.released_at)
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => router.push(`/inventory/${v.id}`)}
-                      style={{ width: '100%', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 18, padding: 16, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
-                        <p style={{ fontSize: 12, fontFamily: 'monospace', color: '#94A3B8', margin: 0 }}>{v.vin || '—'}</p>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                        {days !== null && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: days < 30 ? '#059669' : days < 60 ? '#D97706' : '#DC2626' }}>
-                            {days}d
-                          </span>
-                        )}
-                        <ChevronRight size={14} color="#CBD5E1" />
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

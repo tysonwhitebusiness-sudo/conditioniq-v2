@@ -169,7 +169,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
 
     // Silently sync to storage inventory — never blocks completion
     if (effectiveCompany?.id) {
-      const { upsertVehicleToInventory } = await import('@/lib/storage-actions')
+      const { upsertVehicleToInventory } = await import('@/lib/storage-server-actions')
       const inspectionTypeForEvent = allData.vehicleInfo?.inspectionType ?? 'standard'
       upsertVehicleToInventory(
         inspectionId,

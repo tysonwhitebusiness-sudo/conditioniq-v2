@@ -11,10 +11,13 @@ interface PhotoFieldProps {
   value?: string | null
   onChange: (url: string) => void
   required?: boolean
+  inspectionId: string
+  fieldKey: string
 }
 
-export default function PhotoField({ label, value, onChange, required }: PhotoFieldProps) {
+export default function PhotoField({ label, value, onChange, required, inspectionId, fieldKey }: PhotoFieldProps) {
   const [showCamera, setShowCamera] = useState(false)
+  const [uploadFailed, setUploadFailed] = useState(false)
 
   return (
     <div>
@@ -23,8 +26,18 @@ export default function PhotoField({ label, value, onChange, required }: PhotoFi
       </label>
 
       {value ? (
-        <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', outline: uploadFailed ? '2px solid #F59E0B' : 'none' }}>
           <img src={value} alt={label} style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+          {uploadFailed && (
+            <span style={{
+              position: 'absolute', top: 8, left: 8,
+              background: '#F59E0B', color: '#FFFFFF',
+              fontSize: 10, fontWeight: 700,
+              borderRadius: 20, padding: '3px 9px',
+            }}>
+              ⚠ Retry upload
+            </span>
+          )}
           <button
             onClick={() => setShowCamera(true)}
             style={{
@@ -59,10 +72,12 @@ export default function PhotoField({ label, value, onChange, required }: PhotoFi
 
       {showCamera && (
         <InspectionCamera
-          slots={[{ key: 'slot', label }]}
-          values={{ slot: value ?? null }}
-          startKey="slot"
-          onCapture={(_, url) => onChange(url)}
+          slots={[{ key: fieldKey, label }]}
+          values={{ [fieldKey]: value ?? null }}
+          startKey={fieldKey}
+          inspectionId={inspectionId}
+          onCapture={(_, url) => { setUploadFailed(false); onChange(url) }}
+          onUploadError={(_, dataUrl) => { setUploadFailed(true); onChange(dataUrl) }}
           onClose={() => setShowCamera(false)}
         />
       )}

@@ -35,6 +35,7 @@ interface Props {
   onChange: (data: Record<string, any>) => void
   onNext: () => void
   onBack: () => void
+  inspectionId: string
 }
 
 function CondPill({ label, selected, onSelect }: { label: string; selected: boolean; onSelect: () => void }) {
@@ -81,13 +82,23 @@ function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: 
   )
 }
 
-function PhotoSlotCard({ label, value, onTap }: { label: string; value?: string | null; onTap: () => void }) {
+function PhotoSlotCard({ label, value, onTap, failed }: { label: string; value?: string | null; onTap: () => void; failed?: boolean }) {
   return (
     <div>
       <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: '0 0 5px' }}>{label}</p>
       {value ? (
-        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', outline: failed ? '2px solid #F59E0B' : 'none' }}>
           <img src={value} alt={label} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+          {failed && (
+            <span style={{
+              position: 'absolute', top: 6, left: 6,
+              background: '#F59E0B', color: '#FFFFFF',
+              fontSize: 9, fontWeight: 700,
+              borderRadius: 20, padding: '2px 7px',
+            }}>
+              ⚠ Retry
+            </span>
+          )}
           <button
             onClick={onTap}
             style={{
@@ -122,8 +133,9 @@ function PhotoSlotCard({ label, value, onTap }: { label: string; value?: string 
 
 const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 } as const
 
-export default function StepInterior({ data, onChange, onNext, onBack }: Props) {
+export default function StepInterior({ data, onChange, onNext, onBack, inspectionId }: Props) {
   const [cameraStartKey, setCameraStartKey] = useState<string | null>(null)
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set())
 
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
 
@@ -168,6 +180,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
               label={INT_PHOTO_LABELS[i]}
               value={data[key]}
               onTap={() => setCameraStartKey(key)}
+              failed={failedKeys.has(key)}
             />
           ))}
         </div>
@@ -208,7 +221,7 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
 
         {/* Damage entries */}
         <div style={{ marginBottom: 20 }}>
-          <DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="interior" />
+          <DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="interior" inspectionId={inspectionId} />
         </div>
 
         {/* Interior notes */}
@@ -237,7 +250,15 @@ export default function StepInterior({ data, onChange, onNext, onBack }: Props) 
           slots={INT_SLOTS}
           values={data}
           startKey={cameraStartKey}
-          onCapture={(key, url) => onChange({ ...data, [key]: url })}
+          inspectionId={inspectionId}
+          onCapture={(key, url) => {
+            setFailedKeys(prev => { if (!prev.has(key)) return prev; const next = new Set(prev); next.delete(key); return next })
+            onChange({ ...data, [key]: url })
+          }}
+          onUploadError={(key, dataUrl) => {
+            setFailedKeys(prev => new Set(prev).add(key))
+            onChange({ ...data, [key]: dataUrl })
+          }}
           onClose={() => setCameraStartKey(null)}
         />
       )}

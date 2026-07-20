@@ -25,6 +25,7 @@ interface Props {
   onChange: (data: Record<string, any>) => void
   onNext: () => void
   onBack: () => void
+  inspectionId: string
 }
 
 function FluidPill({ label, value, selected, onSelect }: { label: string; value: string; selected: boolean; onSelect: () => void }) {
@@ -80,7 +81,7 @@ function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: 
 const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 } as const
 const section13 = { fontSize: 14, fontWeight: 600, color: '#0D1B2A', display: 'block', marginBottom: 12 } as const
 
-export default function StepEngine({ data, onChange, onNext, onBack }: Props) {
+export default function StepEngine({ data, onChange, onNext, onBack, inspectionId }: Props) {
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
 
   return (
@@ -102,6 +103,8 @@ export default function StepEngine({ data, onChange, onNext, onBack }: Props) {
             label="Engine Bay Photo"
             value={data.engineBayPhoto}
             onChange={url => set('engineBayPhoto', url)}
+            inspectionId={inspectionId}
+            fieldKey="engineBayPhoto"
           />
         </div>
 
@@ -167,7 +170,13 @@ export default function StepEngine({ data, onChange, onNext, onBack }: Props) {
               placeholder="Describe the leak..."
             />
             <div style={{ marginTop: 10 }}>
-              <PhotoField label="Leak Photo" value={data.leakPhoto} onChange={url => set('leakPhoto', url)} />
+              <PhotoField
+                label="Leak Photo"
+                value={data.leakPhoto}
+                onChange={url => set('leakPhoto', url)}
+                inspectionId={inspectionId}
+                fieldKey="leakPhoto"
+              />
             </div>
           </div>
         )}

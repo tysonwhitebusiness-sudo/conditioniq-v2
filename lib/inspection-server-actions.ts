@@ -236,3 +236,39 @@ export async function getReportSignedUrlAction(storagePath: string): Promise<str
   if (error) { console.error('[signedUrl]', error); return null }
   return data?.signedUrl ?? null
 }
+
+// One year, in seconds — long-lived so a photo captured today stays viewable in
+// historical report/history views without needing a separate path-resolution step.
+const PHOTO_SIGNED_URL_TTL = 60 * 60 * 24 * 365
+
+export async function uploadInspectionPhoto(
+  inspectionId: string,
+  dataUrl: string,
+  fieldKey: string,
+): Promise<string> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(fieldKey)) throw new Error('Invalid field key')
+
+  const { ok, companyId } = await authorizeInspectionAccess(inspectionId)
+  if (!ok || !companyId) throw new Error('Not authorized to upload photos for this inspection')
+
+  const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/)
+  if (!match) throw new Error('Invalid image data')
+  const [, mimeType, base64Data] = match
+  const ext = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1]
+  const buffer = Buffer.from(base64Data, 'base64')
+
+  const path = `${companyId}/${inspectionId}/${fieldKey}.${ext}`
+  const supabase = createAdminClient()
+
+  const { error: uploadError } = await supabase.storage
+    .from('inspection-photos')
+    .upload(path, buffer, { contentType: mimeType, upsert: true })
+  if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`)
+
+  const { data: signedData, error: signError } = await supabase.storage
+    .from('inspection-photos')
+    .createSignedUrl(path, PHOTO_SIGNED_URL_TTL)
+  if (signError || !signedData) throw new Error(`Failed to generate photo URL: ${signError?.message ?? 'unknown error'}`)
+
+  return signedData.signedUrl
+}

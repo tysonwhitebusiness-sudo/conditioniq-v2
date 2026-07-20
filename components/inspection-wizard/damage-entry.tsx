@@ -75,6 +75,7 @@ interface Props {
   damages: Damage[]
   onChange: (damages: Damage[]) => void
   locationType?: 'exterior' | 'interior'
+  inspectionId: string
 }
 
 function isComplete(d: Damage) {
@@ -155,10 +156,20 @@ function SeverityBadge({ value }: { value: string }) {
   )
 }
 
-function Thumbnail({ url, onRetake }: { url: string; onRetake: () => void }) {
+function Thumbnail({ url, onRetake, failed }: { url: string; onRetake: () => void; failed?: boolean }) {
   return (
-    <div style={{ position: 'relative', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ position: 'relative', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', flexShrink: 0, outline: failed ? '2px solid #F59E0B' : 'none' }}>
       <img src={url} alt="Damage" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      {failed && (
+        <span style={{
+          position: 'absolute', top: 3, left: 3,
+          background: '#F59E0B', color: '#FFFFFF',
+          fontSize: 8, fontWeight: 700,
+          borderRadius: 20, padding: '1px 5px',
+        }}>
+          ⚠
+        </span>
+      )}
       <button
         type="button"
         onClick={onRetake}
@@ -176,10 +187,15 @@ function Thumbnail({ url, onRetake }: { url: string; onRetake: () => void }) {
   )
 }
 
-export default function DamageEntry({ damages, onChange, locationType = 'exterior' }: Props) {
+export default function DamageEntry({ damages, onChange, locationType = 'exterior', inspectionId }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [addingCamera, setAddingCamera] = useState(false)
   const [retakeId, setRetakeId] = useState<string | null>(null)
+  // Reserved up front so the camera's storage path is known before capture —
+  // each damage item needs its own distinct path, not a shared "photo" key,
+  // since there can be many damage entries per inspection.
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set())
 
   const locations = locationType === 'exterior' ? EXTERIOR_LOCATIONS : INTERIOR_LOCATIONS
 
@@ -187,22 +203,52 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
     onChange(damages.map(d => d.id === id ? { ...d, ...updates } : d))
   }
 
+  const clearFailed = (id: string) => {
+    setFailedIds(prev => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next })
+  }
+
   const removeDamage = (id: string) => {
     onChange(damages.filter(d => d.id !== id))
     if (expanded === id) setExpanded(null)
+    clearFailed(id)
+  }
+
+  const openAddCamera = () => {
+    setPendingId(crypto.randomUUID())
+    setAddingCamera(true)
   }
 
   const handleAddCapture = (_key: string, url: string) => {
-    const id = crypto.randomUUID()
+    const id = pendingId ?? crypto.randomUUID()
     onChange([...damages, {
       id, type: '', severity: '', location: '', estimatedImpact: '', description: '', photo: url,
     }])
     setExpanded(id)
     setAddingCamera(false)
+    setPendingId(null)
+  }
+
+  const handleAddUploadError = (_key: string, dataUrl: string) => {
+    const id = pendingId ?? crypto.randomUUID()
+    onChange([...damages, {
+      id, type: '', severity: '', location: '', estimatedImpact: '', description: '', photo: dataUrl,
+    }])
+    setFailedIds(prev => new Set(prev).add(id))
+    setExpanded(id)
+    setAddingCamera(false)
+    setPendingId(null)
   }
 
   const handleRetakeCapture = (_key: string, url: string) => {
-    if (retakeId) updateDamage(retakeId, { photo: url })
+    if (retakeId) { updateDamage(retakeId, { photo: url }); clearFailed(retakeId) }
+    setRetakeId(null)
+  }
+
+  const handleRetakeUploadError = (_key: string, dataUrl: string) => {
+    if (retakeId) {
+      updateDamage(retakeId, { photo: dataUrl })
+      setFailedIds(prev => new Set(prev).add(retakeId))
+    }
     setRetakeId(null)
   }
 
@@ -215,7 +261,7 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
         </span>
         <button
           type="button"
-          onClick={() => setAddingCamera(true)}
+          onClick={openAddCamera}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 14px', borderRadius: 20,
@@ -321,7 +367,7 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
                 {/* Thumbnail + header */}
                 <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
                   {d.photo ? (
-                    <Thumbnail url={d.photo} onRetake={() => setRetakeId(d.id)} />
+                    <Thumbnail url={d.photo} onRetake={() => setRetakeId(d.id)} failed={failedIds.has(d.id)} />
                   ) : (
                     <div style={{
                       width: 72, height: 72, borderRadius: 10,
@@ -454,12 +500,14 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
       })}
 
       {/* Camera — new damage */}
-      {addingCamera && (
+      {addingCamera && pendingId && (
         <InspectionCamera
-          slots={[{ key: 'photo', label: 'Damage Photo' }]}
-          values={{ photo: null }}
+          slots={[{ key: `damage-${pendingId}`, label: 'Damage Photo' }]}
+          values={{ [`damage-${pendingId}`]: null }}
+          inspectionId={inspectionId}
           onCapture={handleAddCapture}
-          onClose={() => setAddingCamera(false)}
+          onUploadError={handleAddUploadError}
+          onClose={() => { setAddingCamera(false); setPendingId(null) }}
           mode="square"
         />
       )}
@@ -467,9 +515,11 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
       {/* Camera — retake */}
       {retakeId && (
         <InspectionCamera
-          slots={[{ key: 'photo', label: 'Retake Photo' }]}
-          values={{ photo: null }}
+          slots={[{ key: `damage-${retakeId}`, label: 'Retake Photo' }]}
+          values={{ [`damage-${retakeId}`]: null }}
+          inspectionId={inspectionId}
           onCapture={handleRetakeCapture}
+          onUploadError={handleRetakeUploadError}
           onClose={() => setRetakeId(null)}
           mode="square"
         />

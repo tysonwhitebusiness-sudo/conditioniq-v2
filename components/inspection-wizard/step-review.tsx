@@ -11,6 +11,7 @@ import StepOpener from './step-opener'
 type StepId = 'vehicle-info' | 'bol' | 'keys' | 'function' | 'documentation' | 'exterior' | 'interior' | 'engine' | 'review'
 
 interface Props {
+  inspectionId: string
   inspectionData: Record<string, any>
   onComplete: (signature: string) => Promise<void>
   onBack: () => void
@@ -83,7 +84,7 @@ function sectionSummary(id: StepId, data: Record<string, any>): string {
   }
 }
 
-export default function StepReview({ inspectionData, onComplete, onBack, onGoToStep }: Props) {
+export default function StepReview({ inspectionId, inspectionData, onComplete, onBack, onGoToStep }: Props) {
   const { isOwnerUser } = useAuth()
   const [signature, setSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -112,13 +113,21 @@ export default function StepReview({ inspectionData, onComplete, onBack, onGoToS
     setSubmitting(true)
     setError(null)
     try {
-      await onComplete(signature)
+      // Safety net: SignaturePad uploads in the background on every stroke-end,
+      // but a fast tap here could beat that upload to completion. Never submit
+      // a base64 signature — if it's still raw, upload it now before proceeding.
+      let finalSignature = signature
+      if (finalSignature.startsWith('data:')) {
+        const { uploadInspectionPhoto } = await import('@/lib/inspection-server-actions')
+        finalSignature = await uploadInspectionPhoto(inspectionId, finalSignature, 'signature')
+      }
+      await onComplete(finalSignature)
     } catch (e: any) {
       setError(e.message ?? 'Failed to complete inspection')
     } finally {
       setSubmitting(false)
     }
-  }, [signature, hasBlocking, onComplete])
+  }, [signature, hasBlocking, onComplete, inspectionId])
 
   return (
     <div style={{ paddingBottom: 140 }}>
@@ -246,7 +255,7 @@ export default function StepReview({ inspectionData, onComplete, onBack, onGoToS
           <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', marginBottom: 10 }}>
             Inspector Signature <span style={{ color: '#EF4444' }}>*</span>
           </h3>
-          <SignaturePad onSignature={setSignature} />
+          <SignaturePad onSignature={setSignature} inspectionId={inspectionId} />
         </div>
 
         {error && (

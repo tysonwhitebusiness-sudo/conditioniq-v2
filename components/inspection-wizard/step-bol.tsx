@@ -12,6 +12,7 @@ interface Props {
   onChange: (data: Record<string, any>) => void
   onNext: () => void
   onBack: () => void
+  inspectionId: string
 }
 
 const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 } as const
@@ -43,7 +44,7 @@ function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: 
   )
 }
 
-export default function StepBOL({ data, onChange, onNext, onBack }: Props) {
+export default function StepBOL({ data, onChange, onNext, onBack, inspectionId }: Props) {
   const bolPresentSet = data.bolPresent !== undefined
   const canAdvance = bolPresentSet
 
@@ -75,6 +76,8 @@ export default function StepBOL({ data, onChange, onNext, onBack }: Props) {
                 label="BOL Photo"
                 value={data.bolPhoto}
                 onChange={url => onChange({ ...data, bolPhoto: url })}
+                inspectionId={inspectionId}
+                fieldKey="bolPhoto"
               />
             </div>
 

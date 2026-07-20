@@ -6,13 +6,20 @@ import { Trash2 } from 'lucide-react'
 interface SignaturePadProps {
   onSignature: (dataUrl: string) => void
   existingSignature?: string | null
+  inspectionId: string
 }
 
-export default function SignaturePad({ onSignature, existingSignature }: SignaturePadProps) {
+export default function SignaturePad({ onSignature, existingSignature, inspectionId }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [isEmpty, setIsEmpty] = useState(!existingSignature)
+  const [uploading, setUploading] = useState(false)
+  const [uploadFailed, setUploadFailed] = useState(false)
   const lastPos = useRef<{ x: number; y: number } | null>(null)
+  // Guards against an earlier stroke's upload resolving after a later one and
+  // overwriting it — signatures are small, so uploading on every stroke-end is
+  // cheap; this just ensures only the most recent attempt's result ever wins.
+  const uploadGeneration = useRef(0)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -65,15 +72,35 @@ export default function SignaturePad({ onSignature, existingSignature }: Signatu
     setIsDrawing(false)
     lastPos.current = null
     if (!isEmpty && canvasRef.current) {
-      onSignature(canvasRef.current.toDataURL('image/png'))
+      const dataUrl = canvasRef.current.toDataURL('image/png')
+      onSignature(dataUrl) // immediate local update — keeps canSubmit/preview responsive
+
+      const generation = ++uploadGeneration.current
+      setUploading(true)
+      setUploadFailed(false)
+      ;(async () => {
+        try {
+          const { uploadInspectionPhoto } = await import('@/lib/inspection-server-actions')
+          const url = await uploadInspectionPhoto(inspectionId, dataUrl, 'signature')
+          if (uploadGeneration.current === generation) onSignature(url)
+        } catch (err) {
+          console.error('[signature] upload failed', err)
+          if (uploadGeneration.current === generation) setUploadFailed(true)
+        } finally {
+          if (uploadGeneration.current === generation) setUploading(false)
+        }
+      })()
     }
-  }, [isDrawing, isEmpty, onSignature])
+  }, [isDrawing, isEmpty, onSignature, inspectionId])
 
   const clear = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
     setIsEmpty(true)
+    uploadGeneration.current++ // invalidate any in-flight upload for the cleared signature
+    setUploading(false)
+    setUploadFailed(false)
     onSignature('')
   }, [onSignature])
 
@@ -97,13 +124,17 @@ export default function SignaturePad({ onSignature, existingSignature }: Signatu
           </div>
         )}
       </div>
-      <button
-        type="button"
-        onClick={clear}
-        className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-500"
-      >
-        <Trash2 size={14} /> Clear signature
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={clear}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-500"
+        >
+          <Trash2 size={14} /> Clear signature
+        </button>
+        {uploading && <span className="text-xs text-gray-400">Saving…</span>}
+        {uploadFailed && !uploading && <span className="text-xs text-amber-600">⚠ Save failed, will retry</span>}
+      </div>
     </div>
   )
 }

@@ -5,6 +5,16 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   poweredByHeader: false,
+  experimental: {
+    // Default is 1MB. Inspection photos now upload individually (one Server
+    // Action call per photo, right after capture) instead of bundled at final
+    // submit — a single compressed capture is normally well under 1MB, but a
+    // busy/detailed image can occasionally exceed it, so this gives headroom
+    // for that case without reopening the bulk-submit 413 this was built to fix.
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
+  },
   images: {
     remotePatterns: [
       {

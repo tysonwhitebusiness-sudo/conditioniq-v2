@@ -13,6 +13,7 @@ interface Props {
   onChange: (data: Record<string, any>) => void
   onNext: () => void
   onBack: () => void
+  inspectionId: string
 }
 
 function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: boolean) => void }) {
@@ -44,7 +45,7 @@ function YesNo({ value, onChange }: { value: boolean | undefined; onChange: (v: 
 
 const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 } as const
 
-export default function StepDocumentation({ data, onChange, onNext, onBack }: Props) {
+export default function StepDocumentation({ data, onChange, onNext, onBack, inspectionId }: Props) {
   const [scanning, setScanning] = useState(false)
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null)
 
@@ -115,6 +116,8 @@ export default function StepDocumentation({ data, onChange, onNext, onBack }: Pr
             label="License Plate Photo"
             value={data.licensePlatePhoto}
             onChange={handlePlatePhotoCapture}
+            inspectionId={inspectionId}
+            fieldKey="licensePlatePhoto"
           />
         </div>
         {scanning && (
@@ -140,6 +143,8 @@ export default function StepDocumentation({ data, onChange, onNext, onBack }: Pr
               label="Registration Photo"
               value={data.registrationPhoto}
               onChange={url => onChange({ ...data, registrationPhoto: url })}
+              inspectionId={inspectionId}
+              fieldKey="registrationPhoto"
             />
           </div>
         )}
@@ -158,6 +163,8 @@ export default function StepDocumentation({ data, onChange, onNext, onBack }: Pr
               label="Insurance Photo"
               value={data.insurancePhoto}
               onChange={url => onChange({ ...data, insurancePhoto: url })}
+              inspectionId={inspectionId}
+              fieldKey="insurancePhoto"
             />
           </div>
         )}

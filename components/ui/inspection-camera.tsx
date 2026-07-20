@@ -12,7 +12,9 @@ interface InspectionCameraProps {
   slots: CameraSlot[]
   values: Record<string, string | null | undefined>
   startKey?: string
-  onCapture: (key: string, dataUrl: string) => void
+  inspectionId: string
+  onCapture: (key: string, url: string) => void
+  onUploadError?: (key: string, dataUrl: string) => void
   onClose: () => void
   mode?: 'vehicle' | 'square'
 }
@@ -26,7 +28,9 @@ export default function InspectionCamera({
   slots,
   values,
   startKey,
+  inspectionId,
   onCapture,
+  onUploadError,
   onClose,
   mode = 'vehicle',
 }: InspectionCameraProps) {
@@ -37,6 +41,8 @@ export default function InspectionCamera({
 
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadErrorMsg, setUploadErrorMsg] = useState<string | null>(null)
   const [currentKey, setCurrentKey] = useState<string>(() => {
     if (startKey) return startKey
     return slots.find(s => !values[s.key])?.key ?? slots[0]?.key ?? ''
@@ -94,10 +100,38 @@ export default function InspectionCamera({
     [slots, stopCamera, onClose],
   )
 
+  // Uploads immediately so the field only ever carries a short storage URL
+  // through wizard state, not base64 — this is what actually fixes the
+  // 413 body-size error, not just moving it to a later point in the flow.
+  const processCaptured = useCallback(
+    async (key: string, dataUrl: string) => {
+      setUploading(true)
+      setUploadErrorMsg(null)
+      try {
+        const { uploadInspectionPhoto } = await import('@/lib/inspection-server-actions')
+        const url = await uploadInspectionPhoto(inspectionId, dataUrl, key)
+        onCapture(key, url)
+        advanceOrClose(key, { ...values, [key]: url })
+      } catch (err) {
+        console.error('[camera] upload failed', err)
+        // Never lose the photo — hand the parent the local base64 capture so it
+        // can keep it as the field value and flag this slot for retry. Deliberately
+        // NOT calling onCapture here — that callback means "upload succeeded."
+        onUploadError?.(key, dataUrl)
+        setUploadErrorMsg('Upload failed — photo saved locally. You can retry from the photo grid.')
+        await new Promise(resolve => setTimeout(resolve, 1800))
+        advanceOrClose(key, { ...values, [key]: dataUrl })
+      } finally {
+        setUploading(false)
+      }
+    },
+    [inspectionId, values, onCapture, onUploadError, advanceOrClose],
+  )
+
   const capturePhoto = useCallback(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas || !streaming) return
+    if (!video || !canvas || !streaming || uploading) return
 
     const W = video.clientWidth || window.innerWidth
     const H = video.clientHeight || window.innerHeight
@@ -134,29 +168,28 @@ export default function InspectionCamera({
     canvas.getContext('2d')?.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height)
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
 
-    onCapture(currentKey, dataUrl)
-    advanceOrClose(currentKey, { ...values, [currentKey]: dataUrl })
-  }, [streaming, currentKey, values, onCapture, advanceOrClose, mode])
+    processCaptured(currentKey, dataUrl)
+  }, [streaming, uploading, currentKey, mode, processCaptured])
 
   const handleFileUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
-      if (!file) return
+      if (!file || uploading) return
       const reader = new FileReader()
       reader.onload = ev => {
         const dataUrl = ev.target?.result as string
-        onCapture(currentKey, dataUrl)
-        advanceOrClose(currentKey, { ...values, [currentKey]: dataUrl })
+        processCaptured(currentKey, dataUrl)
       }
       reader.readAsDataURL(file)
     },
-    [currentKey, values, onCapture, advanceOrClose],
+    [currentKey, uploading, processCaptured],
   )
 
   const handleClose = useCallback(() => { stopCamera(); onClose() }, [stopCamera, onClose])
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#000' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       {/* Live video */}
       <video
         ref={videoRef}
@@ -165,6 +198,30 @@ export default function InspectionCamera({
         muted
       />
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {/* Upload progress / failure — sits above everything else while a capture is in flight */}
+      {(uploading || uploadErrorMsg) && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 20,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 14, background: 'rgba(0,0,0,0.72)', padding: 32, textAlign: 'center',
+        }}>
+          {uploading ? (
+            <>
+              <div style={{
+                width: 40, height: 40, borderRadius: 20,
+                border: '3px solid rgba(255,255,255,0.25)', borderTopColor: '#00B4D8',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <p style={{ color: '#FFF', fontSize: 14, fontWeight: 600, margin: 0 }}>Uploading photo…</p>
+            </>
+          ) : (
+            <p style={{ color: '#FBBF24', fontSize: 14, fontWeight: 600, margin: 0, maxWidth: 260, lineHeight: 1.5 }}>
+              {uploadErrorMsg}
+            </p>
+          )}
+        </div>
+      )}
 
       {error ? (
         <div style={{
@@ -260,7 +317,7 @@ export default function InspectionCamera({
 
             <button
               onClick={capturePhoto}
-              disabled={!streaming}
+              disabled={!streaming || uploading}
               style={{
                 width: 76, height: 76, borderRadius: 38,
                 background: '#FFF',
@@ -379,7 +436,7 @@ export default function InspectionCamera({
             {/* Shutter */}
             <button
               onClick={capturePhoto}
-              disabled={!streaming}
+              disabled={!streaming || uploading}
               style={{
                 width: 76, height: 76, borderRadius: 38,
                 background: '#FFF',

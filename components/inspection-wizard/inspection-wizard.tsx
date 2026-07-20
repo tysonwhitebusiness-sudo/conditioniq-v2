@@ -269,6 +269,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             data={data.vehicleInfo}
             onChange={d => updateStepData('vehicleInfo', d)}
             onNext={() => goNext('vehicleInfo', data.vehicleInfo)}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'bol' && (
@@ -277,6 +278,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('bol_data', d)}
             onNext={() => goNext('bol_data', data.bol_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'keys' && (
@@ -285,6 +287,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('keys_data', d)}
             onNext={() => goNext('keys_data', data.keys_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'function' && (
@@ -301,6 +304,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('documentation_data', d)}
             onNext={() => goNext('documentation_data', data.documentation_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'exterior' && (
@@ -309,6 +313,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('exterior_data', d)}
             onNext={() => goNext('exterior_data', data.exterior_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'interior' && (
@@ -317,6 +322,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('interior_data', d)}
             onNext={() => goNext('interior_data', data.interior_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'engine' && (
@@ -325,10 +331,12 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onChange={d => updateStepData('engine_data', d)}
             onNext={() => goNext('engine_data', data.engine_data)}
             onBack={goBack}
+            inspectionId={inspectionId}
           />
         )}
         {currentStep === 'review' && (
           <StepReview
+            inspectionId={inspectionId}
             inspectionData={buildAllData()}
             onComplete={handleComplete}
             onBack={goBack}

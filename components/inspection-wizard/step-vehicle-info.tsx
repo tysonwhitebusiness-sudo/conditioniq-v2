@@ -12,6 +12,7 @@ interface Props {
   data: Record<string, any>
   onChange: (data: Record<string, any>) => void
   onNext: () => void
+  inspectionId: string
 }
 
 const VIN_REGEX = /[^A-HJ-NPR-Z0-9]/gi
@@ -31,7 +32,7 @@ const INSP_COLORS: Record<InspectionType, { bg: string; border: string; color: s
   standard:  { bg: '#E0F7FC', border: '#00B4D8', color: '#0097B2' },
 }
 
-export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
+export default function StepVehicleInfo({ data, onChange, onNext, inspectionId }: Props) {
   const { effectiveCompany } = useAuth()
   const [decoding, setDecoding] = useState(false)
   const [decodeError, setDecodeError] = useState<string | null>(null)
@@ -278,6 +279,8 @@ export default function StepVehicleInfo({ data, onChange, onNext }: Props) {
             value={data.baselinePhoto}
             onChange={url => onChange({ ...data, baselinePhoto: url })}
             required
+            inspectionId={inspectionId}
+            fieldKey="baselinePhoto"
           />
         </div>
 

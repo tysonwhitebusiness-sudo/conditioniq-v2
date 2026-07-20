@@ -9,6 +9,7 @@ interface Props {
   onChange: (data: Record<string, any>) => void
   onNext: () => void
   onBack: () => void
+  inspectionId: string
 }
 
 function Counter({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
@@ -51,7 +52,7 @@ function Counter({ label, value, onChange }: { label: string; value: number; onC
   )
 }
 
-export default function StepKeys({ data, onChange, onNext, onBack }: Props) {
+export default function StepKeys({ data, onChange, onNext, onBack, inspectionId }: Props) {
   return (
     <div style={{ paddingBottom: 140 }}>
       <StepOpener
@@ -84,6 +85,8 @@ export default function StepKeys({ data, onChange, onNext, onBack }: Props) {
             label="Keys Photo"
             value={data.keysPhoto}
             onChange={url => onChange({ ...data, keysPhoto: url })}
+            inspectionId={inspectionId}
+            fieldKey="keysPhoto"
           />
         </div>
       </div>

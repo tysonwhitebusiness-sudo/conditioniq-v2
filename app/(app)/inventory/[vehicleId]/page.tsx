@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { releaseVehicle, markVehicleOnLot, markVehiclePendingPickup } from '@/lib/storage-actions'
 import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume, findInProgressInspection, markStaleInProgressAsAbandoned } from '@/lib/inspection-server-actions'
 import { checkUsageState, abandonInspection, type UsageState } from '@/lib/usage-actions'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
@@ -15,10 +14,15 @@ import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
+import VehicleHero from '@/components/inventory/vehicle-hero'
+import AssignSpotModal from '@/components/inventory/assign-spot-modal'
+import SetTemplateModal from '@/components/inventory/set-template-modal'
+import EmptyState from '@/components/ui/empty-state'
+import DamageComparisonView from '@/components/checkpoint/damage-comparison'
 import {
-  ArrowLeft, Play, Send, ExternalLink, Download, Eye, ClipboardList, Plus,
-  Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Lock, Users, Pencil, Trash2,
-  Car, MapPin, RefreshCw, FileText,
+  Download, Eye, ClipboardList, Plus,
+  Camera, Loader2, X, CheckCircle, LogOut, DollarSign, Users, Pencil, Trash2,
+  Car, MapPin, RefreshCw, FileText, Send,
 } from 'lucide-react'
 import { logVehicleEvent, getVehicleEvents, type VehicleEvent, type VehicleEventType } from '@/lib/vehicle-events-actions'
 import { linkVehicleToCustomer, getCustomers, type Customer } from '@/lib/customer-actions'
@@ -27,49 +31,25 @@ import {
   getFeeTypes, getReportCosts, type VehicleCharge, type FeeType, type ReportCosts,
 } from '@/lib/lot-fee-actions'
 import { getBilledChargeIds } from '@/lib/invoice-charge-actions'
+import { logService } from '@/lib/service-log-actions'
 import LoadingOverlay from '@/components/ui/loading-overlay'
 import VehicleInvoiceHistory from '@/components/billing/vehicle-invoice-history'
 import SectionCard from '@/components/ui/section-card'
+import type { WorkOrderStatus } from '@/lib/work-order-status'
+import { PRIMARY, PRIMARY_TINT, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_TEXT, DANGER_LIGHT, DANGER_BORDER, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK, WARN, WARN_LIGHT, WARN_DARK, AMBER_DARK, INFO_LIGHT, INFO_DARK, PURPLE_LIGHT, PURPLE_DARK, SCORE_GOOD_TEXT, SCORE_POOR_TEXT, SCORE_POOR_BG, SCORE_CRITICAL_TEXT, BILLED_TEXT, BILLED_TINT, UNBILLED_TEXT, UNBILLED_TINT, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LifecycleStatus = 'pending_arrival' | 'on_lot' | 'pending_pickup' | 'picked_up' | 'completed'
 type AppStep = 'view' | 'inspecting'
+type DetailTab = 'overview' | 'billing' | 'inspections' | 'activity'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function effectiveStatus(v: any): LifecycleStatus {
-  const ls = v.lifecycle_status as string | null | undefined
-  if (ls && !['in_progress', 'releasing', 'released', 'one_off'].includes(ls)) return ls as LifecycleStatus
-  if (ls === 'releasing') return 'pending_pickup'
-  if (ls === 'released') return 'picked_up'
-  if (ls === 'one_off') return 'completed'
-  switch (v.status) {
-    case 'released':           return 'picked_up'
-    case 'releasing':          return 'pending_pickup'
-    case 'inspected':          return 'on_lot'
-    case 'pending_inspection': return 'pending_arrival'
-    case 'active':             return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
-    default:                   return 'pending_arrival'
-  }
-}
-
-const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8',  color: '#4A5568' },
-  on_lot:          { label: 'ON LOT',          bg: '#E0F7FC',  color: '#0097B2' },
-  pending_pickup:  { label: 'PENDING PICKUP',  bg: '#FEF3C7',  color: '#92400E', pulse: true },
-  picked_up:       { label: 'PICKED UP',       bg: '#D1FAE5',  color: '#065F46' },
-  completed:       { label: 'COMPLETED',       bg: '#F3E8FF',  color: '#7E22CE' },
-}
-
-function daysOnLot(arrivedAt: string, releasedAt: string | null, status: LifecycleStatus): number | null {
-  if (status === 'completed') return null
+function daysOnLot(arrivedAt: string | null, releasedAt: string | null): number | null {
   if (!arrivedAt) return null
   const end = releasedAt ? new Date(releasedAt) : new Date()
   return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
 }
-
-function daysColor(d: number) { return d < 30 ? '#059669' : d < 60 ? '#D97706' : '#DC2626' }
 
 function toDateInputValue(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -84,24 +64,24 @@ function daysBetween(startStr: string, endStr: string): number {
 }
 
 const REPORT_TYPE_TAG_CFG: Record<string, { label: string; bg: string; color: string }> = {
-  checkin:  { label: 'CHECK-IN',  bg: '#E0F7FC', color: '#0097B2' },
-  checkout: { label: 'CHECK-OUT', bg: '#EDE9FE', color: '#7C3AED' },
-  one_off:  { label: 'ONE-OFF',   bg: '#FEF3C7', color: '#92400E' },
+  checkin:  { label: 'CHECK-IN',  bg: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT },
+  checkout: { label: 'CHECK-OUT', bg: PURPLE_LIGHT, color: PURPLE_DARK },
+  one_off:  { label: 'ONE-OFF',   bg: WARN_LIGHT, color: WARN_DARK },
 }
 
 function reportTypeTag(type: string) {
-  const c = REPORT_TYPE_TAG_CFG[type] ?? { label: type.toUpperCase(), bg: '#F0F4F8', color: '#4A5568' }
+  const c = REPORT_TYPE_TAG_CFG[type] ?? { label: type.toUpperCase(), bg: GRAY_100, color: GRAY_700 }
   return <span style={{ fontSize: 9, fontWeight: 700, background: c.bg, color: c.color, borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>{c.label}</span>
 }
 
 function billedTag() {
-  return <span style={{ fontSize: 9, fontWeight: 700, background: '#F0F4F8', color: '#94A3B8', borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>BILLED</span>
+  return <span style={{ fontSize: 9, fontWeight: 700, background: GRAY_100, color: GRAY_500, borderRadius: 5, padding: '2px 6px', marginLeft: 6 }}>BILLED</span>
 }
 
 function reportBillingStatusBadge(status: 'billed' | 'unbilled') {
   const cfg = status === 'billed'
-    ? { bg: 'rgba(46, 158, 109, 0.15)', color: '#2E9E6D', label: 'Billed' }
-    : { bg: 'rgba(244, 166, 42, 0.15)', color: '#B67516', label: 'Unbilled' }
+    ? { bg: BILLED_TINT, color: BILLED_TEXT, label: 'Billed' }
+    : { bg: UNBILLED_TINT, color: UNBILLED_TEXT, label: 'Unbilled' }
   return (
     <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', borderRadius: 20, padding: '3px 8px', background: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>
       {cfg.label}
@@ -112,8 +92,8 @@ function reportBillingStatusBadge(status: 'billed' | 'unbilled') {
 function FieldDivider({ label }: { label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94A3B8', whiteSpace: 'nowrap' }}>{label}</span>
-      <div style={{ flex: 1, height: 1, background: '#E1E8F0' }} />
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: GRAY_500, whiteSpace: 'nowrap' }}>{label}</span>
+      <div style={{ flex: 1, height: 1, background: GRAY_300 }} />
     </div>
   )
 }
@@ -126,11 +106,11 @@ const REPORT_COST_LABELS: Record<'checkin' | 'checkout' | 'one_off', string> = {
 
 function scoreStyle(score: number | null) {
   if (score == null) return null
-  if (score >= 90) return { color: '#065F46', bg: '#D1FAE5' }
-  if (score >= 80) return { color: '#0369A1', bg: '#DBEAFE' }
-  if (score >= 70) return { color: '#92400E', bg: '#FEF3C7' }
-  if (score >= 60) return { color: '#9A3412', bg: '#FED7AA' }
-  return { color: '#991B1B', bg: '#FEE2E2' }
+  if (score >= 90) return { color: SUCCESS_DARK, bg: SUCCESS_LIGHT }
+  if (score >= 80) return { color: SCORE_GOOD_TEXT, bg: INFO_LIGHT }
+  if (score >= 70) return { color: WARN_DARK, bg: WARN_LIGHT }
+  if (score >= 60) return { color: SCORE_POOR_TEXT, bg: SCORE_POOR_BG }
+  return { color: SCORE_CRITICAL_TEXT, bg: DANGER_LIGHT }
 }
 
 function parseNotes(raw: string | null): { date: string; text: string }[] {
@@ -142,17 +122,17 @@ function parseNotes(raw: string | null): { date: string; text: string }[] {
 }
 
 const EVENT_ICON: Record<VehicleEventType, { icon: typeof Car; color: string }> = {
-  intake:                { icon: Car,          color: '#00B4D8' },
-  spot_assigned:         { icon: MapPin,       color: '#00B4D8' },
-  spot_unassigned:       { icon: MapPin,       color: '#00B4D8' },
-  status_changed:        { icon: RefreshCw,    color: '#00B4D8' },
-  inspection_completed:  { icon: ClipboardList, color: '#00B4D8' },
-  invoice_generated:     { icon: FileText,     color: '#00B4D8' },
-  invoice_sent:          { icon: Send,         color: '#00B4D8' },
-  invoice_paid:          { icon: DollarSign,   color: '#00B4D8' },
-  payment_logged:        { icon: DollarSign,   color: '#00B4D8' },
-  note_added:            { icon: Pencil,       color: '#00B4D8' },
-  released:              { icon: LogOut,       color: '#00B4D8' },
+  intake:                { icon: Car,          color: PRIMARY },
+  spot_assigned:         { icon: MapPin,       color: PRIMARY },
+  spot_unassigned:       { icon: MapPin,       color: PRIMARY },
+  status_changed:        { icon: RefreshCw,    color: PRIMARY },
+  inspection_completed:  { icon: ClipboardList, color: PRIMARY },
+  invoice_generated:     { icon: FileText,     color: PRIMARY },
+  invoice_sent:          { icon: Send,         color: PRIMARY },
+  invoice_paid:          { icon: DollarSign,   color: PRIMARY },
+  payment_logged:        { icon: DollarSign,   color: PRIMARY },
+  note_added:            { icon: Pencil,       color: PRIMARY },
+  released:              { icon: LogOut,       color: PRIMARY },
 }
 
 function relativeTime(iso: string): string {
@@ -230,7 +210,7 @@ function Lightbox({ url, label, onClose }: { url: string; label: string; onClose
       style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <button onClick={onClose}
         style={{ position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <X size={20} color="#FFF" />
+        <X size={20} color={WHITE} />
       </button>
       <img src={url} alt={label} onClick={e => e.stopPropagation()}
         style={{ maxWidth: '100%', maxHeight: '88vh', objectFit: 'contain', borderRadius: 10 }} />
@@ -284,11 +264,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [loadingCharges, setLoadingCharges] = useState(false)
   const [feeTypes, setFeeTypes] = useState<FeeType[]>([])
   const [showAddCharge, setShowAddCharge] = useState(false)
-  const [addChargeTab, setAddChargeTab] = useState<'fee' | 'report'>('fee')
+  const [addChargeTab, setAddChargeTab] = useState<'fee' | 'report' | 'service'>('fee')
   const [applyFeeTypeId, setApplyFeeTypeId] = useState('')
   const [applyFeeLabel, setApplyFeeLabel] = useState('')
   const [applyFeeAmount, setApplyFeeAmount] = useState('')
   const [applyingFee, setApplyingFee] = useState(false)
+  const [serviceFeeTypeId, setServiceFeeTypeId] = useState('')
+  const [serviceLabel, setServiceLabel] = useState('')
+  const [serviceAmount, setServiceAmount] = useState('')
+  const [servicePerformedAt, setServicePerformedAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [serviceNotes, setServiceNotes] = useState('')
+  const [loggingService, setLoggingService] = useState(false)
   const [editingChargeId, setEditingChargeId] = useState<string | null>(null)
   const [editChargeLabel, setEditChargeLabel] = useState('')
   const [editChargeAmount, setEditChargeAmount] = useState('')
@@ -321,10 +307,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [newTimelineNote, setNewTimelineNote] = useState('')
   const [savingTimelineNote, setSavingTimelineNote] = useState(false)
 
-  // Status action state
-  const [confirmRelease, setConfirmRelease] = useState(false)
-  const [actionSaving, setActionSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview')
+  const [spotLabel, setSpotLabel] = useState<string | null>(null)
+  const [showAssignSpot, setShowAssignSpot] = useState(false)
+  const [pendingCheckpointDir, setPendingCheckpointDir] = useState<'intake' | 'outtake' | null>(null)
 
   // Wizard
   const [appStep, setAppStep] = useState<AppStep>('view')
@@ -361,7 +348,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     setLoadingVehicle(true)
     const { data } = await createClient()
       .from('storage_vehicles')
-      .select('*, location:location_id(id, name, city, state), customer:customer_id(id, name, phone, email)')
+      .select('*, location:location_id(id, name, city, state), customer:customer_id(id, name, phone, email), vehicle_master:vehicle_master_id(id, vehicle_template)')
       .eq('id', params.vehicleId)
       .eq('company_id', companyId)
       .single()
@@ -566,44 +553,38 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     }
   }
 
-  const handleMarkOnLot = async () => {
-    if (!vehicle) return
-    setActionSaving(true)
-    try {
-      await markVehicleOnLot(vehicle.id)
-      await fetchVehicle()
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Failed to update status')
-    } finally {
-      setActionSaving(false)
+  // ── Load the vehicle's active spot label (hero's "Spot" stat) ──────────────
+  const loadSpotLabel = useCallback(async () => {
+    if (!vehicle?.id) { setSpotLabel(null); return }
+    const { data } = await createClient()
+      .from('lot_vehicle_assignments')
+      .select('spot:lot_spots(label)')
+      .eq('vehicle_id', vehicle.id)
+      .is('unassigned_at', null)
+      .maybeSingle()
+    const spot = data?.spot as unknown as { label: string } | null
+    setSpotLabel(spot?.label ?? null)
+  }, [vehicle?.id])
+  useEffect(() => { loadSpotLabel() }, [loadSpotLabel])
+
+  // checkpoint/[direction] dead-ends if vehicle_master.vehicle_template isn't
+  // set (common — nothing else in the app requires it). Start Intake / Run
+  // Outtake are now primary hero actions, so prompt for it inline here
+  // instead of routing straight into that dead-end.
+  const goToCheckpoint = (direction: 'intake' | 'outtake') => {
+    if (vehicle?.vehicle_master?.vehicle_template) {
+      router.push(`/inventory/${params.vehicleId}/checkpoint/${direction}`)
+    } else {
+      setPendingCheckpointDir(direction)
     }
   }
 
-  const handleMarkPendingPickup = async () => {
-    if (!vehicle) return
-    setActionSaving(true)
-    try {
-      await markVehiclePendingPickup(vehicle.id)
-      await fetchVehicle()
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Failed to update status')
-    } finally {
-      setActionSaving(false)
-    }
-  }
-
-  const handleRelease = async () => {
-    if (!vehicle) return
-    setActionSaving(true)
-    try {
-      await releaseVehicle(vehicle.id)
-      setConfirmRelease(false)
-      await fetchVehicle()
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Failed to update status')
-    } finally {
-      setActionSaving(false)
-    }
+  const handleSetTemplate = async (template: string) => {
+    if (!vehicle?.vehicle_master?.id) { setPendingCheckpointDir(null); return }
+    await createClient().from('vehicle_master').update({ vehicle_template: template }).eq('id', vehicle.vehicle_master.id)
+    const direction = pendingCheckpointDir
+    setPendingCheckpointDir(null)
+    if (direction) router.push(`/inventory/${params.vehicleId}/checkpoint/${direction}`)
   }
 
   const handleWizardComplete = useCallback(async (data: any) => {
@@ -747,23 +728,24 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   if (!vehicle) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <p style={{ color: '#94A3B8', fontSize: 15 }}>Vehicle not found.</p>
+        <p style={{ color: GRAY_500, fontSize: 15 }}>Vehicle not found.</p>
         <button onClick={() => router.push('/vehicles')}
-          style={{ marginTop: 12, height: 42, padding: '0 20px', borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ marginTop: 12, height: 42, padding: '0 20px', borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
           Back to Vehicles
         </button>
       </div>
     )
   }
 
-  const status = effectiveStatus(vehicle)
-  const sc = STATUS_CFG[status]
-  const days = daysOnLot(vehicle.arrived_at, vehicle.released_at, status)
+  const workOrderStatus = vehicle.work_order_status as WorkOrderStatus
+  const days = daysOnLot(vehicle.arrived_at, vehicle.released_at)
   const vehicleTitle = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'Unknown Vehicle'
   const parsedNotes = parseNotes(rawNotes)
 
-  const canStart = ['pending_arrival', 'on_lot', 'pending_pickup'].includes(status)
-  const canDispatch = ['pending_arrival', 'on_lot'].includes(status)
+  // Dispatch makes sense any time before the work order is winding down —
+  // matches the old bucket's pending_arrival/on_lot allowance, expressed
+  // over the real 10-value status now.
+  const canDispatch = !['pending_release', 'ready_for_release', 'released'].includes(workOrderStatus)
 
   // Report type availability, scoped to this vehicle's actual inspections
   const reportTypeCounts: Record<'checkin' | 'checkout' | 'one_off', number> = {
@@ -786,126 +768,108 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
       `}</style>
 
-      {/* ── Back + heading ──────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
-        <button
-          onClick={() => router.push('/vehicles')}
-          style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, marginTop: 2 }}>
-          <ArrowLeft size={16} color="#0D1B2A" />
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: isDesktop ? 24 : 20, fontWeight: 900, color: '#0D1B2A', margin: '0 0 2px', lineHeight: 1.2 }}>
-            {vehicleTitle}
-          </h1>
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, fontFamily: 'monospace', letterSpacing: '0.04em' }}>
-            {vehicle.vin || '—'}
-          </p>
-        </div>
+      <VehicleHero
+        vehicleId={vehicle.id}
+        userId={user?.id ?? ''}
+        vin={vehicle.vin}
+        vehicleTitle={vehicleTitle}
+        workOrderStatus={workOrderStatus}
+        spotLabel={spotLabel}
+        days={days}
+        isDesktop={isDesktop}
+        canDispatch={canDispatch}
+        dispatchEnabled={dispatchEnabled}
+        onBack={() => router.push('/vehicles')}
+        onStartIntake={() => goToCheckpoint('intake')}
+        onRunOuttake={() => goToCheckpoint('outtake')}
+        onPrintQR={() => router.push(`/inventory/${params.vehicleId}/print-qr`)}
+        onAssignSpot={() => setShowAssignSpot(true)}
+        onLogService={() => { setAddChargeTab('service'); setShowAddCharge(true) }}
+        onDispatch={() => router.push(dispatchEnabled ? `/storage/dispatch?vin=${vehicle.vin}` : '/storage/dispatch')}
+        onStatusChanged={fetchVehicle}
+      />
+
+      {/* ── Tabs ─────────────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${GRAY_300}`, marginBottom: 20, overflowX: 'auto' }}>
+        {([
+          { id: 'overview' as const, label: 'Overview' },
+          ...(lotMapEnabled ? [{ id: 'billing' as const, label: 'Billing' }] : []),
+          { id: 'inspections' as const, label: 'Inspections' },
+          { id: 'activity' as const, label: 'Activity' },
+        ]).map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: '10px 16px', background: 'none', border: 'none', whiteSpace: 'nowrap',
+              borderBottom: activeTab === t.id ? `2px solid ${PRIMARY}` : '2px solid transparent',
+              color: activeTab === t.id ? GRAY_900 : GRAY_500,
+              fontWeight: activeTab === t.id ? 700 : 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── Stats header ────────────────────────────────────────────────────── */}
-      <div style={{
-        background: '#0D1B2A', borderRadius: 16, padding: isDesktop ? '20px 24px' : '16px',
-        marginBottom: 16,
-        display: 'grid',
-        gridTemplateColumns: isDesktop ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)',
-        gap: 20,
-      }}>
-        {/* Status */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Status</p>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: sc.bg, color: sc.color, borderRadius: 20, padding: '5px 12px', fontSize: 11, fontWeight: 700 }}>
-            {sc.pulse && <span style={{ width: 6, height: 6, borderRadius: 3, background: '#F59E0B', animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }} />}
-            {sc.label}
-          </span>
-        </div>
-
-        {/* Days on lot */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Days on Lot</p>
-          {days !== null
-            ? <span style={{ fontSize: 22, fontWeight: 800, color: daysColor(days) }}>{days}<span style={{ fontSize: 13, marginLeft: 2, color: 'rgba(255,255,255,0.4)' }}>d</span></span>
-            : <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.25)' }}>—</span>}
-        </div>
-
-        {/* Intake date */}
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Intake Date</p>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF', margin: 0 }}>
-            {vehicle.arrived_at
-              ? new Date(vehicle.arrived_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-              : '—'}
-          </p>
-        </div>
-
-        {/* Location (FMC) | Released date | Report count */}
-        {isFMC && vehicle.location ? (
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Location</p>
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#00B4D8', margin: '0 0 2px' }}>{vehicle.location.name}</p>
-            {vehicle.location.city && (
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: 0 }}>
-                {vehicle.location.city}{vehicle.location.state ? `, ${vehicle.location.state}` : ''}
-              </p>
-            )}
-          </div>
-        ) : (
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Picked Up</p>
-            {(vehicle.released_date || vehicle.released_at) ? (
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#10B981', margin: 0 }}>
-                {new Date(vehicle.released_date ?? vehicle.released_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-              </p>
+      {/* ── Overview tab: recent activity summary + comparison entry point ─── */}
+      {activeTab === 'overview' && (
+        <div style={{ marginBottom: 16 }}>
+          <SectionCard title="Recent Activity">
+            {loadingEvents ? (
+              <p style={{ fontSize: 13, color: GRAY_500, margin: 0, textAlign: 'center', padding: '8px 0' }}>Loading…</p>
+            ) : events.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="No activity yet" />
             ) : (
-              <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.25)' }}>—</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {events.slice(0, 4).map(ev => {
+                  const cfg = EVENT_ICON[ev.event_type as VehicleEventType] ?? { icon: ClipboardList, color: PRIMARY }
+                  const Icon = cfg.icon
+                  return (
+                    <div key={ev.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <Icon size={14} color={cfg.color} style={{ marginTop: 2, flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: 13, color: GRAY_900, margin: 0 }}>{ev.description}</p>
+                        <p style={{ fontSize: 11, color: GRAY_500, margin: '2px 0 0' }}>{ev.created_by_name ?? 'System'} · {relativeTime(ev.created_at)}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+                {events.length > 4 && (
+                  <button onClick={() => setActiveTab('activity')}
+                    style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: PRIMARY, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                    View all activity →
+                  </button>
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </div>
+          </SectionCard>
 
-      {/* ── Action buttons ──────────────────────────────────────────────────── */}
-      {(canStart || canDispatch || status === 'pending_arrival' || status === 'on_lot' || status === 'pending_pickup') && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          {canStart && (
-            inProgressInsp ? (
-              <button onClick={handleResumeClick}
-                style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Play size={15} />Resume Inspection
+          <div style={{ marginTop: 16 }}>
+            <SectionCard title="Intake vs. Outtake">
+              <DamageComparisonView vehicleId={vehicle.id} />
+            </SectionCard>
+          </div>
+
+          {(inProgressInsp || vehicle.checkin_inspection_id || vehicle.checkout_inspection_id) && (
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={inProgressInsp ? handleResumeClick : handleStart}
+                style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {inProgressInsp ? 'Resume Full Inspection' : 'Start Full Inspection'}
               </button>
-            ) : (
-              <button onClick={handleStart}
-                style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Play size={15} />Start Inspection
-              </button>
-            )
-          )}
-          {canDispatch && (
-            <button onClick={() => router.push(dispatchEnabled ? `/storage/dispatch?vin=${vehicle.vin}` : '/storage/dispatch')}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: dispatchEnabled === false ? 0.6 : 1 }}>
-              {dispatchEnabled === false ? <Lock size={15} /> : <Send size={15} />}Dispatch
-            </button>
-          )}
-          {status === 'pending_arrival' && (
-            <button onClick={handleMarkOnLot} disabled={actionSaving}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
-              <CheckCircle size={15} />Mark as On Lot
-            </button>
-          )}
-          {status === 'on_lot' && (
-            <button onClick={handleMarkPendingPickup} disabled={actionSaving}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#F59E0B', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
-              <LogOut size={15} />Mark Pending Pickup
-            </button>
-          )}
-          {status === 'pending_pickup' && (
-            <button onClick={() => setConfirmRelease(true)} disabled={actionSaving}
-              style={{ height: 44, padding: '0 20px', borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, opacity: actionSaving ? 0.6 : 1 }}>
-              <CheckCircle size={15} />Mark Picked Up
-            </button>
+            </div>
           )}
         </div>
       )}
 
+      {/* ── Inspections tab: history + photos ───────────────────────────────── */}
+      {activeTab === 'inspections' && (
+      <>
+      {!inProgressInsp && !vehicle.checkin_inspection_id && (
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={handleStart}
+            style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Start Full Inspection
+          </button>
+        </div>
+      )}
       {/* ── Inspection History ──────────────────────────────────────────────── */}
       <SectionCard title="Inspection History" count={inspections.length}>
         {loadingInspections ? (
@@ -913,10 +877,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             <LoadingOverlay show />
           </div>
         ) : inspections.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', margin: '0 auto 10px' }}><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect x="9" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1"/></svg>
-            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No inspections recorded yet.</p>
-          </div>
+          <EmptyState icon={ClipboardList} title="No inspections recorded yet" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {/* Completed inspections */}
@@ -928,8 +889,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               const inspector = (insp.inspector as any)?.full_name ?? null
               const usage: string = insp.usage_status ?? ''
               const typeLabel = usage === 'checkin' ? 'Check-In' : usage === 'checkout' ? 'Check-Out' : 'Standard'
-              const typeColor = usage === 'checkin' ? '#0369A1' : usage === 'checkout' ? '#065F46' : '#4A5568'
-              const typeBg   = usage === 'checkin' ? '#DBEAFE' : usage === 'checkout' ? '#D1FAE5' : '#F0F4F8'
+              const typeColor = usage === 'checkin' ? SCORE_GOOD_TEXT : usage === 'checkout' ? SUCCESS_DARK : GRAY_700
+              const typeBg   = usage === 'checkin' ? INFO_LIGHT : usage === 'checkout' ? SUCCESS_LIGHT : GRAY_100
               const reportUrl: string | null = (insp as any).report_url ?? null
               const inspNum = inspections.length - idx
 
@@ -944,17 +905,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
               return (
                 <div key={insp.id}
-                  style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <ClipboardList size={15} color="#0D1B2A" />
+                  style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: GRAY_100, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <ClipboardList size={15} color={GRAY_900} />
                   </div>
                   <span style={{ background: typeBg, color: typeColor, borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {typeLabel}
                   </span>
                   {billingStatus && reportBillingStatusBadge(billingStatus)}
                   <div style={{ flex: 1, minWidth: 120 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>Report #{inspNum} · {dateStr}{timeStr ? ` at ${timeStr}` : ''}</p>
-                    {inspector && <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{inspector}</p>}
+                    <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>Report #{inspNum} · {dateStr}{timeStr ? ` at ${timeStr}` : ''}</p>
+                    {inspector && <p style={{ fontSize: 11, color: GRAY_500, margin: 0 }}>{inspector}</p>}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     {reportUrl && (
@@ -965,7 +926,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                             if (url) window.open(url, '_blank')
                           } catch (e: any) { setErrorMsg('View failed: ' + e.message) }
                         }}
-                        style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#0D1B2A', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        style={{ height: 32, padding: '0 12px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_900, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Eye size={12} />View
                       </button>
                     )}
@@ -985,7 +946,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                           await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
                         } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
                       }}
-                      style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Download size={12} />Download PDF
                     </button>
                   </div>
@@ -1005,7 +966,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             <button
               onClick={loadPhotos}
               disabled={loadingPhotos}
-              style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: loadingPhotos ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+              style={{ height: 30, padding: '0 12px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, color: PRIMARY, fontSize: 12, fontWeight: 600, cursor: loadingPhotos ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
               {loadingPhotos
                 ? <><Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} />Loading…</>
                 : <><Camera size={13} />Load Photos</>}
@@ -1015,15 +976,15 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       >
         {!photosLoaded ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-              <Camera size={18} color="#94A3B8" />
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: GRAY_100, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+              <Camera size={18} color={GRAY_500} />
             </div>
-            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>
+            <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>
               Click <strong>Load Photos</strong> to display all photos captured during inspections.
             </p>
           </div>
         ) : photos.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: 0, textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
             No photos found in completed inspections.
           </p>
         ) : (
@@ -1038,8 +999,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                     <button key={f} onClick={() => setPhotoFilter(f)}
                       style={{
                         fontSize: 11, fontWeight: 700, padding: '4px 11px', borderRadius: 20, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                        background: photoFilter === f ? 'rgba(0,180,216,0.15)' : '#F0F4F8',
-                        color: photoFilter === f ? '#0088A8' : '#4A5568',
+                        background: photoFilter === f ? PRIMARY_TINT : GRAY_100,
+                        color: photoFilter === f ? PRIMARY_PILL_TEXT : GRAY_700,
                       }}>
                       {f} ({counts[f] ?? 0})
                     </button>
@@ -1055,10 +1016,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
               {photos.filter(p => photoFilter === 'All' || p.section === photoFilter).map((p, i) => (
                 <div key={i}
                   onClick={() => setLightbox(p)}
-                  style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: '1px solid #E1E8F0', background: '#F0F4F8' }}>
+                  style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${GRAY_300}`, background: GRAY_100 }}>
                   <img src={p.url} alt={p.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(13,27,42,0.72))', padding: '16px 8px 7px' }}>
-                    <p style={{ fontSize: 10, fontWeight: 600, color: '#FFFFFF', margin: 0, lineHeight: 1.3 }}>{p.label}</p>
+                    <p style={{ fontSize: 10, fontWeight: 600, color: WHITE, margin: 0, lineHeight: 1.3 }}>{p.label}</p>
                     {p.date && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.55)', margin: 0 }}>{p.date}</p>}
                   </div>
                 </div>
@@ -1067,9 +1028,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </>
         )}
       </SectionCard>
+      </>
+      )}
 
       {/* ── Billing (lot_map flag gated) — hero stats, settings, bill to, charges, invoice history ── */}
-      {lotMapEnabled && (() => {
+      {activeTab === 'billing' && lotMapEnabled && (() => {
         const billingResult = calculateVehicleBilling(
           { ...vehicle, billing_type: billingType, daily_rate: billingType === 'daily' && rateOverride ? parseFloat(rateOverride) : null, monthly_rate: billingType === 'monthly' && rateOverride ? parseFloat(rateOverride) : null },
           companyBillingDefaults ?? {},
@@ -1079,8 +1042,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           ? companyBillingDefaults?.default_daily_rate
           : companyBillingDefaults?.default_monthly_rate
         const inputStyle: React.CSSProperties = {
-          flex: 1, height: 40, border: '1px solid #E1E8F0', borderRadius: 10,
-          padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA',
+          flex: 1, height: 40, border: `1px solid ${GRAY_300}`, borderRadius: 10,
+          padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: GRAY_100,
         }
 
         const billingBaseline: string | null = vehicle.billed_through_date ?? (vehicle.arrived_at ? toDateInputValue(new Date(vehicle.arrived_at)) : null)
@@ -1097,11 +1060,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         const hasAnyUnbilled = (canEditStorage && days > 0) || unbilledCharges.length > 0
         const canGenerate = storageIncluded || unbilledCharges.some(c => selectedChargeIds.has(c.id))
 
-        const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #F8FAFC' }
-        const labelStyle: React.CSSProperties = { fontSize: 13, color: '#4A5568', margin: 0 }
-        const amountStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }
-        const dateInputStyle: React.CSSProperties = { width: '100%', height: 32, border: '1px solid #E1E8F0', borderRadius: 7, padding: '0 8px', fontSize: 12, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit', boxSizing: 'border-box' }
-        const chargeCheckboxStyle: React.CSSProperties = { width: 17, height: 17, accentColor: '#00B4D8', cursor: 'pointer', flexShrink: 0 }
+        const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: `1px solid ${GRAY_100}` }
+        const labelStyle: React.CSSProperties = { fontSize: 13, color: GRAY_700, margin: 0 }
+        const amountStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }
+        const dateInputStyle: React.CSSProperties = { width: '100%', height: 32, border: `1px solid ${GRAY_300}`, borderRadius: 7, padding: '0 8px', fontSize: 12, outline: 'none', background: GRAY_100, fontFamily: 'inherit', boxSizing: 'border-box' }
+        const chargeCheckboxStyle: React.CSSProperties = { width: 17, height: 17, accentColor: PRIMARY, cursor: 'pointer', flexShrink: 0 }
 
         const toggleCharge = (id: string, checked: boolean) => {
           setSelectedChargeIds(prev => {
@@ -1126,13 +1089,13 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           <SectionCard title="Billing" elevated>
             {/* Days on Lot + Accrued */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12, marginBottom: 16 }}>
-              <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Days on Lot</p>
-                <p style={{ fontSize: 24, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>{billingResult.daysOnLot}<span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>d</span></p>
+              <div style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '12px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Days on Lot</p>
+                <p style={{ fontSize: 24, fontWeight: 800, color: GRAY_900, margin: 0 }}>{billingResult.daysOnLot}<span style={{ fontSize: 13, color: GRAY_500, fontWeight: 500 }}>d</span></p>
               </div>
-              <div style={{ background: 'linear-gradient(135deg, #1B2D40, #0D1B2A)', borderRadius: 10, padding: '12px 14px' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Accrued</p>
-                <p style={{ fontSize: 26, fontWeight: 800, color: billingResult.accruedAmount != null ? '#00B4D8' : 'rgba(255,255,255,0.4)', margin: 0 }}>
+              <div style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '12px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Accrued</p>
+                <p style={{ fontSize: 26, fontWeight: 800, color: billingResult.accruedAmount != null ? PRIMARY : GRAY_500, margin: 0 }}>
                   {billingResult.accruedAmount != null ? `$${billingResult.accruedAmount.toFixed(2)}` : '—'}
                 </p>
               </div>
@@ -1142,11 +1105,11 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
             {/* Billing type toggle */}
             <div style={{ marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Billing Type</p>
-              <div style={{ display: 'flex', gap: 0, background: '#F0F4F8', borderRadius: 10, padding: 3 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Billing Type</p>
+              <div style={{ display: 'flex', gap: 0, background: GRAY_100, borderRadius: 10, padding: 3 }}>
                 {(['daily', 'monthly'] as BillingType[]).map(t => (
                   <button key={t} onClick={() => { setBillingType(t); setRateOverride('') }}
-                    style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: billingType === t ? '#0D1B2A' : 'transparent', color: billingType === t ? '#FFF' : '#4A5568', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize', transition: 'background 150ms ease' }}>
+                    style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: billingType === t ? GRAY_900 : 'transparent', color: billingType === t ? WHITE : GRAY_700, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize', transition: 'background 150ms ease' }}>
                     {t}
                   </button>
                 ))}
@@ -1155,9 +1118,9 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
             {/* Rate override */}
             <div style={{ marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Rate {rateLabel}</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Rate {rateLabel}</p>
               <div style={{ position: 'relative' }}>
-                <DollarSign size={13} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+                <DollarSign size={13} color={GRAY_500} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
                 <input
                   type="number" min="0" step="0.01"
                   placeholder={defaultRate != null ? `${defaultRate} (default)` : 'No default set'}
@@ -1167,7 +1130,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 />
               </div>
               {!rateOverride && defaultRate != null && (
-                <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Using company default: ${defaultRate}{rateLabel}</p>
+                <p style={{ fontSize: 11, color: GRAY_500, margin: '4px 0 0' }}>Using company default: ${defaultRate}{rateLabel}</p>
               )}
             </div>
 
@@ -1176,17 +1139,17 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             {/* Bill To */}
             <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 16 }}>
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Name</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Name</p>
                 <input type="text" placeholder="Customer or company name" value={billToName} onChange={e => setBillToName(e.target.value)} style={inputStyle} />
               </div>
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Contact</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>Contact</p>
                 <input type="text" placeholder="Email or phone" value={billToContact} onChange={e => setBillToContact(e.target.value)} style={inputStyle} />
               </div>
             </div>
 
             <button onClick={saveBilling} disabled={savingBilling}
-              style={{ width: '100%', height: 42, borderRadius: 10, border: 'none', background: billingSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: savingBilling ? 'default' : 'pointer', fontFamily: 'inherit', opacity: savingBilling ? 0.7 : 1, transition: 'background 300ms ease' }}>
+              style={{ width: '100%', height: 42, borderRadius: 10, border: 'none', background: billingSaved ? SUCCESS : GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: savingBilling ? 'default' : 'pointer', fontFamily: 'inherit', opacity: savingBilling ? 0.7 : 1, transition: 'background 300ms ease' }}>
               {billingSaved ? 'Saved ✓' : savingBilling ? 'Saving…' : 'Save'}
             </button>
 
@@ -1194,34 +1157,34 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
             {loadingCharges ? (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                <Loader2 size={16} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+                <Loader2 size={16} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
               </div>
             ) : (
               <>
                 {/* Storage row — checkbox + editable date range */}
-                <div style={{ padding: '9px 0', borderBottom: '1px solid #F8FAFC' }}>
+                <div style={{ padding: '9px 0', borderBottom: `1px solid ${GRAY_100}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <input type="checkbox" checked={storageChecked} disabled={!canEditStorage || days <= 0}
                       onChange={e => setStorageChecked(e.target.checked)} style={chargeCheckboxStyle} />
-                    <span style={{ flex: 1, fontSize: 13, color: '#4A5568' }}>Storage ({days}d)</span>
+                    <span style={{ flex: 1, fontSize: 13, color: GRAY_700 }}>Storage ({days}d)</span>
                     <span style={amountStyle}>${storageAmount.toFixed(2)}</span>
                   </div>
                   {canEditStorage ? (
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, marginLeft: 24 }}>
                       <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: 10, color: '#94A3B8', display: 'block', marginBottom: 3 }}>From</label>
+                        <label style={{ fontSize: 10, color: GRAY_500, display: 'block', marginBottom: 3 }}>From</label>
                         <input type="date" value={storageStartDate} onChange={e => setStorageStartDate(e.target.value)} style={dateInputStyle} />
                       </div>
                       <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: 10, color: '#94A3B8', display: 'block', marginBottom: 3 }}>To</label>
+                        <label style={{ fontSize: 10, color: GRAY_500, display: 'block', marginBottom: 3 }}>To</label>
                         <input type="date" value={storageEndDate} onChange={e => setStorageEndDate(e.target.value)} style={dateInputStyle} />
                       </div>
                     </div>
                   ) : (
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Set a rate in Billing to bill storage.</p>
+                    <p style={{ fontSize: 11, color: GRAY_500, margin: '4px 0 0' }}>Set a rate in Billing to bill storage.</p>
                   )}
                   {startBeforeBaseline && (
-                    <p style={{ fontSize: 11, color: '#DC2626', margin: '6px 0 0 24px' }}>
+                    <p style={{ fontSize: 11, color: DANGER_TEXT, margin: '6px 0 0 24px' }}>
                       Start date is before {billingBaseline} (already billed) — this may double-bill storage.
                     </p>
                   )}
@@ -1233,16 +1196,16 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   const reportCount = c.report_type ? reportTypeCounts[c.report_type] : 0
                   return confirmDeleteChargeId === c.id ? (
                     <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
-                      <p style={{ fontSize: 12, color: '#EF4444', margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
+                      <p style={{ fontSize: 12, color: DANGER, margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setConfirmDeleteChargeId(null)}
-                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 11, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 11, fontWeight: 600, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                         <button onClick={async () => {
                           await deleteCharge(c.id)
                           setCharges(cs => cs.filter(x => x.id !== c.id))
                           setConfirmDeleteChargeId(null)
                         }}
-                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: '#EF4444', fontSize: 11, fontWeight: 700, color: '#FFF', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: DANGER, fontSize: 11, fontWeight: 700, color: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
                       </div>
                     </div>
                   ) : (
@@ -1257,15 +1220,15 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                             {c.report_type && reportTypeTag(c.report_type)}
                             {billed && billedTag()}
                           </div>
-                          {reportCount > 0 && <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>{reportCount} report{reportCount !== 1 ? 's' : ''} generated</p>}
+                          {reportCount > 0 && <p style={{ fontSize: 10, color: GRAY_500, margin: 0 }}>{reportCount} report{reportCount !== 1 ? 's' : ''} generated</p>}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
                         {!billed && (
                           <button onClick={() => setConfirmDeleteChargeId(c.id)}
-                            style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                            <Trash2 size={11} color="#EF4444" />
+                            style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${DANGER_LIGHT}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <Trash2 size={11} color={DANGER} />
                           </button>
                         )}
                       </div>
@@ -1276,19 +1239,19 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 {/* Custom fee rows */}
                 {charges.filter(c => c.charge_type === 'custom_fee').map(c => (
                   editingChargeId === c.id ? (
-                    <div key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid #F8FAFC' }}>
+                    <div key={c.id} style={{ padding: '8px 0', borderBottom: `1px solid ${GRAY_100}` }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8 }}>
                         <input value={editChargeLabel} onChange={e => setEditChargeLabel(e.target.value)}
-                          style={{ height: 36, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                          style={{ height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }} />
                         <div style={{ position: 'relative' }}>
-                          <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94A3B8' }}>$</span>
+                          <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: GRAY_500 }}>$</span>
                           <input type="number" min="0" step="0.01" value={editChargeAmount} onChange={e => setEditChargeAmount(e.target.value)}
-                            style={{ width: 90, height: 36, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                            style={{ width: 90, height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setEditingChargeId(null)}
-                          style={{ flex: 1, height: 30, borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                          style={{ flex: 1, height: 30, borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 12, fontWeight: 600, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                         <button disabled={savingCharge} onClick={async () => {
                           setSavingCharge(true)
                           try {
@@ -1297,23 +1260,23 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                             setEditingChargeId(null)
                           } finally { setSavingCharge(false) }
                         }}
-                          style={{ flex: 2, height: 30, borderRadius: 7, border: 'none', background: '#00B4D8', fontSize: 12, fontWeight: 700, color: '#FFFFFF', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          style={{ flex: 2, height: 30, borderRadius: 7, border: 'none', background: PRIMARY, fontSize: 12, fontWeight: 700, color: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>
                           {savingCharge ? '…' : 'Save'}
                         </button>
                       </div>
                     </div>
                   ) : confirmDeleteChargeId === c.id ? (
                     <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
-                      <p style={{ fontSize: 12, color: '#EF4444', margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
+                      <p style={{ fontSize: 12, color: DANGER, margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setConfirmDeleteChargeId(null)}
-                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 11, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 11, fontWeight: 600, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                         <button onClick={async () => {
                           await deleteCharge(c.id)
                           setCharges(cs => cs.filter(x => x.id !== c.id))
                           setConfirmDeleteChargeId(null)
                         }}
-                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: '#EF4444', fontSize: 11, fontWeight: 700, color: '#FFF', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: DANGER, fontSize: 11, fontWeight: 700, color: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
                       </div>
                     </div>
                   ) : (
@@ -1327,7 +1290,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                             <p style={labelStyle}>{c.label}</p>
                             {billedChargeIds.has(c.id) && billedTag()}
                           </div>
-                          {c.is_recurring && <p style={{ fontSize: 10, color: '#94A3B8', margin: 0 }}>Recurring</p>}
+                          {c.is_recurring && <p style={{ fontSize: 10, color: GRAY_500, margin: 0 }}>Recurring</p>}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1335,12 +1298,93 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                         {!billedChargeIds.has(c.id) && (
                           <>
                             <button onClick={() => { setEditingChargeId(c.id); setEditChargeLabel(c.label); setEditChargeAmount(String(c.amount)) }}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                              <Pencil size={11} color="#4A5568" />
+                              style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Pencil size={11} color={GRAY_700} />
                             </button>
                             <button onClick={() => setConfirmDeleteChargeId(c.id)}
-                              style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                              <Trash2 size={11} color="#EF4444" />
+                              style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${DANGER_LIGHT}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Trash2 size={11} color={DANGER} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                ))}
+
+                {/* Service log rows — reuses the same generic updateCharge/deleteCharge
+                    and editingChargeId/confirmDeleteChargeId state as custom fees, since
+                    a service log entry is just another vehicle_charges row. */}
+                {charges.filter(c => c.charge_type === 'service').map(c => (
+                  editingChargeId === c.id ? (
+                    <div key={c.id} style={{ padding: '8px 0', borderBottom: `1px solid ${GRAY_100}` }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8 }}>
+                        <input value={editChargeLabel} onChange={e => setEditChargeLabel(e.target.value)}
+                          style={{ height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }} />
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: GRAY_500 }}>$</span>
+                          <input type="number" min="0" step="0.01" value={editChargeAmount} onChange={e => setEditChargeAmount(e.target.value)}
+                            style={{ width: 90, height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setEditingChargeId(null)}
+                          style={{ flex: 1, height: 30, borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 12, fontWeight: 600, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                        <button disabled={savingCharge} onClick={async () => {
+                          setSavingCharge(true)
+                          try {
+                            await updateCharge(c.id, { label: editChargeLabel, amount: parseFloat(editChargeAmount) })
+                            setCharges(cs => cs.map(x => x.id === c.id ? { ...x, label: editChargeLabel, amount: parseFloat(editChargeAmount) } : x))
+                            setEditingChargeId(null)
+                          } finally { setSavingCharge(false) }
+                        }}
+                          style={{ flex: 2, height: 30, borderRadius: 7, border: 'none', background: PRIMARY, fontSize: 12, fontWeight: 700, color: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {savingCharge ? '…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : confirmDeleteChargeId === c.id ? (
+                    <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
+                      <p style={{ fontSize: 12, color: DANGER, margin: 0, flex: 1 }}>Remove "{c.label}"?</p>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setConfirmDeleteChargeId(null)}
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 11, fontWeight: 600, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                        <button onClick={async () => {
+                          await deleteCharge(c.id)
+                          setCharges(cs => cs.filter(x => x.id !== c.id))
+                          setConfirmDeleteChargeId(null)
+                        }}
+                          style={{ height: 26, padding: '0 10px', borderRadius: 6, border: 'none', background: DANGER, fontSize: 11, fontWeight: 700, color: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={c.id} style={{ ...rowStyle, gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {!billedChargeIds.has(c.id) && (
+                          <input type="checkbox" checked={selectedChargeIds.has(c.id)} onChange={e => toggleCharge(c.id, e.target.checked)} style={chargeCheckboxStyle} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <p style={labelStyle}>{c.label}</p>
+                            {billedChargeIds.has(c.id) && billedTag()}
+                          </div>
+                          <p style={{ fontSize: 10, color: GRAY_500, margin: 0 }}>
+                            Performed {new Date(c.performed_at + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {c.notes ? ` — ${c.notes}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <p style={amountStyle}>${Number(c.amount).toFixed(2)}</p>
+                        {!billedChargeIds.has(c.id) && (
+                          <>
+                            <button onClick={() => { setEditingChargeId(c.id); setEditChargeLabel(c.label); setEditChargeAmount(String(c.amount)) }}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Pencil size={11} color={GRAY_700} />
+                            </button>
+                            <button onClick={() => setConfirmDeleteChargeId(c.id)}
+                              style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${DANGER_LIGHT}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                              <Trash2 size={11} color={DANGER} />
                             </button>
                           </>
                         )}
@@ -1350,47 +1394,47 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 ))}
 
                 {charges.length === 0 && (
-                  <p style={{ fontSize: 12, color: '#CBD5E1', margin: '4px 0 8px' }}>No charges recorded yet</p>
+                  <p style={{ fontSize: 12, color: GRAY_300, margin: '4px 0 8px' }}>No charges recorded yet</p>
                 )}
 
                 {/* Add charge */}
                 <button onClick={openAddCharge}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', height: 40, borderRadius: 9, border: '1.5px dashed #00B4D8', background: 'none', color: '#00B4D8', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginTop: 6 }}>
-                  <Plus size={13} />Add Custom Fee or Report Cost
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', height: 40, borderRadius: 9, border: `1.5px dashed ${PRIMARY}`, background: 'none', color: PRIMARY, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginTop: 6 }}>
+                  <Plus size={13} />Add Charge
                 </button>
 
                 {/* Invoice total */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 10, borderTop: '2px solid #E1E8F0' }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Invoice Total</p>
-                  <p style={{ fontSize: 16, fontWeight: 800, color: '#00B4D8', margin: 0 }}>${invoiceTotal.toFixed(2)}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 10, borderTop: `2px solid ${GRAY_300}` }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0 }}>Invoice Total</p>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: PRIMARY, margin: 0 }}>${invoiceTotal.toFixed(2)}</p>
                 </div>
 
                 {/* Inline invoice builder: due date, notes, generate */}
                 {hasAnyUnbilled ? (
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #E1E8F0' }}>
+                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${GRAY_300}` }}>
                     <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
                       <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
-                          Due Date <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none' }}>(optional)</span>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
+                          Due Date <span style={{ color: GRAY_500, fontWeight: 400, textTransform: 'none' }}>(optional)</span>
                         </p>
                         <input type="date" value={invoiceDueDate} onChange={e => setInvoiceDueDate(e.target.value)}
-                          style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 9, padding: '0 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }} />
+                          style={{ width: '100%', height: 38, border: `1px solid ${GRAY_300}`, borderRadius: 9, padding: '0 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: GRAY_100, boxSizing: 'border-box' }} />
                       </div>
                       <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
-                          Notes <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none' }}>(optional)</span>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
+                          Notes <span style={{ color: GRAY_500, fontWeight: 400, textTransform: 'none' }}>(optional)</span>
                         </p>
                         <input value={invoiceNotes} onChange={e => setInvoiceNotes(e.target.value)} placeholder="Payment terms, instructions…"
-                          style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 9, padding: '0 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }} />
+                          style={{ width: '100%', height: 38, border: `1px solid ${GRAY_300}`, borderRadius: 9, padding: '0 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: GRAY_100, boxSizing: 'border-box' }} />
                       </div>
                     </div>
                     <button onClick={handleGenerateInvoice} disabled={generatingInvoice || !canGenerate}
-                      style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: generatingInvoice || !canGenerate ? '#E1E8F0' : '#0D1B2A', color: generatingInvoice || !canGenerate ? '#94A3B8' : '#FFF', fontSize: 14, fontWeight: 700, cursor: generatingInvoice || !canGenerate ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: generatingInvoice || !canGenerate ? GRAY_300 : GRAY_900, color: generatingInvoice || !canGenerate ? GRAY_500 : WHITE, fontSize: 14, fontWeight: 700, cursor: generatingInvoice || !canGenerate ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       {generatingInvoice ? <><Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />Generating…</> : 'Generate Invoice'}
                     </button>
                   </div>
                 ) : (
-                  <p style={{ fontSize: 12, color: '#CBD5E1', margin: '12px 0 0', textAlign: 'center' }}>Nothing unbilled for this vehicle.</p>
+                  <p style={{ fontSize: 12, color: GRAY_300, margin: '12px 0 0', textAlign: 'center' }}>Nothing unbilled for this vehicle.</p>
                 )}
               </>
             )}
@@ -1412,87 +1456,137 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
       {showAddCharge && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setShowAddCharge(false)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 24, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 16px' }}>Add Charge</h3>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 24, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: '0 0 16px' }}>Add Charge</h3>
 
-            <div style={{ display: 'flex', gap: 0, background: '#F0F4F8', borderRadius: 10, padding: 3, marginBottom: 18 }}>
+            <div style={{ display: 'flex', gap: 0, background: GRAY_100, borderRadius: 10, padding: 3, marginBottom: 18 }}>
               <button onClick={() => setAddChargeTab('fee')}
-                style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: addChargeTab === 'fee' ? '#0D1B2A' : 'transparent', color: addChargeTab === 'fee' ? '#FFF' : '#4A5568', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: addChargeTab === 'fee' ? GRAY_900 : 'transparent', color: addChargeTab === 'fee' ? WHITE : GRAY_700, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Custom Fee
               </button>
               <button onClick={() => setAddChargeTab('report')}
-                style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: addChargeTab === 'report' ? '#0D1B2A' : 'transparent', color: addChargeTab === 'report' ? '#FFF' : '#4A5568', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: addChargeTab === 'report' ? GRAY_900 : 'transparent', color: addChargeTab === 'report' ? WHITE : GRAY_700, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Report Cost
+              </button>
+              <button onClick={() => setAddChargeTab('service')}
+                style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: addChargeTab === 'service' ? GRAY_900 : 'transparent', color: addChargeTab === 'service' ? WHITE : GRAY_700, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Log Service
               </button>
             </div>
 
             {addChargeTab === 'fee' ? (
               feeTypes.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No fee types configured in Settings.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', padding: '16px 0' }}>No fee types configured in Settings.</p>
               ) : (
                 <>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Fee Type</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Fee Type</label>
                     <select value={applyFeeTypeId} onChange={e => {
                       const ft = feeTypes.find(f => f.id === e.target.value)
                       setApplyFeeTypeId(e.target.value)
                       setApplyFeeLabel(ft?.name ?? '')
                       setApplyFeeAmount(ft ? String(ft.default_amount) : '')
-                    }} style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                    }} style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
                       <option value="">— Select a fee —</option>
                       {feeTypes.map(f => <option key={f.id} value={f.id}>{f.name} (${Number(f.default_amount).toFixed(2)})</option>)}
                     </select>
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Label</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Label</label>
                     <input value={applyFeeLabel} onChange={e => setApplyFeeLabel(e.target.value)}
                       placeholder="Fee label…"
-                      style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                      style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
                   </div>
                   <div style={{ marginBottom: 18 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Amount</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Amount</label>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94A3B8' }}>$</span>
+                      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: GRAY_500 }}>$</span>
                       <input type="number" min="0" step="0.01" value={applyFeeAmount} onChange={e => setApplyFeeAmount(e.target.value)}
-                        style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                        style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
                     </div>
+                  </div>
+                </>
+              )
+            ) : addChargeTab === 'service' ? (
+              feeTypes.length === 0 ? (
+                <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', padding: '16px 0' }}>No fee types configured in Settings.</p>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Service</label>
+                    <select value={serviceFeeTypeId} onChange={e => {
+                      const ft = feeTypes.find(f => f.id === e.target.value)
+                      setServiceFeeTypeId(e.target.value)
+                      setServiceLabel(ft?.name ?? '')
+                      setServiceAmount(ft ? String(ft.default_amount) : '')
+                    }} style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
+                      <option value="">— Select a service —</option>
+                      {feeTypes.map(f => <option key={f.id} value={f.id}>{f.name} (${Number(f.default_amount).toFixed(2)})</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Label</label>
+                    <input value={serviceLabel} onChange={e => setServiceLabel(e.target.value)}
+                      placeholder="Service label…"
+                      style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Amount</label>
+                      <div style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: GRAY_500 }}>$</span>
+                        <input type="number" min="0" step="0.01" value={serviceAmount} onChange={e => setServiceAmount(e.target.value)}
+                          style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Date Performed</label>
+                      <input type="date" value={servicePerformedAt} onChange={e => setServicePerformedAt(e.target.value)}
+                        style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 10px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Notes <span style={{ color: GRAY_500, fontWeight: 400 }}>(optional)</span></label>
+                    <textarea value={serviceNotes} onChange={e => setServiceNotes(e.target.value)}
+                      placeholder="What was done…"
+                      style={{ width: '100%', height: 64, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
                   </div>
                 </>
               )
             ) : (
               availableReportTypes.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No completed reports found for this vehicle yet.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', padding: '16px 0' }}>No completed reports found for this vehicle yet.</p>
               ) : (
                 <>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Report Type</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Report Type</label>
                     <select value={reportCostType} onChange={e => {
                       const t = e.target.value as 'checkin' | 'checkout' | 'one_off'
                       setReportCostType(t)
                       setReportCostLabel(REPORT_COST_LABELS[t])
                       const defaultAmt = t === 'checkin' ? reportCosts?.report_cost_checkin : t === 'checkout' ? reportCosts?.report_cost_checkout : reportCosts?.report_cost_one_off
                       setReportCostAmount(defaultAmt != null ? String(defaultAmt) : '')
-                    }} style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                    }} style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
                       {availableReportTypes.map(t => (
                         <option key={t} value={t}>{REPORT_COST_LABELS[t]} ({reportTypeCounts[t]} report{reportTypeCounts[t] !== 1 ? 's' : ''})</option>
                       ))}
                     </select>
                   </div>
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Label</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Label</label>
                     <input value={reportCostLabel} onChange={e => setReportCostLabel(e.target.value)}
                       placeholder="Report cost label…"
-                      style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                      style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
                   </div>
                   <div style={{ marginBottom: 18 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Amount</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }}>Amount</label>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94A3B8' }}>$</span>
+                      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: GRAY_500 }}>$</span>
                       <input type="number" min="0" step="0.01" value={reportCostAmount} onChange={e => setReportCostAmount(e.target.value)}
-                        style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                        style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, paddingLeft: 26, paddingRight: 12, fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
                     </div>
                     {!reportCostAmount && (
-                      <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>No default report cost configured in Settings for this type.</p>
+                      <p style={{ fontSize: 11, color: GRAY_500, margin: '4px 0 0' }}>No default report cost configured in Settings for this type.</p>
                     )}
                   </div>
                 </>
@@ -1501,12 +1595,14 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowAddCharge(false)}
-                style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
               <button
                 disabled={
                   addChargeTab === 'fee'
                     ? (!applyFeeTypeId || !applyFeeLabel.trim() || !applyFeeAmount || applyingFee)
-                    : (!reportCostLabel.trim() || !reportCostAmount || applyingReportCost || availableReportTypes.length === 0)
+                    : addChargeTab === 'service'
+                      ? (!serviceFeeTypeId || !serviceLabel.trim() || !serviceAmount || !servicePerformedAt || loggingService)
+                      : (!reportCostLabel.trim() || !reportCostAmount || applyingReportCost || availableReportTypes.length === 0)
                 }
                 onClick={async () => {
                   if (!vehicle || !user) return
@@ -1524,6 +1620,22 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                       setShowAddCharge(false)
                     } catch (e: any) { alert(e.message) }
                     finally { setApplyingFee(false) }
+                  } else if (addChargeTab === 'service') {
+                    if (!serviceFeeTypeId || !serviceLabel.trim() || !serviceAmount || !servicePerformedAt) return
+                    setLoggingService(true)
+                    try {
+                      const charge = await logService({
+                        companyId, vehicleId: vehicle.id, feeTypeId: serviceFeeTypeId,
+                        label: serviceLabel.trim(), amount: parseFloat(serviceAmount),
+                        performedAt: servicePerformedAt, notes: serviceNotes.trim() || undefined,
+                        createdBy: user.id,
+                      })
+                      setCharges(cs => [...cs, charge])
+                      setShowAddCharge(false)
+                      setServiceFeeTypeId(''); setServiceLabel(''); setServiceAmount(''); setServiceNotes('')
+                      setServicePerformedAt(new Date().toISOString().slice(0, 10))
+                    } catch (e: any) { alert(e.message) }
+                    finally { setLoggingService(false) }
                   } else {
                     if (!reportCostLabel.trim() || !reportCostAmount) return
                     setApplyingReportCost(true)
@@ -1539,35 +1651,39 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                     finally { setApplyingReportCost(false) }
                   }
                 }}
-                style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: applyingFee || applyingReportCost ? 0.7 : 1 }}>
+                style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: applyingFee || applyingReportCost || loggingService ? 0.7 : 1 }}>
                 {addChargeTab === 'fee'
                   ? (applyingFee ? 'Adding…' : 'Add Fee')
-                  : (applyingReportCost ? 'Adding…' : 'Add Report Cost')}
+                  : addChargeTab === 'service'
+                    ? (loggingService ? 'Logging…' : 'Log Service')
+                    : (applyingReportCost ? 'Adding…' : 'Add Report Cost')}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {activeTab === 'overview' && (
+      <>
       {/* ── Customer ─────────────────────────────────────────────────────────── */}
       <SectionCard
         title="Customer"
         action={
           !editingCustomer
-            ? <button onClick={() => setEditingCustomer(true)} style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#00B4D8', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Change</button>
+            ? <button onClick={() => setEditingCustomer(true)} style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: PRIMARY, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Change</button>
             : null
         }
       >
         {editingCustomer ? (
           <div>
             <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}
-              style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit', marginBottom: 10 }}>
+              style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit', marginBottom: 10 }}>
               <option value="">— No customer —</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => { setEditingCustomer(false); setSelectedCustomerId(vehicle?.customer_id ?? '') }}
-                style={{ flex: 1, height: 38, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ flex: 1, height: 38, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Cancel
               </button>
               <button onClick={async () => {
@@ -1584,31 +1700,31 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                 } catch (e: any) { alert(e.message) }
                 finally { setSavingCustomer(false) }
               }} disabled={savingCustomer}
-                style={{ flex: 2, height: 38, borderRadius: 9, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ flex: 2, height: 38, borderRadius: 9, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 {savingCustomer ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>
         ) : vehicle?.customer ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 20, background: '#E0F7FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#0097B2' }}>{vehicle.customer.name.charAt(0).toUpperCase()}</span>
+            <div style={{ width: 40, height: 40, borderRadius: 20, background: PRIMARY_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: PRIMARY_PILL_TEXT }}>{vehicle.customer.name.charAt(0).toUpperCase()}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <button onClick={() => router.push(`/customers/${vehicle.customer.id}`)}
-                style={{ background: 'none', border: 'none', padding: 0, fontSize: 14, fontWeight: 700, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                style={{ background: 'none', border: 'none', padding: 0, fontSize: 14, fontWeight: 700, color: GRAY_900, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                 {vehicle.customer.name}
               </button>
               {(vehicle.customer.phone || vehicle.customer.email) && (
-                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
+                <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>
                   {[vehicle.customer.phone, vehicle.customer.email].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>
-            <Users size={16} color="#CBD5E1" />
+            <Users size={16} color={GRAY_300} />
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: '#CBD5E1', margin: 0 }}>No customer linked</p>
+          <p style={{ fontSize: 13, color: GRAY_300, margin: 0 }}>No customer linked</p>
         )}
       </SectionCard>
 
@@ -1621,36 +1737,39 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             onChange={e => setNewNote(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && saveNote()}
             placeholder="Add a note…"
-            style={{ flex: 1, height: 40, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA' }}
+            style={{ flex: 1, height: 40, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: GRAY_100 }}
           />
           <button
             onClick={saveNote}
             disabled={!newNote.trim() || savingNote}
-            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: newNote.trim() ? '#0D1B2A' : '#E1E8F0', color: newNote.trim() ? '#FFF' : '#94A3B8', fontSize: 13, fontWeight: 600, cursor: newNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: newNote.trim() ? GRAY_900 : GRAY_300, color: newNote.trim() ? WHITE : GRAY_500, fontSize: 13, fontWeight: 600, cursor: newNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {savingNote ? '…' : 'Save'}
           </button>
         </div>
 
         {parsedNotes.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: 0, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
             No notes yet. Add one above.
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {parsedNotes.map((n, i) => (
               <div key={i}
-                style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '10px 14px' }}>
+                style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '10px 14px' }}>
                 {n.date && (
-                  <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 4px', fontWeight: 600 }}>{n.date}</p>
+                  <p style={{ fontSize: 11, color: GRAY_500, margin: '0 0 4px', fontWeight: 600 }}>{n.date}</p>
                 )}
-                <p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.6 }}>{n.text}</p>
+                <p style={{ fontSize: 13, color: GRAY_700, margin: 0, lineHeight: 1.6 }}>{n.text}</p>
               </div>
             ))}
           </div>
         )}
       </SectionCard>
+      </>
+      )}
 
       {/* ── Activity Timeline ───────────────────────────────────────────────── */}
+      {activeTab === 'activity' && (
       <SectionCard title="Activity Timeline" count={events.length || undefined}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <input
@@ -1658,38 +1777,38 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
             onChange={e => setNewTimelineNote(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && saveTimelineNote()}
             placeholder="Add a note to the timeline…"
-            style={{ flex: 1, height: 40, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#FAFAFA' }}
+            style={{ flex: 1, height: 40, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: GRAY_100 }}
           />
           <button
             onClick={saveTimelineNote}
             disabled={!newTimelineNote.trim() || savingTimelineNote}
-            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: newTimelineNote.trim() ? '#0D1B2A' : '#E1E8F0', color: newTimelineNote.trim() ? '#FFF' : '#94A3B8', fontSize: 13, fontWeight: 600, cursor: newTimelineNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+            style={{ height: 40, padding: '0 16px', borderRadius: 10, border: 'none', background: newTimelineNote.trim() ? GRAY_900 : GRAY_300, color: newTimelineNote.trim() ? WHITE : GRAY_500, fontSize: 13, fontWeight: 600, cursor: newTimelineNote.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {savingTimelineNote ? '…' : 'Add Note'}
           </button>
         </div>
 
         {loadingEvents ? (
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, textAlign: 'center', padding: '8px 0' }}>Loading…</p>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: 0, textAlign: 'center', padding: '8px 0' }}>Loading…</p>
         ) : events.length === 0 ? (
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: 0, fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
             No activity yet.
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {events.map((ev, idx) => {
-              const cfg = EVENT_ICON[ev.event_type as VehicleEventType] ?? { icon: ClipboardList, color: '#00B4D8' }
+              const cfg = EVENT_ICON[ev.event_type as VehicleEventType] ?? { icon: ClipboardList, color: PRIMARY }
               const Icon = cfg.icon
               return (
                 <div key={ev.id} style={{ display: 'flex', gap: 12 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 13, background: '#0D1B2A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 13, background: GRAY_900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Icon size={13} color={cfg.color} />
                     </div>
-                    {idx < events.length - 1 && <div style={{ flex: 1, width: 1, background: '#E1E8F0', margin: '4px 0' }} />}
+                    {idx < events.length - 1 && <div style={{ flex: 1, width: 1, background: GRAY_300, margin: '4px 0' }} />}
                   </div>
                   <div style={{ paddingBottom: idx < events.length - 1 ? 16 : 0, minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 500, color: '#0D1B2A', margin: 0 }}>{ev.description}</p>
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }} title={new Date(ev.created_at).toLocaleString()}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: GRAY_900, margin: 0 }}>{ev.description}</p>
+                    <p style={{ fontSize: 11, color: GRAY_500, margin: '2px 0 0' }} title={new Date(ev.created_at).toLocaleString()}>
                       {ev.created_by_name ?? 'System'} · {relativeTime(ev.created_at)}
                     </p>
                   </div>
@@ -1699,34 +1818,24 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           </div>
         )}
       </SectionCard>
+      )}
 
       {/* Lightbox */}
       {lightbox && <Lightbox url={lightbox.url} label={lightbox.label} onClose={() => setLightbox(null)} />}
 
-      {/* Mark Picked Up confirmation modal */}
-      {confirmRelease && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} onClick={() => setConfirmRelease(false)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <div style={{ width: 52, height: 52, borderRadius: 26, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <CheckCircle size={24} color="#10B981" />
-            </div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', textAlign: 'center', margin: '0 0 8px' }}>Mark as Picked Up?</h2>
-            <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', lineHeight: 1.6, margin: '0 0 24px' }}>
-              This records the pickup date and marks the vehicle as picked up. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmRelease(false)}
-                style={{ flex: 1, height: 46, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Cancel
-              </button>
-              <button onClick={handleRelease} disabled={actionSaving}
-                style={{ flex: 1, height: 46, borderRadius: 12, border: 'none', background: '#10B981', color: '#FFF', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: actionSaving ? 0.7 : 1 }}>
-                {actionSaving ? 'Marking…' : 'Mark Picked Up'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {pendingCheckpointDir && (
+        <SetTemplateModal onClose={() => setPendingCheckpointDir(null)} onSelect={handleSetTemplate} />
+      )}
+
+      {showAssignSpot && companyId && (
+        <AssignSpotModal
+          vehicleId={vehicle.id}
+          customerId={vehicle.customer_id ?? null}
+          companyId={companyId}
+          userId={user?.id ?? ''}
+          onClose={() => setShowAssignSpot(false)}
+          onAssigned={() => { setShowAssignSpot(false); loadSpotLabel() }}
+        />
       )}
 
       <BottomNav />
@@ -1736,18 +1845,18 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     {showResumeConfirm && (
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowResumeConfirm(false)} />
-        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: '0 0 8px' }}>Resume Inspection?</h2>
-          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+        <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: GRAY_900, margin: '0 0 8px' }}>Resume Inspection?</h2>
+          <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>
             You'll continue from where you left off.
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setShowResumeConfirm(false)}
-              style={{ flex: 1, height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flex: 1, height: 48, borderRadius: 12, border: `1.5px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               Cancel
             </button>
             <button onClick={handleConfirmResume}
-              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: PRIMARY, color: WHITE, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               Resume
             </button>
           </div>
@@ -1759,18 +1868,18 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     {showAbandonConfirm && (
       <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowAbandonConfirm(false)} />
-        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: '0 0 8px' }}>Inspection Already In Progress</h2>
-          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>
+        <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: GRAY_900, margin: '0 0 8px' }}>Inspection Already In Progress</h2>
+          <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>
             Starting a new inspection will abandon your current one. Any progress will be lost.
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setShowAbandonConfirm(false)}
-              style={{ flex: 1, height: 48, borderRadius: 12, border: '1.5px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flex: 1, height: 48, borderRadius: 12, border: `1.5px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               Cancel
             </button>
             <button onClick={handleConfirmAbandon}
-              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: DANGER, color: WHITE, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               Start New
             </button>
           </div>
@@ -1791,10 +1900,10 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     {errorMsg && (
       <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
-        <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
-          <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
-          <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+        <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Something went wrong</h3>
+          <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+          <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
         </div>
       </div>
     )}
@@ -1803,7 +1912,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
     {billingSaved && (
       <div style={{
         position: 'fixed', top: 24, right: 24, zIndex: 200,
-        background: '#10B981', color: '#FFF',
+        background: SUCCESS, color: WHITE,
         padding: '12px 20px', borderRadius: 10,
         fontWeight: 700, fontSize: 14,
         boxShadow: '0 4px 16px rgba(0,0,0,0.18)',

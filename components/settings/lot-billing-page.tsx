@@ -26,21 +26,26 @@ import {
   getUnreadBillingNotifications,
   type BillingNotification,
 } from '@/lib/billing-notification-actions'
+import {
+  PRIMARY, PRIMARY_TINT, PRIMARY_PILL_TEXT, AMBER, WARN, WARN_LIGHT, WARN_DARK, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK,
+  DANGER, DANGER_LIGHT, SCORE_POOR_TEXT, SCORE_POOR_BG, SCORE_CRITICAL_TEXT,
+  WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100,
+} from '@/lib/design-tokens'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
+// midnight/navy retired — each call site now uses PRIMARY (active/CTA state),
+// GRAY_900 (plain text), or GRAY_700 (chart series color) directly, since
+// those three roles can't share one aliased constant.
 
 const C = {
-  midnight: '#0D1B2A',
-  navy: '#1B2D40',
-  cyan: '#00B4D8',
-  amber: '#F4A62A',
-  bg: '#F0F4F8',
-  border: '#E1E8F0',
-  muted: '#94A3B8',
-  text: '#0D1B2A',
-  green: '#10B981',
-  red: '#EF4444',
-  orange: '#F97316',
+  cyan: PRIMARY,
+  amber: AMBER,
+  bg: GRAY_100,
+  border: GRAY_300,
+  muted: GRAY_500,
+  green: SUCCESS,
+  red: DANGER,
+  orange: WARN,
 }
 
 type Tab = 'unbilled' | 'outstanding' | 'revenue' | 'settings'
@@ -87,7 +92,7 @@ function KPICard({
   label: string; value: string; sub?: string; accent?: string; loading?: boolean
 }) {
   return (
-    <div style={{ background: '#FFFFFF', border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px' }}>
+    <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px' }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 6px' }}>{label}</p>
       {loading ? (
         <div style={{ height: 28, display: 'flex', alignItems: 'center' }}>
@@ -95,7 +100,7 @@ function KPICard({
         </div>
       ) : (
         <>
-          <p style={{ fontSize: 22, fontWeight: 800, color: accent ?? C.midnight, margin: 0, lineHeight: 1.2 }}>{value}</p>
+          <p style={{ fontSize: 22, fontWeight: 800, color: accent ?? GRAY_900, margin: 0, lineHeight: 1.2 }}>{value}</p>
           {sub && <p style={{ fontSize: 11, color: C.muted, margin: '4px 0 0' }}>{sub}</p>}
         </>
       )}
@@ -113,7 +118,7 @@ function TabNav({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     { id: 'settings', label: 'Settings' },
   ]
   return (
-    <div style={{ display: 'flex', background: '#F0F4F8', borderRadius: 12, padding: 3, gap: 2, marginBottom: 20 }}>
+    <div style={{ display: 'flex', background: GRAY_100, borderRadius: 12, padding: 3, gap: 2, marginBottom: 20 }}>
       {tabs.map(t => (
         <button
           key={t.id}
@@ -121,9 +126,9 @@ function TabNav({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
           style={{
             flex: 1, height: 36, borderRadius: 9, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
             fontSize: 13, fontWeight: 700, transition: 'all 150ms ease',
-            background: active === t.id ? '#FFFFFF' : 'transparent',
-            color: active === t.id ? C.midnight : C.muted,
-            boxShadow: active === t.id ? '0 1px 4px rgba(13,27,42,0.08)' : 'none',
+            background: active === t.id ? WHITE : 'transparent',
+            color: active === t.id ? GRAY_900 : C.muted,
+            boxShadow: active === t.id ? '0 1px 4px rgba(15,23,42,0.08)' : 'none',
           }}
         >
           {t.label}
@@ -176,9 +181,9 @@ function UnbilledTab({
     <div>
       {/* Summary bar */}
       {neverBilled > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: WARN_LIGHT, border: `1px solid ${SCORE_POOR_BG}`, borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
           <AlertTriangle size={15} color={C.orange} style={{ flexShrink: 0 }} />
-          <p style={{ fontSize: 13, color: '#9A3412', margin: 0 }}>
+          <p style={{ fontSize: 13, color: SCORE_POOR_TEXT, margin: 0 }}>
             <strong>{neverBilled}</strong> vehicle{neverBilled !== 1 ? 's' : ''} on lot {neverBilled !== 1 ? 'have' : 'has'} never been billed.
           </p>
         </div>
@@ -193,8 +198,8 @@ function UnbilledTab({
             { id: 'attention' as UnbilledFilter, label: 'Needs Attention' },
           ] as { id: UnbilledFilter; label: string }[]).map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)} style={{
-              height: 28, padding: '0 10px', borderRadius: 20, border: `1.5px solid ${filter === f.id ? C.midnight : C.border}`,
-              background: filter === f.id ? C.midnight : '#FFF', color: filter === f.id ? '#FFF' : C.muted,
+              height: 28, padding: '0 10px', borderRadius: 20, border: `1.5px solid ${filter === f.id ? PRIMARY : C.border}`,
+              background: filter === f.id ? PRIMARY : WHITE, color: filter === f.id ? WHITE : C.muted,
               fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
             }}>
               {f.label}
@@ -203,13 +208,13 @@ function UnbilledTab({
         </div>
         {totalEstimated > 0 && (
           <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-            Est. unbilled: <strong style={{ color: C.midnight }}>${fmt(totalEstimated)}</strong>
+            Est. unbilled: <strong style={{ color: GRAY_900 }}>${fmt(totalEstimated)}</strong>
           </p>
         )}
       </div>
 
       {/* Vehicle rows */}
-      <div style={{ background: '#FFFFFF', border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
+      <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
         {filtered.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center' }}>
             <Car size={28} color={C.border} style={{ display: 'block', margin: '0 auto 8px' }} />
@@ -234,10 +239,10 @@ function UnbilledTab({
               <BilledDot days={row.daysSinceLastBill} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: C.midnight, margin: 0 }}>{vehicleLabel(row)}</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0 }}>{vehicleLabel(row)}</p>
                   <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.muted }}>{row.vin}</span>
                   {!isOnLot && (
-                    <span style={{ fontSize: 9, fontWeight: 700, background: '#F0F4F8', color: C.muted, borderRadius: 4, padding: '1px 5px' }}>RELEASED</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, background: GRAY_100, color: C.muted, borderRadius: 4, padding: '1px 5px' }}>RELEASED</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
@@ -251,7 +256,7 @@ function UnbilledTab({
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 {estimatedTotal > 0 && (
-                  <p style={{ fontSize: 13, fontWeight: 700, color: C.midnight, margin: 0 }}>${fmt(estimatedTotal)}</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0 }}>${fmt(estimatedTotal)}</p>
                 )}
                 <p style={{ fontSize: 11, margin: '2px 0 0', color: lastBilledColor(row.daysSinceLastBill) }}>
                   {lastBilledLabel(row.daysSinceLastBill, row.lastInvoiceStatus)}
@@ -364,17 +369,17 @@ function OutstandingTab({
 
       {/* Invoice list */}
       {invoices.length === 0 ? (
-        <div style={{ background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, padding: '32px 20px', textAlign: 'center' }}>
+        <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, padding: '32px 20px', textAlign: 'center' }}>
           <Check size={28} color={C.green} style={{ display: 'block', margin: '0 auto 8px' }} />
-          <p style={{ fontSize: 14, fontWeight: 700, color: C.midnight, margin: '0 0 4px' }}>All invoices paid</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: '0 0 4px' }}>All invoices paid</p>
           <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>No outstanding invoices.</p>
         </div>
       ) : (
-        <div style={{ background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
           {/* Select all header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: `1px solid ${C.bg}`, background: C.bg }}>
-            <button onClick={toggleAll} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${allSelected ? C.midnight : C.border}`, background: allSelected ? C.midnight : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-              {allSelected && <Check size={11} color="#FFF" />}
+            <button onClick={toggleAll} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${allSelected ? PRIMARY : C.border}`, background: allSelected ? PRIMARY : WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+              {allSelected && <Check size={11} color={WHITE} />}
             </button>
             <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {selected.size > 0 ? `${selected.size} selected · $${fmt(selectedTotal)}` : `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''}`}
@@ -384,21 +389,21 @@ function OutstandingTab({
           {invoices.map((inv, i) => {
             const isChecked = selected.has(inv.id)
             const overdueBadge = inv.daysOverdue > 60
-              ? { bg: '#FEE2E2', color: '#991B1B' }
+              ? { bg: DANGER_LIGHT, color: SCORE_CRITICAL_TEXT }
               : inv.daysOverdue > 30
-              ? { bg: '#FED7AA', color: '#9A3412' }
+              ? { bg: SCORE_POOR_BG, color: SCORE_POOR_TEXT }
               : inv.daysOverdue > 0
-              ? { bg: '#FEF3C7', color: '#92400E' }
-              : { bg: '#D1FAE5', color: '#065F46' }
+              ? { bg: WARN_LIGHT, color: WARN_DARK }
+              : { bg: SUCCESS_LIGHT, color: SUCCESS_DARK }
 
             return (
-              <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderTop: i === 0 ? 'none' : `1px solid ${C.bg}`, background: isChecked ? '#F8FAFC' : '#FFF' }}>
-                <button onClick={() => toggle(inv.id)} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isChecked ? C.midnight : C.border}`, background: isChecked ? C.midnight : '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                  {isChecked && <Check size={11} color="#FFF" />}
+              <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderTop: i === 0 ? 'none' : `1px solid ${C.bg}`, background: isChecked ? GRAY_100 : WHITE }}>
+                <button onClick={() => toggle(inv.id)} style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isChecked ? PRIMARY : C.border}`, background: isChecked ? PRIMARY : WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                  {isChecked && <Check size={11} color={WHITE} />}
                 </button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: C.midnight, margin: 0, fontFamily: 'monospace' }}>{inv.invoiceNumber}</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0, fontFamily: 'monospace' }}>{inv.invoiceNumber}</p>
                     <span style={{ fontSize: 9, fontWeight: 700, background: overdueBadge.bg, color: overdueBadge.color, borderRadius: 4, padding: '1px 5px' }}>
                       {inv.daysOverdue > 0 ? `${inv.daysOverdue}d OVERDUE` : 'CURRENT'}
                     </span>
@@ -408,7 +413,7 @@ function OutstandingTab({
                   </p>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: C.midnight, margin: 0 }}>${fmt(inv.totalAmount)}</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: 0 }}>${fmt(inv.totalAmount)}</p>
                   <p style={{ fontSize: 10, color: C.muted, margin: '2px 0 0', textTransform: 'capitalize' }}>{inv.status}</p>
                 </div>
               </div>
@@ -419,16 +424,16 @@ function OutstandingTab({
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8, background: C.midnight, borderRadius: 14, padding: '10px 16px', boxShadow: '0 8px 32px rgba(13,27,42,0.4)', whiteSpace: 'nowrap' }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#FFF', margin: 0 }}>{selected.size} selected</p>
-          <button onClick={() => setShowMarkPaid(true)} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: C.green, color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8, background: GRAY_900, borderRadius: 14, padding: '10px 16px', boxShadow: '0 8px 32px rgba(15,23,42,0.4)', whiteSpace: 'nowrap' }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: WHITE, margin: 0 }}>{selected.size} selected</p>
+          <button onClick={() => setShowMarkPaid(true)} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: C.green, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
             Mark Paid
           </button>
-          <button onClick={() => setShowReminder(true)} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: C.amber, color: C.midnight, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={() => setShowReminder(true)} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: C.amber, color: GRAY_900, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
             Send Reminder
           </button>
           <button onClick={() => setSelected(new Set())} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={13} color="#FFF" />
+            <X size={13} color={WHITE} />
           </button>
         </div>
       )}
@@ -436,23 +441,23 @@ function OutstandingTab({
       {/* Mark paid modal */}
       {showMarkPaid && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowMarkPaid(false)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: C.midnight, margin: '0 0 4px' }}>Mark as Paid</h3>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.4)' }} onClick={() => setShowMarkPaid(false)} />
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(15,23,42,0.15)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: GRAY_900, margin: '0 0 4px' }}>Mark as Paid</h3>
             <p style={{ fontSize: 13, color: C.muted, margin: '0 0 20px' }}>
-              Marking {selected.size} invoice{selected.size !== 1 ? 's' : ''} paid · <strong style={{ color: C.midnight }}>${fmt(selectedTotal)}</strong> total
+              Marking {selected.size} invoice{selected.size !== 1 ? 's' : ''} paid · <strong style={{ color: GRAY_900 }}>${fmt(selectedTotal)}</strong> total
             </p>
-            <div style={{ background: '#F8FAFC', border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 14px', marginBottom: 20, maxHeight: 120, overflowY: 'auto' }}>
+            <div style={{ background: GRAY_100, border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 14px', marginBottom: 20, maxHeight: 120, overflowY: 'auto' }}>
               {selectedInvoices.map(inv => (
                 <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                  <p style={{ fontSize: 12, color: C.midnight, margin: 0, fontFamily: 'monospace' }}>{inv.invoiceNumber}</p>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: C.midnight, margin: 0 }}>${fmt(inv.totalAmount)}</p>
+                  <p style={{ fontSize: 12, color: GRAY_900, margin: 0, fontFamily: 'monospace' }}>{inv.invoiceNumber}</p>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: GRAY_900, margin: 0 }}>${fmt(inv.totalAmount)}</p>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowMarkPaid(false)} style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${C.border}`, background: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: C.muted }}>Cancel</button>
-              <button onClick={handleMarkPaid} disabled={markingPaid} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: C.green, color: '#FFF', fontSize: 14, fontWeight: 700, cursor: markingPaid ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: markingPaid ? 0.7 : 1 }}>
+              <button onClick={() => setShowMarkPaid(false)} style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${C.border}`, background: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: C.muted }}>Cancel</button>
+              <button onClick={handleMarkPaid} disabled={markingPaid} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: C.green, color: WHITE, fontSize: 14, fontWeight: 700, cursor: markingPaid ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: markingPaid ? 0.7 : 1 }}>
                 {markingPaid ? <><Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</> : <><Check size={15} /> Confirm Paid</>}
               </button>
             </div>
@@ -463,23 +468,23 @@ function OutstandingTab({
       {/* Reminder modal */}
       {showReminder && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setShowReminder(false)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 460, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: C.midnight, margin: '0 0 4px' }}>Send Reminders</h3>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.4)' }} onClick={() => setShowReminder(false)} />
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 460, boxShadow: '0 24px 48px rgba(15,23,42,0.15)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: GRAY_900, margin: '0 0 4px' }}>Send Reminders</h3>
             <p style={{ fontSize: 13, color: C.muted, margin: '0 0 16px' }}>{selected.size} invoice{selected.size !== 1 ? 's' : ''} selected</p>
-            <div style={{ background: '#F8FAFC', border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px', marginBottom: 14, maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ background: GRAY_100, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px', marginBottom: 14, maxHeight: 180, overflowY: 'auto' }}>
               {selectedInvoices.map(inv => {
                 const hasEmail = inv.billToContact?.includes('@')
                 return (
                   <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.bg}` }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: C.midnight, margin: 0 }}>{inv.invoiceNumber} · {inv.billToName ?? '—'}</p>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: GRAY_900, margin: 0 }}>{inv.invoiceNumber} · {inv.billToName ?? '—'}</p>
                       <p style={{ fontSize: 11, color: C.muted, margin: '1px 0 0' }}>${fmt(inv.totalAmount)} · {inv.daysOverdue > 0 ? `${inv.daysOverdue}d overdue` : 'current'}</p>
                     </div>
                     {hasEmail && (
                       <a
                         href={`mailto:${inv.billToContact}?subject=Payment Reminder: ${inv.invoiceNumber}&body=${encodeURIComponent(`Hi,\n\nThis is a reminder that invoice ${inv.invoiceNumber} for $${fmt(inv.totalAmount)} is ${inv.daysOverdue > 0 ? `${inv.daysOverdue} days overdue` : 'due'}.\n\nPlease remit payment at your earliest convenience.\n\nThank you.`)}`}
-                        style={{ height: 28, padding: '0 10px', borderRadius: 7, background: '#E0F7FC', color: '#0097B2', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', flexShrink: 0 }}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 7, background: PRIMARY_TINT, color: PRIMARY_PILL_TEXT, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', flexShrink: 0 }}
                       >
                         <Mail size={11} /> Email
                       </a>
@@ -491,10 +496,10 @@ function OutstandingTab({
             <p style={{ fontSize: 11, color: C.muted, margin: '0 0 14px', lineHeight: 1.5 }}>
               Tip: click <strong>Email</strong> next to invoices with email contacts, or copy the summary below and paste into your email client.
             </p>
-            <button onClick={copyReminder} style={{ width: '100%', height: 42, borderRadius: 10, border: `1px solid ${C.border}`, background: copied ? C.green : '#FFF', color: copied ? '#FFF' : C.midnight, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, transition: 'background 200ms ease' }}>
+            <button onClick={copyReminder} style={{ width: '100%', height: 42, borderRadius: 10, border: `1px solid ${C.border}`, background: copied ? C.green : WHITE, color: copied ? WHITE : GRAY_900, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, transition: 'background 200ms ease' }}>
               {copied ? <><Check size={15} /> Copied!</> : <><Copy size={15} /> Copy Summary</>}
             </button>
-            <button onClick={() => setShowReminder(false)} style={{ width: '100%', height: 38, borderRadius: 10, border: `1px solid ${C.border}`, background: '#FFF', fontSize: 13, color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => setShowReminder(false)} style={{ width: '100%', height: 38, borderRadius: 10, border: `1px solid ${C.border}`, background: WHITE, fontSize: 13, color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
               Close
             </button>
           </div>
@@ -528,21 +533,21 @@ function RevenueTab({
     <div>
       {/* YTD summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-        <div style={{ background: C.midnight, borderRadius: 14, padding: '16px 18px' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 6px' }}>Invoiced YTD</p>
-          <p style={{ fontSize: 22, fontWeight: 800, color: '#FFFFFF', margin: 0 }}>${fmt(invoicedYtd)}</p>
+        <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 6px' }}>Invoiced YTD</p>
+          <p style={{ fontSize: 22, fontWeight: 800, color: GRAY_900, margin: 0 }}>${fmt(invoicedYtd)}</p>
         </div>
-        <div style={{ background: '#E0F7FC', borderRadius: 14, padding: '16px 18px' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: '#0097B2', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 6px' }}>Collected YTD</p>
-          <p style={{ fontSize: 22, fontWeight: 800, color: '#005F73', margin: 0 }}>${fmt(collectedYtd)}</p>
+        <div style={{ background: PRIMARY_TINT, borderRadius: 14, padding: '16px 18px' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: PRIMARY_PILL_TEXT, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 6px' }}>Collected YTD</p>
+          <p style={{ fontSize: 22, fontWeight: 800, color: PRIMARY_PILL_TEXT, margin: 0 }}>${fmt(collectedYtd)}</p>
           {invoicedYtd > 0 && (
-            <p style={{ fontSize: 10, color: '#0097B2', margin: '3px 0 0' }}>{Math.round((collectedYtd / invoicedYtd) * 100)}% collection rate</p>
+            <p style={{ fontSize: 10, color: PRIMARY_PILL_TEXT, margin: '3px 0 0' }}>{Math.round((collectedYtd / invoicedYtd) * 100)}% collection rate</p>
           )}
         </div>
       </div>
 
       {/* Bar chart */}
-      <div style={{ background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, padding: '18px 16px', marginBottom: 16 }}>
+      <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, padding: '18px 16px', marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 16px' }}>Monthly Revenue — Last 12 Months</p>
         {!hasAnyRevenue ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
@@ -557,7 +562,7 @@ function RevenueTab({
                   <div
                     title={`Invoiced: $${fmt(m.invoiced)}`}
                     style={{
-                      flex: 1, borderRadius: '3px 3px 0 0', background: C.navy,
+                      flex: 1, borderRadius: '3px 3px 0 0', background: GRAY_700,
                       height: m.invoiced > 0 ? `${Math.max(4, (m.invoiced / maxVal) * 100)}%` : '2px',
                       minHeight: 2, transition: 'height 400ms ease',
                     }}
@@ -582,7 +587,7 @@ function RevenueTab({
             </div>
             <div style={{ display: 'flex', gap: 14, marginTop: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 2, background: C.navy }} />
+                <div style={{ width: 10, height: 10, borderRadius: 2, background: GRAY_700 }} />
                 <span style={{ fontSize: 11, color: C.muted }}>Invoiced</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -596,7 +601,7 @@ function RevenueTab({
 
       {/* Top customers */}
       {topCustomers.length > 0 && (
-        <div style={{ background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.bg}` }}>
             <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0 }}>Top Customers — Last 12 Months</p>
           </div>
@@ -608,10 +613,10 @@ function RevenueTab({
                   <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>{(c.name || '?')[0].toUpperCase()}</span>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: C.midnight, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
                   <p style={{ fontSize: 11, color: C.muted, margin: '1px 0 0' }}>{c.invoiceCount} invoice{c.invoiceCount !== 1 ? 's' : ''} · {pct}% paid</p>
                 </div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: C.midnight, margin: 0, flexShrink: 0 }}>${fmt(c.totalInvoiced)}</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: 0, flexShrink: 0 }}>${fmt(c.totalInvoiced)}</p>
               </div>
             )
           })}
@@ -699,27 +704,27 @@ function SettingsTab({
   }
 
   const labelStyle: React.CSSProperties = {
-    fontSize: 12, fontWeight: 700, color: '#4A5568',
+    fontSize: 12, fontWeight: 700, color: GRAY_700,
     textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6,
   }
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 44, border: `1px solid ${C.border}`, borderRadius: 10,
     padding: '0 12px 0 32px', fontSize: 15, outline: 'none', fontFamily: 'inherit',
-    background: '#FAFAFA', color: C.midnight, boxSizing: 'border-box',
+    background: GRAY_100, color: GRAY_900, boxSizing: 'border-box',
   }
 
   return (
     <div>
-      <div style={{ background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, position: 'relative' }}>
+      <div style={{ background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, position: 'relative' }}>
         <LoadingOverlay show={loading || saving} />
         <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>Default Billing Type</label>
-          <div style={{ display: 'flex', background: '#F0F4F8', borderRadius: 10, padding: 3 }}>
+          <div style={{ display: 'flex', background: GRAY_100, borderRadius: 10, padding: 3 }}>
             {(['daily', 'monthly'] as BillingType[]).map(type => (
               <button key={type} onClick={() => setDefaultBillingType(type)} style={{
                 flex: 1, height: 38, borderRadius: 8, border: 'none',
-                background: defaultBillingType === type ? C.midnight : 'transparent',
-                color: defaultBillingType === type ? '#FFF' : '#4A5568',
+                background: defaultBillingType === type ? PRIMARY : 'transparent',
+                color: defaultBillingType === type ? WHITE : GRAY_700,
                 fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
                 textTransform: 'capitalize', transition: 'background 150ms ease, color 150ms ease',
               }}>
@@ -731,7 +736,7 @@ function SettingsTab({
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Default Daily Rate</label>
           <div style={{ position: 'relative' }}>
-            <DollarSign size={14} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+            <DollarSign size={14} color={GRAY_500} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
             <input type="number" min="0" step="0.01" placeholder="e.g. 25.00" value={defaultDailyRate} onChange={e => setDefaultDailyRate(e.target.value)} style={inputStyle} />
           </div>
           <p style={{ fontSize: 11, color: C.muted, margin: '5px 0 0' }}>Per vehicle, per day on lot</p>
@@ -739,14 +744,14 @@ function SettingsTab({
         <div style={{ marginBottom: 24 }}>
           <label style={labelStyle}>Default Monthly Rate</label>
           <div style={{ position: 'relative' }}>
-            <DollarSign size={14} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+            <DollarSign size={14} color={GRAY_500} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
             <input type="number" min="0" step="0.01" placeholder="e.g. 500.00" value={defaultMonthlyRate} onChange={e => setDefaultMonthlyRate(e.target.value)} style={inputStyle} />
           </div>
           <p style={{ fontSize: 11, color: C.muted, margin: '5px 0 0' }}>Per vehicle, per 30 days on lot</p>
         </div>
         <button onClick={handleSave} disabled={saving || loading} style={{
           width: '100%', height: 46, borderRadius: 12, border: 'none',
-          background: saved ? C.green : C.midnight, color: '#FFF',
+          background: saved ? C.green : PRIMARY, color: WHITE,
           fontSize: 15, fontWeight: 700, cursor: saving ? 'default' : 'pointer',
           fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           opacity: saving ? 0.7 : 1, transition: 'background 300ms ease',
@@ -757,20 +762,20 @@ function SettingsTab({
       </div>
 
       {/* ── Billing Reminders ─────────────────────────────────────────── */}
-      <div style={{ marginTop: 16, background: '#FFF', border: `1px solid ${C.border}`, borderRadius: 16, padding: 20 }}>
+      <div style={{ marginTop: 16, background: WHITE, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(244,166,42,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: 14 }}>🔔</span>
           </div>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 800, color: C.midnight, margin: 0 }}>Billing Reminders</p>
+            <p style={{ fontSize: 13, fontWeight: 800, color: GRAY_900, margin: 0 }}>Billing Reminders</p>
             <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>Get an in-app alert when it's time to bill</p>
           </div>
         </div>
 
         {/* Day of month picker */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: GRAY_700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
             Bill on the ___ of each month
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -778,9 +783,9 @@ function SettingsTab({
             <button
               onClick={() => setBillingDay(null)}
               style={{
-                width: 40, height: 34, borderRadius: 8, border: `1.5px solid ${billingDay === null ? C.midnight : C.border}`,
-                background: billingDay === null ? C.midnight : '#FFF',
-                color: billingDay === null ? '#FFF' : C.muted,
+                width: 40, height: 34, borderRadius: 8, border: `1.5px solid ${billingDay === null ? PRIMARY : C.border}`,
+                background: billingDay === null ? PRIMARY : WHITE,
+                color: billingDay === null ? WHITE : C.muted,
                 fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
               }}
             >Off</button>
@@ -791,8 +796,8 @@ function SettingsTab({
                 onClick={() => setBillingDay(d)}
                 style={{
                   width: 34, height: 34, borderRadius: 8, border: `1.5px solid ${billingDay === d ? C.amber : C.border}`,
-                  background: billingDay === d ? C.amber : '#FFF',
-                  color: billingDay === d ? C.midnight : C.muted,
+                  background: billingDay === d ? C.amber : WHITE,
+                  color: billingDay === d ? GRAY_900 : C.muted,
                   fontSize: 12, fontWeight: billingDay === d ? 800 : 500, cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >{d}</button>
@@ -808,7 +813,7 @@ function SettingsTab({
         {/* Email myself toggle */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: C.bg, borderRadius: 10, marginBottom: 16 }}>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 600, color: C.midnight, margin: 0 }}>Show in-app notification</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>Show in-app notification</p>
             <p style={{ fontSize: 11, color: C.muted, margin: '2px 0 0' }}>Banner on the billing dashboard with a mailto link to email yourself a summary</p>
           </div>
           <button
@@ -820,7 +825,7 @@ function SettingsTab({
               transition: 'background 200ms ease', flexShrink: 0, marginLeft: 16,
             }}
           >
-            <div style={{ width: 18, height: 18, borderRadius: 9, background: '#FFF', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: WHITE, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
           </button>
         </div>
 
@@ -829,7 +834,7 @@ function SettingsTab({
           disabled={savingReminder}
           style={{
             width: '100%', height: 44, borderRadius: 12, border: 'none',
-            background: reminderSaved ? C.green : C.navy, color: '#FFF',
+            background: reminderSaved ? C.green : PRIMARY, color: WHITE,
             fontSize: 14, fontWeight: 700, cursor: savingReminder ? 'default' : 'pointer',
             fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             opacity: savingReminder ? 0.7 : 1, transition: 'background 300ms ease',
@@ -941,17 +946,17 @@ export default function LotBillingPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
-            <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 900, color: C.midnight, margin: '0 0 3px' }}>Lot Billing</h1>
+            <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 900, color: GRAY_900, margin: '0 0 3px' }}>Lot Billing</h1>
             <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Track unbilled units, outstanding invoices, and revenue</p>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => setShowExport(true)}
-              style={{ height: 36, padding: '0 12px', borderRadius: 9, border: `1px solid ${C.border}`, background: '#FFF', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: C.midnight, fontFamily: 'inherit' }}
+              style={{ height: 36, padding: '0 12px', borderRadius: 9, border: `1px solid ${C.border}`, background: WHITE, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: GRAY_900, fontFamily: 'inherit' }}
             >
-              <Download size={14} color={C.midnight} /> Export
+              <Download size={14} color={GRAY_900} /> Export
             </button>
-            <button onClick={handleRefreshAll} disabled={kpisLoading} style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: kpisLoading ? 'default' : 'pointer' }}>
+            <button onClick={handleRefreshAll} disabled={kpisLoading} style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: kpisLoading ? 'default' : 'pointer' }}>
               <RefreshCw size={15} color={C.muted} style={kpisLoading ? { animation: 'spin 0.8s linear infinite' } : undefined} />
             </button>
           </div>

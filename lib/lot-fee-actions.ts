@@ -91,13 +91,15 @@ export interface VehicleCharge {
   id: string
   company_id: string
   vehicle_id: string
-  charge_type: 'report' | 'custom_fee'
+  charge_type: 'report' | 'custom_fee' | 'service'
   label: string
   amount: number
   report_type: 'checkin' | 'checkout' | 'one_off' | null
   inspection_id: string | null
   fee_type_id: string | null
   is_recurring: boolean
+  performed_at: string
+  notes: string | null
   created_at: string
   created_by: string | null
 }
@@ -169,7 +171,7 @@ export async function applyReportCostToVehicle(payload: {
 
 export async function updateCharge(
   id: string,
-  data: { label?: string; amount?: number }
+  data: { label?: string; amount?: number; performed_at?: string; notes?: string }
 ): Promise<void> {
   const { error } = await createClient()
     .from('vehicle_charges')

@@ -1,55 +1,155 @@
 import { createClient } from '@/lib/supabase/client'
-import { getLotSpots, calculateVehicleBilling } from '@/lib/lot-actions'
+import { calculateVehicleBilling } from '@/lib/lot-actions'
+import { getCompanyStatusDefaults, getCustomerStatusOverrides, getCustomerRateOverride } from '@/lib/billing-defaults-actions'
+import type { WorkOrderStatus } from '@/lib/work-order-status'
 
-export type SimpleVehicleStatus = 'pending_arrival' | 'on_lot' | 'picked_up'
-
-// Same bucketing the home dashboard already uses to group storage_vehicles
-// by lifecycle stage — kept here so both the mobile and desktop dashboards
-// (and the on-lot count below) share one definition instead of two.
-export function effectiveStatus(v: { lifecycle_status?: string | null; status?: string | null }): SimpleVehicleStatus | null {
-  const s = v.lifecycle_status || v.status
-  if (s === 'queued' || s === 'pending_arrival' || s === 'pending_inspection') return 'pending_arrival'
-  if (s === 'on_lot' || s === 'inspected' || s === 'releasing' || s === 'pending_pickup') return 'on_lot'
-  if (s === 'released' || s === 'picked_up') return 'picked_up'
-  return null
-}
+// Same 3 statuses as getSpotPinColor()'s amber bucket — kept as a separate
+// literal list rather than importing that function's private set, since this
+// queries the DB directly (an `in` filter) rather than classifying a status
+// value already in hand.
+const ATTENTION_STATUSES = ['on_lot_pending_repairs', 'on_hold', 'pending_release']
 
 export async function getVehiclesOnLotCount(companyId: string): Promise<number> {
   const supabase = createClient()
-  const { data } = await supabase
+  const { count } = await supabase
     .from('storage_vehicles')
-    .select('id, lifecycle_status, status')
+    .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
-  return (data ?? []).filter(v => effectiveStatus(v) === 'on_lot').length
+    .not('work_order_status', 'in', '(pending_arrival,released)')
+  return count ?? 0
+}
+
+// "Arriving today" — there's no dedicated expected-arrival-date field on
+// storage_vehicles; a pending_arrival row's arrived_at is set to "now" at
+// creation time (see addVehicleToSystem), so this is really "added to the
+// system today while still pending," the closest available proxy.
+export async function getArrivalsTodayCount(companyId: string): Promise<number> {
+  const supabase = createClient()
+  const startOfDay = new Date()
+  startOfDay.setHours(0, 0, 0, 0)
+  const { count } = await supabase
+    .from('storage_vehicles')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .eq('work_order_status', 'pending_arrival')
+    .gte('arrived_at', startOfDay.toISOString())
+  return count ?? 0
+}
+
+export async function getNeedsAttentionCount(companyId: string): Promise<number> {
+  const supabase = createClient()
+  const { count } = await supabase
+    .from('storage_vehicles')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .in('work_order_status', ATTENTION_STATUSES)
+  return count ?? 0
+}
+
+export interface TodaysQueueVehicle {
+  id: string
+  vin: string
+  year: string | null
+  make: string | null
+  model: string | null
+  work_order_status: WorkOrderStatus
+}
+
+export interface TodaysQueue {
+  arrivingToday: TodaysQueueVehicle[]
+  readyForRelease: TodaysQueueVehicle[]
+  needsStatusUpdate: TodaysQueueVehicle[]
+}
+
+// Shared by the Vehicles list's Today strip and the Dashboard's Today's Queue
+// — one query set, not duplicated per page. "Needs status update" = active
+// (non pending_arrival, non released) and work_order_status hasn't changed in
+// over 24h, using updated_at, which updateWorkOrderStatus() always bumps on a
+// real status change.
+export async function getTodaysQueue(companyId: string): Promise<TodaysQueue> {
+  const supabase = createClient()
+  const startOfDay = new Date()
+  startOfDay.setHours(0, 0, 0, 0)
+  const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const SELECT = 'id, vin, year, make, model, work_order_status'
+
+  const [arriving, ready, stale] = await Promise.all([
+    supabase.from('storage_vehicles').select(SELECT)
+      .eq('company_id', companyId).eq('work_order_status', 'pending_arrival')
+      .gte('arrived_at', startOfDay.toISOString()),
+    supabase.from('storage_vehicles').select(SELECT)
+      .eq('company_id', companyId).eq('work_order_status', 'ready_for_release'),
+    supabase.from('storage_vehicles').select(SELECT)
+      .eq('company_id', companyId)
+      .not('work_order_status', 'in', '(pending_arrival,released)')
+      .lt('updated_at', staleThreshold),
+  ])
+
+  return {
+    arrivingToday: (arriving.data ?? []) as TodaysQueueVehicle[],
+    readyForRelease: (ready.data ?? []) as TodaysQueueVehicle[],
+    needsStatusUpdate: (stale.data ?? []) as TodaysQueueVehicle[],
+  }
 }
 
 export async function getInspectionsCompletedTodayCount(companyId: string): Promise<number> {
   const supabase = createClient()
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
+  // No completed_at column exists on vehicle_inspections — report_generated_at
+  // is set at completion time and is the same field the Inspection History
+  // section already treats as the completion timestamp.
   const { count } = await supabase
     .from('vehicle_inspections')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('status', 'completed')
-    .gte('completed_at', startOfDay.toISOString())
+    .gte('report_generated_at', startOfDay.toISOString())
   return count ?? 0
 }
 
-// Mirrors the exact accrual math storage-lot-view.tsx already uses for the
-// Lot Map's "Accruing/day" stat tile — same source functions, same formula,
-// just called again here so the dashboard can show the same number.
+// This phase (Service Logging / status-based billable defaults) owns this math;
+// Phase 6 (Lot Map) will later read it for its own revenue stat bar but doesn't
+// build any of it. Deliberately does NOT go through lib/lot-actions.ts's
+// getLotSpots() — that function backs the Lot Map's own protected components,
+// and this phase stays fully isolated from Lot Map, so this queries active
+// spot assignments independently instead of extending shared Lot Map plumbing.
 export async function getLotDailyAccrual(companyId: string, locationId?: string | null): Promise<number> {
   const supabase = createClient()
-  const [spots, companyRes] = await Promise.all([
-    getLotSpots(companyId, locationId),
+
+  let query = supabase
+    .from('lot_vehicle_assignments')
+    .select(`
+      vehicle:storage_vehicles!inner(arrived_at, released_at, billing_type, daily_rate, monthly_rate, work_order_status, customer_id),
+      spot:lot_spots!inner(company_id, location_id)
+    `)
+    .is('unassigned_at', null)
+    .eq('spot.company_id', companyId)
+  if (locationId) query = query.eq('spot.location_id', locationId)
+  else if (locationId === null) query = query.is('spot.location_id', null)
+
+  const [{ data: assignments }, companyRes, statusDefaults] = await Promise.all([
+    query,
     supabase.from('companies').select('default_daily_rate, default_monthly_rate, default_billing_type').eq('id', companyId).single(),
+    getCompanyStatusDefaults(companyId),
   ])
+
   const defaults = companyRes.data ?? {}
-  return spots.reduce((sum, spot) => {
-    if (!spot.active_assignment?.vehicle) return sum
-    const result = calculateVehicleBilling(spot.active_assignment.vehicle, defaults)
-    if (result.rate === null) return sum
+  const vehicles = (assignments ?? []).map((a: any) => a.vehicle).filter(Boolean)
+
+  const customerIds = Array.from(new Set(vehicles.map((v: any) => v.customer_id).filter(Boolean))) as string[]
+  const [rateEntries, statusOverrideEntries] = await Promise.all([
+    Promise.all(customerIds.map(async id => [id, await getCustomerRateOverride(id)] as const)),
+    Promise.all(customerIds.map(async id => [id, await getCustomerStatusOverrides(id)] as const)),
+  ])
+  const rateByCustomer = new Map(rateEntries)
+  const statusOverrideByCustomer = new Map(statusOverrideEntries)
+
+  return vehicles.reduce((sum: number, v: any) => {
+    const customer = v.customer_id ? rateByCustomer.get(v.customer_id) : null
+    const customerStatusOverride = v.customer_id ? statusOverrideByCustomer.get(v.customer_id) : null
+    const result = calculateVehicleBilling(v, defaults, statusDefaults, customer, customerStatusOverride)
+    if (result.rate === null || !result.isBillable) return sum
     return sum + (result.billingType === 'daily' ? result.rate : result.rate / 30)
   }, 0)
 }

@@ -1,21 +1,20 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { useAuth } from '@/contexts/auth-context'
 import { Settings, Car, TrendingUp, TrendingDown, Maximize2, X } from 'lucide-react'
 import LotGrid from './lot-grid'
 import LotSetupOverlay from './lot-setup-overlay'
 import AssignVehicleModal from './assign-vehicle-modal'
 import VehicleDetailSlideOver from './vehicle-detail-slide-over'
-import { getLotSpots, getLotBackground, getLotShapes, calculateVehicleBilling } from '@/lib/lot-actions'
-import type { LotSpot, LotShape } from '@/lib/lot-actions'
+import OffLotSideList from './off-lot-side-list'
+import { getLotSpots, getLotBackground, getLotShapes, getAvailableVehicles, assignVehicleToSpot } from '@/lib/lot-actions'
+import type { LotSpot, LotShape, AvailableVehicle } from '@/lib/lot-actions'
+import { getLotDailyAccrual } from '@/lib/dashboard-stats'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
-
-const MIDNIGHT = '#0D1B2A'
-const DEEP_NAVY = '#1B2D40'
-const CYAN = '#00B4D8'
-const AMBER = '#F4A62A'
+import { PRIMARY, AMBER, WHITE, GRAY_300, GRAY_500, GRAY_700, GRAY_900 } from '@/lib/design-tokens'
 
 interface Props {
   companyId: string
@@ -34,6 +33,8 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const [shapes, setShapes] = useState<LotShape[]>([])
   const [bgUrl, setBgUrl]   = useState<string | null>(null)
   const [companyDefaults, setCompanyDefaults] = useState<{ default_daily_rate: number | null; default_monthly_rate: number | null; default_billing_type: string | null } | null>(null)
+  const [dailyAccruing, setDailyAccruing] = useState(0)
+  const [availableVehicles, setAvailableVehicles] = useState<AvailableVehicle[]>([])
   const [bgPan, setBgPan]   = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [bgRotation, setBgRotation] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -60,14 +61,18 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   }
 
   const load = async () => {
-    const [s, sh, bg, companyRes] = await Promise.all([
+    const [s, sh, bg, companyRes, accrual, avail] = await Promise.all([
       getLotSpots(companyId, locationId),
       getLotShapes(companyId, locationId),
       getLotBackground(companyId, locationId),
       createClient().from('companies').select('default_daily_rate, default_monthly_rate, default_billing_type').eq('id', companyId).single(),
+      getLotDailyAccrual(companyId, locationId),
+      getAvailableVehicles(companyId),
     ])
     setSpots(s); setShapes(sh); setBgUrl(bg)
     setCompanyDefaults(companyRes.data ?? null)
+    setDailyAccruing(accrual)
+    setAvailableVehicles(avail)
     setLoading(false)
   }
 
@@ -78,6 +83,20 @@ export default function StorageLotView({ companyId, locationId }: Props) {
     else setAssignSpot(spot)
   }
 
+  const handleAssign = async (vehicleId: string, spotId: string) => {
+    if (!user?.id) return
+    await assignVehicleToSpot(spotId, vehicleId, user.id)
+    load()
+  }
+
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const handleDragEnd = (e: DragEndEvent) => {
+    const activeId = String(e.active.id)
+    const overId = e.over ? String(e.over.id) : null
+    if (!overId || !activeId.startsWith('vehicle:') || !overId.startsWith('spot:')) return
+    handleAssign(activeId.slice('vehicle:'.length), overId.slice('spot:'.length))
+  }
+
   const occupied = spots.filter(s => s.active_assignment).length
   const total = spots.length
   const available = total - occupied
@@ -86,33 +105,28 @@ export default function StorageLotView({ companyId, locationId }: Props) {
   const defaults = (companyDefaults ?? {}) as NonNullable<typeof companyDefaults>
   const defaultDailyRate = defaults.default_daily_rate ?? null
 
-  // Sum daily accrual across occupied vehicles
-  const dailyAccruing = spots.reduce((sum, spot) => {
-    if (!spot.active_assignment?.vehicle) return sum
-    const v = spot.active_assignment.vehicle
-    const result = calculateVehicleBilling(v, defaults)
-    if (result.rate === null) return sum
-    return sum + (result.billingType === 'daily' ? result.rate : result.rate / 30)
-  }, 0)
-
-  // Opportunity cost: empty spots × default daily rate
+  // dailyAccruing comes from lib/dashboard-stats.ts's getLotDailyAccrual — the
+  // real status-based billable/rate precedence chain (Phase 5), not a local
+  // recalculation. Opportunity cost below stays a Lot-Map-only metric (empty
+  // spots × default daily rate) — Phase 5 never owned that number.
   const dailyOpportunityCost = defaultDailyRate != null ? available * defaultDailyRate : null
 
   if (loading) {
     return (
       <div style={{ padding: 24 }}>
-        <div style={{ height: 60, background: '#E2E8F0', borderRadius: 12, marginBottom: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />
-        <div style={{ paddingBottom: '56.25%', background: '#E2E8F0', borderRadius: 12, animation: 'pulse 1.5s ease-in-out infinite' }} />
+        <div style={{ height: 60, background: GRAY_300, borderRadius: 12, marginBottom: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />
+        <div style={{ paddingBottom: '56.25%', background: GRAY_300, borderRadius: 12, animation: 'pulse 1.5s ease-in-out infinite' }} />
         <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
       </div>
     )
   }
 
   return (
+    <DndContext sensors={dndSensors} onDragEnd={handleDragEnd}>
     <div style={{ padding: isMobile ? '12px 16px' : 24, maxWidth: 1100 }}>
       {/* Title row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isMobile ? 12 : 16 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: MIDNIGHT, margin: 0 }}>
+        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: GRAY_900, margin: 0 }}>
           Lot Map
         </h1>
 
@@ -121,8 +135,8 @@ export default function StorageLotView({ companyId, locationId }: Props) {
             onClick={() => setSetupOpen(true)}
             style={{
               height: isMobile ? 34 : 38, padding: '0 14px', borderRadius: 12,
-              border: 'none', background: MIDNIGHT,
-              color: CYAN, fontSize: 13, fontWeight: 600,
+              border: `1px solid ${GRAY_300}`, background: WHITE,
+              color: GRAY_900, fontSize: 13, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 6,
             }}
@@ -135,15 +149,15 @@ export default function StorageLotView({ companyId, locationId }: Props) {
       {/* Stat tiles */}
       <div style={{ display: 'flex', gap: 10, marginBottom: isMobile ? 12 : 16 }}>
         <StatTile
-          icon={<Car size={14} color={CYAN} />}
+          icon={<Car size={14} color={PRIMARY} />}
           value={`${occupied}/${total}`}
-          valueColor={CYAN}
+          valueColor={PRIMARY}
           label={`Occupied · ${available} free`}
         />
         <StatTile
-          icon={<TrendingUp size={14} color={CYAN} />}
+          icon={<TrendingUp size={14} color={PRIMARY} />}
           value={`$${dailyAccruing.toFixed(0)}/d`}
-          valueColor={CYAN}
+          valueColor={PRIMARY}
           label="Accruing"
         />
         <StatTile
@@ -154,10 +168,19 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         />
       </div>
 
+      {/* Off-lot side list */}
+      <OffLotSideList
+        vehicles={availableVehicles}
+        emptySpots={spots.filter(s => !s.active_assignment)}
+        allSpots={spots}
+        shapes={shapes}
+        onAssign={handleAssign}
+      />
+
       {/* Map card */}
       <div style={{
         position: 'relative', borderRadius: 24, overflow: 'hidden',
-        border: `1px solid rgba(13,27,42,0.1)`, boxShadow: '0 10px 24px rgba(13,27,42,0.12)',
+        border: `1px solid ${GRAY_300}`, boxShadow: '0 10px 24px rgba(15,23,42,0.08)',
       }}>
         <LotGrid
           spots={spots}
@@ -176,22 +199,24 @@ export default function StorageLotView({ companyId, locationId }: Props) {
           aria-label="Expand map"
           style={{
             position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: '50%',
-            background: 'rgba(13,27,42,0.75)', border: '1px solid rgba(0,180,216,0.5)',
+            background: WHITE, border: `1px solid ${GRAY_300}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 15,
+            boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
           }}
         >
-          <Maximize2 size={16} color={CYAN} />
+          <Maximize2 size={16} color={GRAY_900} />
         </button>
 
         <div style={{
           position: 'absolute', bottom: 12, left: 12, display: 'flex', flexWrap: 'wrap',
-          alignItems: 'center', gap: '4px 10px', background: 'rgba(13,27,42,0.75)',
+          alignItems: 'center', gap: '4px 10px', background: WHITE, border: `1px solid ${GRAY_300}`,
           padding: '6px 10px', borderRadius: 14, maxWidth: 'calc(100% - 24px)', zIndex: 15,
+          boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
         }}>
           {LEGEND.map(l => (
             <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', whiteSpace: 'nowrap' }}>{l.label}</span>
+              <span style={{ fontSize: 9, color: GRAY_700, whiteSpace: 'nowrap' }}>{l.label}</span>
             </div>
           ))}
         </div>
@@ -199,7 +224,7 @@ export default function StorageLotView({ companyId, locationId }: Props) {
 
       {/* Fullscreen mode */}
       {isFullscreen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: MIDNIGHT }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: WHITE }}>
           <LotGrid
             spots={spots}
             shapes={shapes}
@@ -213,16 +238,16 @@ export default function StorageLotView({ companyId, locationId }: Props) {
 
           <div style={{
             position: 'absolute', top: 0, left: 0, width: '100%', padding: '20px 16px 32px',
-            background: 'linear-gradient(180deg, rgba(13,27,42,0.92) 0%, rgba(13,27,42,0.55) 65%, rgba(13,27,42,0) 100%)',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.65) 65%, rgba(255,255,255,0) 100%)',
             zIndex: 5, pointerEvents: 'none',
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'auto' }}>
               <div>
-                <div style={{ color: '#FFF', fontSize: 17, fontWeight: 800, marginBottom: 6 }}>Lot Map</div>
+                <div style={{ color: GRAY_900, fontSize: 17, fontWeight: 800, marginBottom: 6 }}>Lot Map</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, flexWrap: 'wrap' }}>
-                  <span style={{ color: CYAN, fontWeight: 700 }}>{occupied}/{total} <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>occupied</span></span>
-                  <span style={{ color: CYAN, fontWeight: 700 }}>${dailyAccruing.toFixed(0)}/d <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>accruing</span></span>
-                  <span style={{ color: AMBER, fontWeight: 700 }}>${(dailyOpportunityCost ?? 0).toFixed(0)}/d <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>lost</span></span>
+                  <span style={{ color: PRIMARY, fontWeight: 700 }}>{occupied}/{total} <span style={{ color: GRAY_500, fontWeight: 400 }}>occupied</span></span>
+                  <span style={{ color: PRIMARY, fontWeight: 700 }}>${dailyAccruing.toFixed(0)}/d <span style={{ color: GRAY_500, fontWeight: 400 }}>accruing</span></span>
+                  <span style={{ color: AMBER, fontWeight: 700 }}>${(dailyOpportunityCost ?? 0).toFixed(0)}/d <span style={{ color: GRAY_500, fontWeight: 400 }}>lost</span></span>
                 </div>
               </div>
               <button
@@ -230,11 +255,12 @@ export default function StorageLotView({ companyId, locationId }: Props) {
                 aria-label="Exit fullscreen"
                 style={{
                   width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                  background: 'rgba(13,27,42,0.85)', border: `1px solid ${CYAN}`,
+                  background: WHITE, border: `1px solid ${GRAY_300}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
                 }}
               >
-                <X size={17} color={CYAN} />
+                <X size={17} color={GRAY_900} />
               </button>
             </div>
           </div>
@@ -245,13 +271,13 @@ export default function StorageLotView({ companyId, locationId }: Props) {
               style={{
                 position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)',
                 display: 'flex', alignItems: 'center', gap: 8,
-                background: 'rgba(13,27,42,0.85)', border: `1px solid rgba(0,180,216,0.5)`,
-                borderRadius: 999, padding: '12px 16px', boxShadow: '0 6px 16px rgba(0,0,0,0.35)',
+                background: WHITE, border: `1px solid ${GRAY_300}`,
+                borderRadius: 999, padding: '12px 16px', boxShadow: '0 6px 16px rgba(15,23,42,0.15)',
                 cursor: 'pointer', fontFamily: 'inherit', zIndex: 5,
               }}
             >
-              <Settings size={16} color={CYAN} />
-              <span style={{ color: '#FFF', fontSize: 13, fontWeight: 600 }}>Edit Layout</span>
+              <Settings size={16} color={GRAY_900} />
+              <span style={{ color: GRAY_900, fontSize: 13, fontWeight: 600 }}>Edit Layout</span>
             </button>
           )}
         </div>
@@ -296,26 +322,24 @@ export default function StorageLotView({ companyId, locationId }: Props) {
         />
       )}
     </div>
+    </DndContext>
   )
 }
 
 const LEGEND = [
-  { label: 'Empty',           color: '#E1E8F0' },
-  { label: 'Pending Arrival', color: '#94A3B8' },
-  { label: 'On Lot',          color: '#00B4D8' },
-  { label: 'Pending Pickup',  color: '#F4A62A' },
-  { label: 'Picked Up',       color: '#10B981' },
-  { label: 'Completed',       color: '#9333EA' },
+  { label: 'Empty',           color: GRAY_300 },
+  { label: 'Occupied',        color: PRIMARY },
+  { label: 'Needs Attention', color: AMBER },
 ]
 
 function StatTile({ icon, value, valueColor, label }: { icon: ReactNode; value: string; valueColor: string; label: string }) {
   return (
-    <div style={{ flex: 1, background: DEEP_NAVY, borderRadius: 16, padding: 12, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+    <div style={{ flex: 1, background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {icon}
         <span style={{ fontSize: 15, fontWeight: 700, color: valueColor }}>{value}</span>
       </div>
-      <span style={{ fontSize: 11, color: 'rgba(240,244,248,0.55)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 11, color: GRAY_500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </div>
   )
 }

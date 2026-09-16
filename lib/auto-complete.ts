@@ -28,7 +28,6 @@ export async function checkAndAutoCompleteExpired(companyId: string): Promise<vo
           .from('vehicle_inspections')
           .update({
             status: 'completed',
-            completed_at: now,
             locked_at: now,
             auto_completed: true,
             vehicle_score: scoreResult.score,

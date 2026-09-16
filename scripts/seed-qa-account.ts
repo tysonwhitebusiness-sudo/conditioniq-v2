@@ -37,13 +37,18 @@ const FEATURE_FLAGS = [
   'reporting_export',
 ] as const
 
+// work_order_status is the authoritative column (see supabase/migrations/
+// 20260805000002_add_work_order_status.sql onward). status/lifecycle_status
+// are dual-written below from LEGACY_STATUS_MAP so older, not-yet-migrated
+// Lot Map components (see lib/work-order-status.ts's own copy of this map)
+// keep reading correct data too.
 const SAMPLE_VEHICLES = [
   {
     vin: 'QA00000000000001',
     year: '2021',
     make: 'Toyota',
     model: 'Camry',
-    lifecycle_status: 'pending_arrival',
+    work_order_status: 'pending_arrival',
     arrived_at: daysAgo(0),
     daily_rate: 8.00,
     billing_type: 'daily',
@@ -53,7 +58,7 @@ const SAMPLE_VEHICLES = [
     year: '2019',
     make: 'Honda',
     model: 'Accord',
-    lifecycle_status: 'on_lot',
+    work_order_status: 'checked_in',
     arrived_at: daysAgo(14),
     daily_rate: 10.00,
     billing_type: 'daily',
@@ -63,7 +68,7 @@ const SAMPLE_VEHICLES = [
     year: '2022',
     make: 'Ford',
     model: 'F-150',
-    lifecycle_status: 'on_lot',
+    work_order_status: 'in_storage',
     arrived_at: daysAgo(7),
     daily_rate: 12.00,
     billing_type: 'daily',
@@ -73,7 +78,7 @@ const SAMPLE_VEHICLES = [
     year: '2018',
     make: 'Chevrolet',
     model: 'Malibu',
-    lifecycle_status: 'completed',
+    work_order_status: 'released',
     arrived_at: daysAgo(3),
     daily_rate: null,
     billing_type: null,
@@ -83,13 +88,22 @@ const SAMPLE_VEHICLES = [
     year: '2020',
     make: 'Nissan',
     model: 'Altima',
-    lifecycle_status: 'picked_up',
+    work_order_status: 'released',
     arrived_at: daysAgo(30),
     released_at: daysAgo(2),
     daily_rate: 8.00,
     billing_type: 'daily',
   },
-]
+] as const
+
+// Mirrors lib/work-order-status.ts's LEGACY_STATUS_MAP — kept as a local copy
+// since this standalone script doesn't resolve the app's @/ path alias.
+const LEGACY_STATUS_MAP: Record<string, { status: string; lifecycle_status: string }> = {
+  pending_arrival: { status: 'active', lifecycle_status: 'pending_arrival' },
+  checked_in: { status: 'pending_inspection', lifecycle_status: 'on_lot' },
+  in_storage: { status: 'inspected', lifecycle_status: 'on_lot' },
+  released: { status: 'released', lifecycle_status: 'picked_up' },
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -240,26 +254,52 @@ async function seed() {
       .eq('company_id', companyId)
       .single()
 
-    const payload = {
-      company_id: companyId,
-      vin: v.vin,
-      year: v.year,
-      make: v.make,
-      model: v.model,
-      lifecycle_status: v.lifecycle_status,
-      arrived_at: v.arrived_at,
-      released_at: (v as any).released_at ?? null,
-      daily_rate: v.daily_rate ?? null,
-      billing_type: v.billing_type ?? null,
-    }
+    const legacy = LEGACY_STATUS_MAP[v.work_order_status]
 
     if (existing) {
-      await supabase.from('storage_vehicles').update(payload).eq('id', existing.id)
+      await supabase.from('storage_vehicles').update({
+        year: v.year, make: v.make, model: v.model,
+        work_order_status: v.work_order_status,
+        status: legacy.status, lifecycle_status: legacy.lifecycle_status,
+        arrived_at: v.arrived_at,
+        released_at: (v as any).released_at ?? null,
+        daily_rate: v.daily_rate ?? null,
+        billing_type: v.billing_type ?? null,
+      }).eq('id', existing.id)
     } else {
-      await supabase.from('storage_vehicles').insert(payload)
+      // vehicle_master_id is NOT NULL — resolve-or-create the master record
+      // per VIN before inserting (see supabase/migrations/20260805000000_
+      // create_vehicle_master.sql).
+      const { data: existingMaster } = await supabase
+        .from('vehicle_master')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('vin', v.vin)
+        .maybeSingle()
+      const vehicleMasterId = existingMaster
+        ? existingMaster.id
+        : (await supabase.from('vehicle_master').insert({
+            company_id: companyId, vin: v.vin, year: v.year, make: v.make, model: v.model,
+          }).select('id').single()).data!.id
+
+      await supabase.from('storage_vehicles').insert({
+        company_id: companyId,
+        vehicle_master_id: vehicleMasterId,
+        vin: v.vin,
+        year: v.year,
+        make: v.make,
+        model: v.model,
+        work_order_status: v.work_order_status,
+        status: legacy.status,
+        lifecycle_status: legacy.lifecycle_status,
+        arrived_at: v.arrived_at,
+        released_at: (v as any).released_at ?? null,
+        daily_rate: v.daily_rate ?? null,
+        billing_type: v.billing_type ?? null,
+      })
     }
 
-    console.log(`  vehicle ${v.vin}  ${v.lifecycle_status}  ${v.year} ${v.make} ${v.model}`)
+    console.log(`  vehicle ${v.vin}  ${v.work_order_status}  ${v.year} ${v.make} ${v.model}`)
   }
 
   console.log('✓  Sample vehicles seeded')

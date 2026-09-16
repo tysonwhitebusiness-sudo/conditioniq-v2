@@ -2,9 +2,7 @@
 
 import { Ghost, LogOut } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
-
-const AMBER = '#F4A62A'
-const MIDNIGHT = '#0D1B2A'
+import { AMBER, GRAY_900, WHITE } from '@/lib/design-tokens'
 
 export default function GhostBanner() {
   const { impersonatedCompany, exitGhostMode } = useAuth()
@@ -15,8 +13,8 @@ export default function GhostBanner() {
       position: 'sticky', top: 0, zIndex: 500,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
       padding: '10px 16px',
-      background: AMBER, color: MIDNIGHT,
-      borderBottom: `2px solid ${MIDNIGHT}`,
+      background: AMBER, color: GRAY_900,
+      borderBottom: `2px solid ${GRAY_900}`,
       fontSize: 13, fontFamily: 'inherit',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -30,7 +28,7 @@ export default function GhostBanner() {
         style={{
           display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
           height: 30, padding: '0 14px', borderRadius: 8,
-          border: `1.5px solid ${MIDNIGHT}`, background: MIDNIGHT, color: '#FFF',
+          border: `1.5px solid ${GRAY_900}`, background: GRAY_900, color: WHITE,
           fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
         }}
       >

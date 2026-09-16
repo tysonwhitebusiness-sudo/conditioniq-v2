@@ -2,7 +2,7 @@
 
 import { createAdminClient } from './supabase/admin'
 import { createClient } from './supabase/server'
-import type { LotShape, LotSpot } from './lot-actions'
+import type { LotShape, LotSpot, SpotSizeClass } from './lot-actions'
 import { authorizeCompanyAccess } from './inspection-auth'
 
 export async function createLotSpotAction(
@@ -45,6 +45,7 @@ export async function updateLotSpotAction(
   updates: Partial<{
     label: string; x_position: number; y_position: number; notes: string | null
     width: number; height: number; rotation: number; custom_color: string | null
+    size_class: SpotSizeClass; zone_id: string | null
   }>,
 ): Promise<void> {
   const supabase = createClient()

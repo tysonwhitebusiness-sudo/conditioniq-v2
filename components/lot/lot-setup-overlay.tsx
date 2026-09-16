@@ -11,15 +11,17 @@ import {
   createLotShapeAction, updateLotShapeAction, deleteLotShapeAction,
   removeLotBackgroundAction,
 } from '@/lib/lot-server-actions'
-import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
-import { SPOT_COLOR, EMPTY_COLOR } from './lot-grid'
+import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig, SpotSizeClass } from '@/lib/lot-actions'
+import { EMPTY_COLOR } from './lot-grid'
+import { getSpotPinColor } from '@/lib/work-order-status'
+import { PRIMARY, AMBER, SUCCESS, DANGER, DANGER_TEXT, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 type Tool = 'select' | 'spot' | 'row' | 'zone' | 'border' | 'marker'
 type SelEl = { type: 'spot'; id: string } | { type: 'shape'; id: string } | null
 
 const ZONE_COLORS  = ['#00B4D8','#10B981','#F4A62A','#EF4444','#F97316','#8B5CF6','#FFFFFF','#64748B']
 const BORDER_COLORS = ['#FFFFFF','#F4A62A','#00B4D8','#10B981','#EF4444','#8B5CF6']
-const MARKER_COLOR: Record<string, string> = { entrance: '#10B981', exit: '#EF4444', custom: '#F4A62A' }
+const MARKER_COLOR: Record<string, string> = { entrance: SUCCESS, exit: DANGER, custom: AMBER }
 
 const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
   { id: 'select', label: 'Select',  key: 'S', icon: '↖' },
@@ -117,7 +119,9 @@ export default function LotSetupOverlay({
   const [eH, setEH]           = useState(7)
   const [eRot, setERot]       = useState(0)
   const [eColor, setEColor]   = useState<string|null>(null)
-  const [eSColor, setESColor] = useState('#00B4D8')
+  const [eSizeClass, setESizeClass] = useState<SpotSizeClass>('standard')
+  const [eZoneId, setEZoneId] = useState<string|null>(null)
+  const [eSColor, setESColor] = useState(PRIMARY)
   const [eSOp, setESOp]       = useState(0.18)
   const [eSStroke, setESStroke] = useState(2)
   const [eSFill, setESFill]   = useState(0.05)
@@ -201,6 +205,7 @@ export default function LotSetupOverlay({
     setELabel(sp.label); setENotes(sp.notes ?? '')
     setEW(sp.width ?? 4); setEH(sp.height ?? 7)
     setERot(sp.rotation ?? 0); setEColor(sp.custom_color ?? null)
+    setESizeClass(sp.size_class ?? 'standard'); setEZoneId(sp.zone_id ?? null)
     setConfirmDel(false)
   }
   const selectShape = (sh: LotShape) => {
@@ -349,7 +354,7 @@ export default function LotSetupOverlay({
   const handleCreateZone = async (x: number, y: number, w: number, h: number) => {
     const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'zone',
-      label: null, color: '#00B4D8', fill_opacity: 0.18, stroke_width: 2,
+      label: null, color: PRIMARY, fill_opacity: 0.18, stroke_width: 2,
       config: { x, y, width: w, height: h, rotation: 0 },
     })
     if (!sh) return
@@ -359,7 +364,7 @@ export default function LotSetupOverlay({
   const handlePlaceMarker = async (x: number, y: number) => {
     const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'marker',
-      label: 'Enter', color: '#10B981', fill_opacity: 1, stroke_width: 2,
+      label: 'Enter', color: SUCCESS, fill_opacity: 1, stroke_width: 2,
       config: { x, y, marker_type: 'entrance' },
     })
     if (!sh) return
@@ -370,7 +375,7 @@ export default function LotSetupOverlay({
     if (borderPts.length < 2) { setBorderPts([]); return }
     const sh = await createLotShapeAction(companyId, {
       location_id: locationId ?? null, shape_type: 'border',
-      label: 'Lot Border', color: '#FFFFFF', fill_opacity: 0.05, stroke_width: 2,
+      label: 'Lot Border', color: WHITE, fill_opacity: 0.05, stroke_width: 2,
       config: { points: borderPts, closed: true },
     })
     if (sh) { onShapesChange([...shapesRef.current, sh]); selectShape(sh) }
@@ -379,7 +384,7 @@ export default function LotSetupOverlay({
 
   const handleSaveSpot = async () => {
     if (!selSpot) return
-    const u = { label: eLabel.trim() || 'A1', notes: eNotes.trim() || null, width: eW, height: eH, rotation: eRot, custom_color: eColor }
+    const u = { label: eLabel.trim() || 'A1', notes: eNotes.trim() || null, width: eW, height: eH, rotation: eRot, custom_color: eColor, size_class: eSizeClass, zone_id: eZoneId }
     await updateLotSpotAction(selSpot.id, u)
     onSpotsChange(spots.map(s => s.id === selSpot.id ? { ...s, ...u } : s))
   }
@@ -504,7 +509,7 @@ export default function LotSetupOverlay({
     if (kind === 'perimeter') {
       const sh = await createLotShapeAction(companyId, {
         location_id: locationId ?? null, shape_type: 'border',
-        label: 'Lot Border', color: '#FFFFFF', fill_opacity: 0.05, stroke_width: 2,
+        label: 'Lot Border', color: WHITE, fill_opacity: 0.05, stroke_width: 2,
         config: { points: [{x:5,y:8},{x:95,y:8},{x:95,y:92},{x:5,y:92}], closed: true },
       })
       if (sh) { onShapesChange([...shapesRef.current, sh]); selectShape(sh) }
@@ -700,11 +705,11 @@ export default function LotSetupOverlay({
   const canvasW = `${Math.max(1, zoom) * 100}%`
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:100, background:'rgba(13,27,42,0.97)', display:'flex', flexDirection:'column' }}>
+    <div style={{ position:'fixed', inset:0, zIndex:100, background:WHITE, display:'flex', flexDirection:'column' }}>
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
-      <div style={{ height: isMobile ? 48 : 52, background:'#1B2D40', display:'flex', alignItems:'center', padding:'0 14px', gap:8, flexShrink:0, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-        <span style={{ fontSize:14, fontWeight:700, color:'#FFF', marginRight:4 }}>Edit Lot Layout</span>
+      <div style={{ height: isMobile ? 48 : 52, background:WHITE, display:'flex', alignItems:'center', padding:'0 14px', gap:8, flexShrink:0, borderBottom:`1px solid ${GRAY_300}` }}>
+        <span style={{ fontSize:14, fontWeight:700, color:GRAY_900, marginRight:4 }}>Edit Lot Layout</span>
 
         <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display:'none' }}/>
 
@@ -720,12 +725,12 @@ export default function LotSetupOverlay({
             <div style={{ position:'relative' }}>
               <TBtn label="Templates" active={templatesOpen} onClick={() => setTemplatesOpen(o=>!o)}/>
               {templatesOpen && (
-                <div style={{ position:'absolute', top:'110%', left:0, background:'#1B2D40', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:4, display:'flex', flexDirection:'column', gap:2, zIndex:50, minWidth:140, boxShadow:'0 8px 20px rgba(0,0,0,0.4)' }}>
+                <div style={{ position:'absolute', top:'110%', left:0, background:WHITE, border:`1px solid ${GRAY_300}`, borderRadius:8, padding:4, display:'flex', flexDirection:'column', gap:2, zIndex:50, minWidth:140, boxShadow:'0 8px 20px rgba(15,23,42,0.15)' }}>
                   {([
                     ['single','Single Row'],['double','Double Row'],['angled','Angled Row'],['perimeter','Perimeter Border'],
                   ] as const).map(([kind,label]) => (
                     <button key={kind} onClick={() => handleApplyTemplate(kind)}
-                      style={{ textAlign:'left', height:30, padding:'0 10px', borderRadius:6, border:'none', background:'transparent', color:'rgba(255,255,255,0.75)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+                      style={{ textAlign:'left', height:30, padding:'0 10px', borderRadius:6, border:'none', background:'transparent', color:GRAY_700, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
                       onMouseEnter={e => (e.currentTarget.style.background='rgba(0,180,216,0.12)')}
                       onMouseLeave={e => (e.currentTarget.style.background='transparent')}
                     >{label}</button>
@@ -736,7 +741,7 @@ export default function LotSetupOverlay({
             {multiIds.size > 0 && (
               <>
                 <Sep/>
-                <span style={{ fontSize:11, color:'#00B4D8' }}>{multiIds.size} selected</span>
+                <span style={{ fontSize:11, color:PRIMARY }}>{multiIds.size} selected</span>
                 <TBtn label="Copy" icon={<Copy size={12}/>} onClick={handleCopySelection}/>
                 <TBtn label="Clear" onClick={() => setMultiIds(new Set())}/>
               </>
@@ -744,30 +749,30 @@ export default function LotSetupOverlay({
             {pasteArmed && clipboard && (
               <>
                 <Sep/>
-                <span style={{ fontSize:11, color:'#F4A62A' }}>Click to paste {clipboard.length} spot{clipboard.length===1?'':'s'}</span>
+                <span style={{ fontSize:11, color:AMBER }}>Click to paste {clipboard.length} spot{clipboard.length===1?'':'s'}</span>
                 <TBtn label="✕ Cancel" danger onClick={() => { setPasteArmed(false); setClipboard(null) }}/>
               </>
             )}
             <Sep/>
-            <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
-            <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
-            <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color="rgba(255,255,255,0.55)"/></button>
+            <button onClick={zoomOut} style={iconBtn}><Minus size={11} color={GRAY_500}/></button>
+            <span style={{ fontSize:11, color:GRAY_500, minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
+            <button onClick={zoomIn}  style={iconBtn}><Plus  size={11} color={GRAY_500}/></button>
             {bgUrl && (
               <>
                 <Sep/>
                 <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn} title="Rotate BG CCW">
-                  <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↺</span>
+                  <span style={{ fontSize:13, lineHeight:1, color:GRAY_500 }}>↺</span>
                 </button>
-                <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:26, textAlign:'center' }}>{bgRotation}°</span>
+                <span style={{ fontSize:11, color:GRAY_500, minWidth:26, textAlign:'center' }}>{bgRotation}°</span>
                 <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn} title="Rotate BG CW">
-                  <span style={{ fontSize:13, lineHeight:1, color:'rgba(255,255,255,0.55)' }}>↻</span>
+                  <span style={{ fontSize:13, lineHeight:1, color:GRAY_500 }}>↻</span>
                 </button>
               </>
             )}
             {tool === 'border' && borderPts.length > 0 && (
               <>
                 <Sep/>
-                <span style={{ fontSize:11, color:'#F4A62A' }}>{borderPts.length} pts</span>
+                <span style={{ fontSize:11, color:AMBER }}>{borderPts.length} pts</span>
                 <TBtn label="✓ Finish" active onClick={finishBorder}/>
                 <TBtn label="✕ Cancel" danger onClick={() => setBorderPts([])}/>
               </>
@@ -779,18 +784,18 @@ export default function LotSetupOverlay({
 
         {/* Mobile: hint text for border drawing */}
         {isMobile && tool === 'border' && borderPts.length > 0 && (
-          <span style={{ fontSize:11, color:'#F4A62A' }}>{borderPts.length} pts</span>
+          <span style={{ fontSize:11, color:AMBER }}>{borderPts.length} pts</span>
         )}
 
         {/* Mobile settings button */}
         {isMobile && (
           <button onClick={() => setMSettingsOpen(o => !o)} style={{ ...iconBtn, width:34, height:34, background: mSettingsOpen ? 'rgba(0,180,216,0.2)' : 'transparent', outline: mSettingsOpen ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}>
-            <Settings2 size={15} color={mSettingsOpen ? '#00B4D8' : 'rgba(255,255,255,0.6)'}/>
+            <Settings2 size={15} color={mSettingsOpen ? PRIMARY : GRAY_700}/>
           </button>
         )}
 
-        {!isMobile && <span style={{ fontSize:11, color:'rgba(255,255,255,0.28)', maxWidth:220, textAlign:'right', lineHeight:1.35 }}>{HINT[tool]}</span>}
-        <button onClick={onDone} style={{ height:34, padding:'0 16px', borderRadius:8, background:'#00B4D8', border:'none', color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+        {!isMobile && <span style={{ fontSize:11, color:GRAY_500, maxWidth:220, textAlign:'right', lineHeight:1.35 }}>{HINT[tool]}</span>}
+        <button onClick={onDone} style={{ height:34, padding:'0 16px', borderRadius:8, background:PRIMARY, border:'none', color:WHITE, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
           <Check size={13}/> Done
         </button>
       </div>
@@ -801,23 +806,23 @@ export default function LotSetupOverlay({
 
         {/* ── Tool palette (desktop only) ────────────────────────────────────── */}
         {!isMobile && (
-          <div style={{ width:58, background:'#131D2B', borderRight:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', alignItems:'center', paddingTop:10, gap:2, flexShrink:0 }}>
+          <div style={{ width:58, background:WHITE, borderRight:`1px solid ${GRAY_300}`, display:'flex', flexDirection:'column', alignItems:'center', paddingTop:10, gap:2, flexShrink:0 }}>
             {TOOLS.map(t => (
               <button key={t.id} title={`${t.label} (${t.key})`}
                 onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]); if (t.id !== 'row') setRowPts([]) }}
                 style={{ width:44, height:44, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none' }}
               >
-                <span style={{ fontSize:16, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
-                <span style={{ fontSize:8, fontWeight:600, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.35)', letterSpacing:'0.03em' }}>{t.label}</span>
+                <span style={{ fontSize:16, lineHeight:1, color: tool===t.id ? PRIMARY : GRAY_500 }}>{t.icon}</span>
+                <span style={{ fontSize:8, fontWeight:600, color: tool===t.id ? PRIMARY : GRAY_500, letterSpacing:'0.03em' }}>{t.label}</span>
               </button>
             ))}
-            <div style={{ height:1, width:36, background:'rgba(255,255,255,0.07)', margin:'4px 0' }}/>
-            <span style={{ fontSize:8, color:'rgba(255,255,255,0.2)', textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P R Z B M</span>
+            <div style={{ height:1, width:36, background:GRAY_300, margin:'4px 0' }}/>
+            <span style={{ fontSize:8, color:GRAY_500, textAlign:'center', padding:'0 6px', lineHeight:1.5 }}>S P R Z B M</span>
           </div>
         )}
 
         {/* ── Canvas ────────────────────────────────────────────────────────── */}
-        <div style={{ flex:1, overflow:'auto', display:'flex', alignItems:'flex-start', justifyContent:'center', padding: isMobile ? 8 : 24, background:'#0B1520' }}>
+        <div style={{ flex:1, overflow:'auto', display:'flex', alignItems:'flex-start', justifyContent:'center', padding: isMobile ? 8 : 24, background:GRAY_100 }}>
           <div style={{ width: canvasW, minWidth:'100%', flexShrink:0 }}>
             <div
               ref={canvasRef}
@@ -826,9 +831,9 @@ export default function LotSetupOverlay({
               onPointerUp={handleCanvasUp}
               style={{
                 position:'relative', paddingBottom:'56.25%',
-                background:'#1B2D40',
+                background:WHITE,
                 borderRadius:10, overflow:'visible',
-                border:'1px solid rgba(255,255,255,0.12)',
+                border:`1px solid ${GRAY_300}`,
                 cursor: tool==='spot'||tool==='zone'||tool==='row' ? 'crosshair' : tool==='border' ? 'cell' : tool==='marker' ? 'copy' : 'default',
                 userSelect:'none',
               }}
@@ -860,8 +865,8 @@ export default function LotSetupOverlay({
                 {/* Grid */}
                 {showGrid && [5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95].map(v => (
                   <g key={v}>
-                    <line x1={v} y1={0} x2={v} y2={100} stroke="rgba(255,255,255,0.07)" strokeWidth={0.25}/>
-                    <line x1={0} y1={v} x2={100} y2={v} stroke="rgba(255,255,255,0.07)" strokeWidth={0.25}/>
+                    <line x1={v} y1={0} x2={v} y2={100} stroke={GRAY_300} strokeWidth={0.25}/>
+                    <line x1={0} y1={v} x2={100} y2={v} stroke={GRAY_300} strokeWidth={0.25}/>
                   </g>
                 ))}
 
@@ -886,7 +891,7 @@ export default function LotSetupOverlay({
                       {sh.label && (
                         <text x={cx} y={c.y + 2.8} textAnchor="middle" fill={sh.color} fontSize={2.4} fontWeight="700" fontFamily="system-ui" pointerEvents="none">{sh.label}</text>
                       )}
-                      {isSel && <rect x={c.x-0.5} y={c.y-0.5} width={c.width+1} height={c.height+1} fill="none" stroke="#00B4D8" strokeWidth={0.5} rx={0.8} strokeDasharray="2,1" pointerEvents="none"/>}
+                      {isSel && <rect x={c.x-0.5} y={c.y-0.5} width={c.width+1} height={c.height+1} fill="none" stroke={PRIMARY} strokeWidth={0.5} rx={0.8} strokeDasharray="2,1" pointerEvents="none"/>}
                     </g>
                   )
                 })}
@@ -905,7 +910,7 @@ export default function LotSetupOverlay({
                         : <polyline points={pts} fill="none" stroke={sh.color} strokeWidth={sw} data-shape-id={sh.id} style={{ cursor:'pointer' }} onPointerDown={e => { e.stopPropagation(); selectShape(sh) }}/>
                       }
                       {isSel && c.points.map((p, i) => (
-                        <circle key={i} cx={p.x} cy={p.y} r={1.3} fill="#00B4D8" stroke="#FFF" strokeWidth={0.3} style={{ cursor:'grab' }}
+                        <circle key={i} cx={p.x} cy={p.y} r={1.3} fill={PRIMARY} stroke={WHITE} strokeWidth={0.3} style={{ cursor:'grab' }}
                           onPointerDown={e => {
                             e.stopPropagation()
                             ;(e.currentTarget as SVGCircleElement).setPointerCapture(e.pointerId)
@@ -940,8 +945,8 @@ export default function LotSetupOverlay({
                   return (
                     <g key={sh.id} style={{ cursor:'pointer' }} onPointerDown={e => { e.stopPropagation(); selectShape(sh) }}>
                       <circle cx={c.x} cy={c.y} r={3.2} fill={col} opacity={0.9} data-shape-id={sh.id}/>
-                      {isSel && <circle cx={c.x} cy={c.y} r={4.2} fill="none" stroke="#00B4D8" strokeWidth={0.5}/>}
-                      <text x={c.x} y={c.y+0.8} textAnchor="middle" dominantBaseline="middle" fill="#FFF" fontSize={2.2} fontWeight="800" fontFamily="system-ui" pointerEvents="none">
+                      {isSel && <circle cx={c.x} cy={c.y} r={4.2} fill="none" stroke={PRIMARY} strokeWidth={0.5}/>}
+                      <text x={c.x} y={c.y+0.8} textAnchor="middle" dominantBaseline="middle" fill={WHITE} fontSize={2.2} fontWeight="800" fontFamily="system-ui" pointerEvents="none">
                         {c.marker_type==='entrance' ? '→' : c.marker_type==='exit' ? '←' : '★'}
                       </text>
                       <text x={c.x} y={c.y+5.5} textAnchor="middle" fill={col} fontSize={1.9} fontWeight="700" fontFamily="system-ui" pointerEvents="none">
@@ -956,9 +961,9 @@ export default function LotSetupOverlay({
                   <>
                     <polyline
                       points={[...borderPts, ...(previewPt?[previewPt]:[])].map(p=>`${p.x},${p.y}`).join(' ')}
-                      fill="none" stroke="#F4A62A" strokeWidth={0.5} strokeDasharray="2,1" pointerEvents="none"
+                      fill="none" stroke={AMBER} strokeWidth={0.5} strokeDasharray="2,1" pointerEvents="none"
                     />
-                    {borderPts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r={i===0?1.6:0.9} fill={i===0?'#F4A62A':'#FFF'} stroke="#F4A62A" strokeWidth={0.3} pointerEvents="none"/>)}
+                    {borderPts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r={i===0?1.6:0.9} fill={i===0?AMBER:WHITE} stroke={AMBER} strokeWidth={0.3} pointerEvents="none"/>)}
                   </>
                 )}
 
@@ -967,7 +972,7 @@ export default function LotSetupOverlay({
                   <rect
                     x={Math.min(zoneDraw.sx,zoneDraw.ex)} y={Math.min(zoneDraw.sy,zoneDraw.ey)}
                     width={Math.abs(zoneDraw.ex-zoneDraw.sx)} height={Math.abs(zoneDraw.ey-zoneDraw.sy)}
-                    fill="#00B4D8" fillOpacity={0.12} stroke="#00B4D8" strokeWidth={0.5} strokeDasharray="2,1" rx={0.5} pointerEvents="none"
+                    fill={PRIMARY} fillOpacity={0.12} stroke={PRIMARY} strokeWidth={0.5} strokeDasharray="2,1" rx={0.5} pointerEvents="none"
                   />
                 )}
 
@@ -976,28 +981,28 @@ export default function LotSetupOverlay({
                   <rect
                     x={Math.min(marqueeDraw.sx,marqueeDraw.ex)} y={Math.min(marqueeDraw.sy,marqueeDraw.ey)}
                     width={Math.abs(marqueeDraw.ex-marqueeDraw.sx)} height={Math.abs(marqueeDraw.ey-marqueeDraw.sy)}
-                    fill="rgba(0,180,216,0.1)" stroke="#00B4D8" strokeWidth={0.3} strokeDasharray="1.5,1" pointerEvents="none"
+                    fill="rgba(0,180,216,0.1)" stroke={PRIMARY} strokeWidth={0.3} strokeDasharray="1.5,1" pointerEvents="none"
                   />
                 )}
 
                 {/* Row tool preview */}
                 {tool==='row' && rowPts.length===1 && previewPt && (
-                  <line x1={rowPts[0].x} y1={rowPts[0].y} x2={previewPt.x} y2={previewPt.y} stroke="#F4A62A" strokeWidth={0.4} strokeDasharray="2,1" pointerEvents="none"/>
+                  <line x1={rowPts[0].x} y1={rowPts[0].y} x2={previewPt.x} y2={previewPt.y} stroke={AMBER} strokeWidth={0.4} strokeDasharray="2,1" pointerEvents="none"/>
                 )}
                 {tool==='row' && rowPts.length===2 && (() => {
                   const count = Math.max(1, Math.min(40, parseInt(rowCount, 10) || 1))
                   const pts = placeRowPoints(rowPts[0], rowPts[1], count)
                   return (
                     <>
-                      <line x1={rowPts[0].x} y1={rowPts[0].y} x2={rowPts[1].x} y2={rowPts[1].y} stroke="#F4A62A" strokeWidth={0.4} pointerEvents="none"/>
-                      {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r={1.4} fill="rgba(244,166,42,0.5)" stroke="#F4A62A" strokeWidth={0.25} pointerEvents="none"/>)}
+                      <line x1={rowPts[0].x} y1={rowPts[0].y} x2={rowPts[1].x} y2={rowPts[1].y} stroke={AMBER} strokeWidth={0.4} pointerEvents="none"/>
+                      {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r={1.4} fill="rgba(244,166,42,0.5)" stroke={AMBER} strokeWidth={0.25} pointerEvents="none"/>)}
                     </>
                   )
                 })()}
 
                 {/* Snap cursor */}
                 {snapGrid && previewPt && tool!=='select' && (
-                  <circle cx={previewPt.x} cy={previewPt.y} r={0.9} fill="rgba(255,255,255,0.45)" pointerEvents="none"/>
+                  <circle cx={previewPt.x} cy={previewPt.y} r={0.9} fill={GRAY_500} pointerEvents="none"/>
                 )}
               </svg>
 
@@ -1007,27 +1012,27 @@ export default function LotSetupOverlay({
                   onPointerDown={e => e.stopPropagation()}
                   style={{
                     position:'absolute', left:`${rowPts[1].x}%`, top:`${rowPts[1].y}%`, transform:'translate(12px, -50%)',
-                    background:'#0D1B2A', border:'1px solid #F4A62A', borderRadius:8, padding:'6px 8px',
+                    background:GRAY_900, border:`1px solid ${AMBER}`, borderRadius:8, padding:'6px 8px',
                     display:'flex', alignItems:'center', gap:6, zIndex:40, boxShadow:'0 6px 16px rgba(0,0,0,0.5)', whiteSpace:'nowrap',
                   }}
                 >
-                  <span style={{ fontSize:11, color:'rgba(255,255,255,0.6)' }}>Spots</span>
+                  <span style={{ fontSize:11, color:WHITE }}>Spots</span>
                   <input
                     autoFocus
                     type="number" min={1} max={40} value={rowCount}
                     onChange={e => setRowCount(e.target.value)}
                     onKeyDown={e => { if (e.key==='Enter') handlePlaceRow(); if (e.key==='Escape') setRowPts([]) }}
-                    style={{ width:44, height:26, background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:5, color:'#FFF', fontSize:12, textAlign:'center', outline:'none', fontFamily:'inherit' }}
+                    style={{ width:44, height:26, background:WHITE, border:`1px solid ${GRAY_300}`, borderRadius:5, color:GRAY_900, fontSize:12, textAlign:'center', outline:'none', fontFamily:'inherit' }}
                   />
-                  <button onClick={handlePlaceRow} style={{ height:26, padding:'0 10px', borderRadius:5, border:'none', background:'#00B4D8', color:'#FFF', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Place</button>
-                  <button onClick={() => setRowPts([])} style={{ height:26, padding:'0 8px', borderRadius:5, border:'none', background:'transparent', color:'rgba(255,255,255,0.4)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>✕</button>
+                  <button onClick={handlePlaceRow} style={{ height:26, padding:'0 10px', borderRadius:5, border:'none', background:PRIMARY, color:WHITE, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Place</button>
+                  <button onClick={() => setRowPts([])} style={{ height:26, padding:'0 8px', borderRadius:5, border:'none', background:'transparent', color:'rgba(255,255,255,0.6)', fontSize:11, cursor:'pointer', fontFamily:'inherit' }}>✕</button>
                 </div>
               )}
 
               {/* Spots — small circular markers, always draggable, show rotation handle when selected */}
               {spots.map(sp => {
-                const status = sp.active_assignment?.vehicle?.lifecycle_status
-                const bg = sp.custom_color ?? (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
+                const workOrderStatus = sp.active_assignment?.vehicle?.work_order_status
+                const bg = sp.custom_color ?? (workOrderStatus ? (getSpotPinColor(workOrderStatus) ?? EMPTY_COLOR) : EMPTY_COLOR)
                 const isSel = selected?.id === sp.id
                 const isMultiSel = multiIds.has(sp.id)
                 const isHovered = hoveredSpotId === sp.id
@@ -1056,7 +1061,7 @@ export default function LotSetupOverlay({
                     <div style={{
                       width:DOT, height:DOT, borderRadius:'50%',
                       background:bg,
-                      border: isSel || isMultiSel ? '2px solid #00B4D8' : `1.5px solid ${bg===EMPTY_COLOR?'#CBD5E0':'rgba(0,0,0,0.25)'}`,
+                      border: isSel || isMultiSel ? `2px solid ${PRIMARY}` : `1.5px solid ${bg===EMPTY_COLOR ? GRAY_300 : 'rgba(0,0,0,0.25)'}`,
                       boxShadow: isMultiSel ? '0 0 0 3px rgba(0,180,216,0.25)' : isSel ? '0 0 0 3px rgba(0,180,216,0.4)' : '0 1px 4px rgba(0,0,0,0.35)',
                       transition:'box-shadow 100ms',
                       pointerEvents:'none',
@@ -1066,8 +1071,8 @@ export default function LotSetupOverlay({
                     {showLabel && (
                       <div style={{
                         position:'absolute', left:'50%', top:-2, transform:'translate(-50%, -100%)',
-                        background:'#0D1B2A', border:'1px solid rgba(255,255,255,0.15)', borderRadius:4,
-                        padding:'2px 6px', fontSize:10, fontWeight:800, color:'#FFF', lineHeight:1.2,
+                        background:GRAY_900, border:`1px solid ${GRAY_300}`, borderRadius:4,
+                        padding:'2px 6px', fontSize:10, fontWeight:800, color:WHITE, lineHeight:1.2,
                         whiteSpace:'nowrap', pointerEvents:'none', zIndex:20,
                       }}>
                         {sp.label}
@@ -1087,13 +1092,13 @@ export default function LotSetupOverlay({
                             position:'absolute', left:'50%', top:'-38px',
                             width:22, height:22,
                             transform:'translateX(-50%)',
-                            background:'#0D1B2A',
-                            border:'2px solid #00B4D8',
+                            background:GRAY_900,
+                            border:`2px solid ${PRIMARY}`,
                             borderRadius:'50%',
                             cursor:'grab',
                             display:'flex', alignItems:'center', justifyContent:'center',
                             zIndex:30,
-                            fontSize:13, color:'#00B4D8',
+                            fontSize:13, color:PRIMARY,
                             boxShadow:'0 2px 8px rgba(0,0,0,0.5)',
                             userSelect:'none',
                           }}
@@ -1106,7 +1111,7 @@ export default function LotSetupOverlay({
 
               {spots.length===0 && shapes.length===0 && (
                 <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', zIndex:2, pointerEvents:'none' }}>
-                  <p style={{ fontSize:13, color:'rgba(255,255,255,0.25)', margin:0 }}>Select a tool from the left and start drawing</p>
+                  <p style={{ fontSize:13, color:GRAY_500, margin:0 }}>Select a tool from the left and start drawing</p>
                 </div>
               )}
             </div>
@@ -1115,7 +1120,7 @@ export default function LotSetupOverlay({
 
         {/* ── Properties panel (desktop only) ───────────────────────────────── */}
         {!isMobile && (
-          <div style={{ width:254, background:'#1B2D40', borderLeft:'1px solid rgba(255,255,255,0.06)', flexShrink:0, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+          <div style={{ width:254, background:WHITE, borderLeft:`1px solid ${GRAY_300}`, flexShrink:0, overflowY:'auto', display:'flex', flexDirection:'column' }}>
             {multiIds.size > 0 ? (
               <MultiSelectPanel
                 count={multiIds.size}
@@ -1136,6 +1141,9 @@ export default function LotSetupOverlay({
                 eH={eH} setEH={setEH}
                 eRot={eRot} setERot={setERot}
                 eColor={eColor} setEColor={setEColor}
+                eSizeClass={eSizeClass} setESizeClass={setESizeClass}
+                eZoneId={eZoneId} setEZoneId={setEZoneId}
+                zones={shapes.filter(s => s.shape_type === 'zone')}
                 confirmDel={confirmDel} setConfirmDel={setConfirmDel}
                 saving={saving}
                 onSave={handleSaveSpot}
@@ -1173,21 +1181,21 @@ export default function LotSetupOverlay({
 
         {/* ── Mobile bottom tool strip ───────────────────────────────────────── */}
         {isMobile && (
-          <div style={{ background:'#131D2B', borderTop:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 8px', flexShrink:0, gap:4 }}>
+          <div style={{ background:WHITE, borderTop:`1px solid ${GRAY_300}`, display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 8px', flexShrink:0, gap:4 }}>
             {TOOLS.map(t => (
               <button key={t.id}
                 onClick={() => { setTool(t.id); if (t.id !== 'border') setBorderPts([]); if (t.id !== 'row') setRowPts([]) }}
                 style={{ flex:1, height:48, borderRadius:10, border:'none', background: tool===t.id ? 'rgba(0,180,216,0.18)' : 'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, outline: tool===t.id ? '1.5px solid rgba(0,180,216,0.5)' : 'none', padding:0 }}
               >
-                <span style={{ fontSize:18, lineHeight:1, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.55)' }}>{t.icon}</span>
-                <span style={{ fontSize:9, fontWeight:600, color: tool===t.id ? '#00B4D8' : 'rgba(255,255,255,0.35)', letterSpacing:'0.03em' }}>{t.label}</span>
+                <span style={{ fontSize:18, lineHeight:1, color: tool===t.id ? PRIMARY : GRAY_500 }}>{t.icon}</span>
+                <span style={{ fontSize:9, fontWeight:600, color: tool===t.id ? PRIMARY : GRAY_500, letterSpacing:'0.03em' }}>{t.label}</span>
               </button>
             ))}
             {tool === 'border' && borderPts.length > 0 && (
               <>
-                <div style={{ width:1, height:32, background:'rgba(255,255,255,0.1)' }}/>
-                <button onClick={finishBorder} style={{ height:38, padding:'0 12px', borderRadius:8, background:'rgba(0,180,216,0.2)', border:'1.5px solid rgba(0,180,216,0.5)', color:'#00B4D8', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✓ Finish</button>
-                <button onClick={() => setBorderPts([])} style={{ height:38, padding:'0 12px', borderRadius:8, background:'transparent', border:'1px solid rgba(239,68,68,0.4)', color:'#EF4444', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✕</button>
+                <div style={{ width:1, height:32, background:GRAY_300 }}/>
+                <button onClick={finishBorder} style={{ height:38, padding:'0 12px', borderRadius:8, background:'rgba(0,180,216,0.2)', border:'1.5px solid rgba(0,180,216,0.5)', color:PRIMARY, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✓ Finish</button>
+                <button onClick={() => setBorderPts([])} style={{ height:38, padding:'0 12px', borderRadius:8, background:'transparent', border:'1px solid rgba(239,68,68,0.4)', color:DANGER, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>✕</button>
               </>
             )}
           </div>
@@ -1195,10 +1203,10 @@ export default function LotSetupOverlay({
 
         {/* ── Mobile settings bottom sheet ───────────────────────────────────── */}
         {isMobile && mSettingsOpen && (
-          <div style={{ background:'#1B2D40', borderTop:'1px solid rgba(255,255,255,0.1)', padding:'12px 16px 16px', flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ background:WHITE, borderTop:`1px solid ${GRAY_300}`, padding:'12px 16px 16px', flexShrink:0, display:'flex', flexDirection:'column', gap:10 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Settings</span>
-              <button onClick={() => setMSettingsOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}><X size={14} color="rgba(255,255,255,0.4)"/></button>
+              <span style={{ fontSize:12, fontWeight:700, color:GRAY_700, textTransform:'uppercase', letterSpacing:'0.08em' }}>Settings</span>
+              <button onClick={() => setMSettingsOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}><X size={14} color={GRAY_500}/></button>
             </div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleBgUpload} style={{ display:'none' }}/>
@@ -1208,17 +1216,17 @@ export default function LotSetupOverlay({
               <TBtn label="Snap" active={snapGrid} onClick={() => setSnapGrid(s=>!s)}/>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Zoom</span>
-              <button onClick={zoomOut} style={iconBtn}><Minus size={11} color="rgba(255,255,255,0.55)"/></button>
-              <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
-              <button onClick={zoomIn} style={iconBtn}><Plus size={11} color="rgba(255,255,255,0.55)"/></button>
+              <span style={{ fontSize:11, color:GRAY_500, minWidth:36 }}>Zoom</span>
+              <button onClick={zoomOut} style={iconBtn}><Minus size={11} color={GRAY_500}/></button>
+              <span style={{ fontSize:11, color:GRAY_500, minWidth:36, textAlign:'center' }}>{Math.round(zoom*100)}%</span>
+              <button onClick={zoomIn} style={iconBtn}><Plus size={11} color={GRAY_500}/></button>
             </div>
             {bgUrl && (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', minWidth:36 }}>Rotate BG</span>
-                <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↺</span></button>
-                <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)', minWidth:28, textAlign:'center' }}>{bgRotation}°</span>
-                <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn}><span style={{ fontSize:14, color:'rgba(255,255,255,0.55)' }}>↻</span></button>
+                <span style={{ fontSize:11, color:GRAY_500, minWidth:36 }}>Rotate BG</span>
+                <button onClick={() => onBgRotationChange((bgRotation - 90 + 360) % 360)} style={iconBtn}><span style={{ fontSize:14, color:GRAY_500 }}>↺</span></button>
+                <span style={{ fontSize:11, color:GRAY_500, minWidth:28, textAlign:'center' }}>{bgRotation}°</span>
+                <button onClick={() => onBgRotationChange((bgRotation + 90) % 360)} style={iconBtn}><span style={{ fontSize:14, color:GRAY_500 }}>↻</span></button>
               </div>
             )}
           </div>
@@ -1226,7 +1234,7 @@ export default function LotSetupOverlay({
 
         {/* ── Mobile properties bottom sheet ────────────────────────────────── */}
         {isMobile && (multiIds.size > 0 || selSpot || selShape) && (
-          <div style={{ background:'#1B2D40', borderTop:'1px solid rgba(255,255,255,0.1)', maxHeight:'55vh', overflowY:'auto', flexShrink:0 }}>
+          <div style={{ background:WHITE, borderTop:`1px solid ${GRAY_300}`, maxHeight:'55vh', overflowY:'auto', flexShrink:0 }}>
             {multiIds.size > 0 ? (
               <MultiSelectPanel
                 count={multiIds.size}
@@ -1247,6 +1255,9 @@ export default function LotSetupOverlay({
                 eH={eH} setEH={setEH}
                 eRot={eRot} setERot={setERot}
                 eColor={eColor} setEColor={setEColor}
+                eSizeClass={eSizeClass} setESizeClass={setESizeClass}
+                eZoneId={eZoneId} setEZoneId={setEZoneId}
+                zones={shapes.filter(s => s.shape_type === 'zone')}
                 confirmDel={confirmDel} setConfirmDel={setConfirmDel}
                 saving={saving}
                 onSave={handleSaveSpot}
@@ -1285,13 +1296,18 @@ export default function LotSetupOverlay({
 
 // ── Spot properties panel ─────────────────────────────────────────────────────
 
-function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, confirmDel, setConfirmDel, saving, onSave, onDelete, onDuplicate, onClose, arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onApplyArray, onCopy }: any) {
+function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, setEH, eRot, setERot, eColor, setEColor, eSizeClass, setESizeClass, eZoneId, setEZoneId, zones, confirmDel, setConfirmDel, saving, onSave, onDelete, onDuplicate, onClose, arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onApplyArray, onCopy }: any) {
   const SPOT_COLORS = ['#94A3B8','#00B4D8','#8B5CF6','#F97316','#F4A62A','#10B981','#EF4444','#1B2D40']
+  const SIZE_CLASSES: { value: SpotSizeClass; label: string }[] = [
+    { value: 'compact', label: 'Compact' },
+    { value: 'standard', label: 'Standard' },
+    { value: 'oversized', label: 'Oversized' },
+  ]
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:13, fontWeight:700, color:'#FFF' }}>Spot · {spot.label}</span>
-        <button onClick={onClose} style={closeBtnStyle}><X size={13} color="rgba(255,255,255,0.4)"/></button>
+        <span style={{ fontSize:13, fontWeight:700, color:GRAY_900 }}>Spot · {spot.label}</span>
+        <button onClick={onClose} style={closeBtnStyle}><X size={13} color={GRAY_500}/></button>
       </div>
 
       <Field label="Label">
@@ -1315,36 +1331,65 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
       <Field label={`Rotation  ${eRot}°`}>
         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
           <input type="range" min={0} max={359} step={1} value={eRot} onChange={e=>setERot(Number(e.target.value))} onMouseUp={onSave} onTouchEnd={onSave} style={{ flex:1 }}/>
-          <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)', minWidth:30, textAlign:'right' }}>{eRot}°</span>
+          <span style={{ fontSize:11, color:GRAY_500, minWidth:30, textAlign:'right' }}>{eRot}°</span>
         </div>
-        <p style={{ fontSize:10, color:'rgba(255,255,255,0.3)', margin:'4px 0 0', lineHeight:1.4 }}>Or drag the ↻ handle on the spot</p>
+        <p style={{ fontSize:10, color:GRAY_500, margin:'4px 0 0', lineHeight:1.4 }}>Or drag the ↻ handle on the spot</p>
+      </Field>
+
+      <Field label="Size">
+        <div style={{ display:'flex', gap:5 }}>
+          {SIZE_CLASSES.map(sc => (
+            <button key={sc.value} onClick={() => { setESizeClass(sc.value); setTimeout(onSave, 0) }}
+              style={{
+                flex:1, height:28, borderRadius:7, fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
+                border: eSizeClass===sc.value ? `1.5px solid ${PRIMARY}` : `1px solid ${GRAY_300}`,
+                background: eSizeClass===sc.value ? 'rgba(0,180,216,0.15)' : GRAY_300,
+                color: eSizeClass===sc.value ? PRIMARY : GRAY_700,
+              }}>
+              {sc.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Zone">
+        <select value={eZoneId ?? ''} onChange={e => { setEZoneId(e.target.value || null); setTimeout(onSave, 0) }}
+          style={inputStyle}>
+          <option value="">No zone</option>
+          {zones.map((z: LotShape) => (
+            <option key={z.id} value={z.id}>{z.label || 'Unnamed zone'}</option>
+          ))}
+        </select>
+        {zones.length === 0 && (
+          <p style={{ fontSize:10, color:GRAY_500, margin:'4px 0 0', lineHeight:1.4 }}>Draw a zone with the zone tool to tag spots by area.</p>
+        )}
       </Field>
 
       <Field label="Color override">
         <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-          <button onClick={() => { setEColor(null); onSave() }} style={{ ...swatchStyle, background:'linear-gradient(135deg,#aaa 50%,#fff 50%)', outline: eColor===null ? '2px solid #00B4D8' : 'none' }} title="Auto (status)"/>
+          <button onClick={() => { setEColor(null); onSave() }} style={{ ...swatchStyle, background:'linear-gradient(135deg,#aaa 50%,#fff 50%)', outline: eColor===null ? `2px solid ${PRIMARY}` : 'none' }} title="Auto (status)"/>
           {SPOT_COLORS.map(c => (
-            <button key={c} onClick={() => { setEColor(c); setTimeout(onSave, 0) }} style={{ ...swatchStyle, background:c, outline: eColor===c ? '2px solid #00B4D8' : 'none' }}/>
+            <button key={c} onClick={() => { setEColor(c); setTimeout(onSave, 0) }} style={{ ...swatchStyle, background:c, outline: eColor===c ? `2px solid ${PRIMARY}` : 'none' }}/>
           ))}
-          <input type="color" value={eColor ?? '#94A3B8'} onChange={e => setEColor(e.target.value)} onBlur={onSave}
+          <input type="color" value={eColor ?? GRAY_500} onChange={e => setEColor(e.target.value)} onBlur={onSave}
             style={{ width:24, height:24, borderRadius:6, border:'none', cursor:'pointer', padding:0 }}/>
         </div>
       </Field>
 
       <div style={{ display:'flex', gap:8 }}>
-        <button onClick={onSave} style={{ flex:1, height:34, background:'#00B4D8', border:'none', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+        <button onClick={onSave} style={{ flex:1, height:34, background:PRIMARY, border:'none', borderRadius:8, color:WHITE, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
           Save Changes
         </button>
-        <button onClick={onDuplicate} title="Duplicate spot" style={{ width:34, height:34, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'rgba(255,255,255,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <button onClick={onDuplicate} title="Duplicate spot" style={{ width:34, height:34, background:GRAY_300, border:`1px solid ${GRAY_300}`, borderRadius:8, color:GRAY_700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
           <Copy size={14}/>
         </button>
       </div>
 
-      <button onClick={onCopy} style={{ height:30, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'rgba(255,255,255,0.65)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+      <button onClick={onCopy} style={{ height:30, background:GRAY_300, border:`1px solid ${GRAY_300}`, borderRadius:8, color:GRAY_700, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
         Copy (then click canvas to paste)
       </button>
 
-      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+      <div style={{ height:1, background:GRAY_300 }}/>
 
       <ArrayDuplicateForm
         arrayCount={arrayCount} setArrayCount={setArrayCount}
@@ -1353,22 +1398,22 @@ function SpotPanel({ spot, eLabel, setELabel, eNotes, setENotes, eW, setEW, eH, 
         onApply={onApplyArray}
       />
 
-      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+      <div style={{ height:1, background:GRAY_300 }}/>
 
       {!confirmDel ? (
         <button onClick={() => spot.active_assignment ? setConfirmDel(true) : onDelete()}
-          style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:'#EF4444', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+          style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:DANGER, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
           <Trash2 size={12}/> Delete Spot
         </button>
       ) : (
         <div style={{ background:'rgba(239,68,68,0.08)', borderRadius:8, padding:10, border:'1px solid rgba(239,68,68,0.2)' }}>
           <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-            <AlertTriangle size={13} color="#EF4444" style={{ flexShrink:0, marginTop:1 }}/>
-            <p style={{ fontSize:11, color:'#FCA5A5', margin:0 }}>Has active assignment. Deleting will unassign it.</p>
+            <AlertTriangle size={13} color={DANGER} style={{ flexShrink:0, marginTop:1 }}/>
+            <p style={{ fontSize:11, color:DANGER_TEXT, margin:0 }}>Has active assignment. Deleting will unassign it.</p>
           </div>
           <div style={{ display:'flex', gap:6 }}>
-            <button onClick={() => setConfirmDel(false)} style={{ flex:1, height:30, background:'transparent', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, color:'rgba(255,255,255,0.6)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
-            <button onClick={onDelete} disabled={saving} style={{ flex:1, height:30, background:'#EF4444', border:'none', borderRadius:6, color:'#FFF', fontSize:12, fontWeight:700, cursor:saving?'default':'pointer', fontFamily:'inherit' }}>Delete</button>
+            <button onClick={() => setConfirmDel(false)} style={{ flex:1, height:30, background:'transparent', border:`1px solid ${GRAY_300}`, borderRadius:6, color:GRAY_700, fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
+            <button onClick={onDelete} disabled={saving} style={{ flex:1, height:30, background:DANGER, border:'none', borderRadius:6, color:WHITE, fontSize:12, fontWeight:700, cursor:saving?'default':'pointer', fontFamily:'inherit' }}>Delete</button>
           </div>
         </div>
       )}
@@ -1382,19 +1427,19 @@ function MultiSelectPanel({ count, arrayCount, setArrayCount, arraySpacing, setA
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:13, fontWeight:700, color:'#FFF' }}>{count} spots selected</span>
-        <button onClick={onClose} style={closeBtnStyle}><X size={13} color="rgba(255,255,255,0.4)"/></button>
+        <span style={{ fontSize:13, fontWeight:700, color:GRAY_900 }}>{count} spots selected</span>
+        <button onClick={onClose} style={closeBtnStyle}><X size={13} color={GRAY_500}/></button>
       </div>
 
-      <p style={{ fontSize:11, color:'rgba(255,255,255,0.35)', margin:0, lineHeight:1.5 }}>
+      <p style={{ fontSize:11, color:GRAY_500, margin:0, lineHeight:1.5 }}>
         Drag any selected spot to move the whole group · Delete removes all selected
       </p>
 
-      <button onClick={onCopy} style={{ height:34, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+      <button onClick={onCopy} style={{ height:34, background:GRAY_300, border:`1px solid ${GRAY_300}`, borderRadius:8, color:GRAY_700, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
         <Copy size={13}/> Copy (then click canvas to paste)
       </button>
 
-      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+      <div style={{ height:1, background:GRAY_300 }}/>
 
       <ArrayDuplicateForm
         arrayCount={arrayCount} setArrayCount={setArrayCount}
@@ -1403,10 +1448,10 @@ function MultiSelectPanel({ count, arrayCount, setArrayCount, arraySpacing, setA
         onApply={onApplyArray}
       />
 
-      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+      <div style={{ height:1, background:GRAY_300 }}/>
 
       <button onClick={onDelete}
-        style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:'#EF4444', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+        style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:DANGER, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
         <Trash2 size={12}/> Delete Selected
       </button>
     </div>
@@ -1416,7 +1461,7 @@ function MultiSelectPanel({ count, arrayCount, setArrayCount, arraySpacing, setA
 function ArrayDuplicateForm({ arrayCount, setArrayCount, arraySpacing, setArraySpacing, arrayAngle, setArrayAngle, onApply }: any) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-      <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Duplicate as Array</span>
+      <span style={{ fontSize:10, fontWeight:600, color:GRAY_500, textTransform:'uppercase', letterSpacing:'0.08em' }}>Duplicate as Array</span>
       <div style={{ display:'flex', gap:6 }}>
         <Field label="Repeat">
           <input type="number" min={1} max={20} value={arrayCount} onChange={(e:any)=>setArrayCount(e.target.value)} style={inputStyle}/>
@@ -1428,7 +1473,7 @@ function ArrayDuplicateForm({ arrayCount, setArrayCount, arraySpacing, setArrayS
       <Field label="Direction °">
         <input type="number" min={0} max={359} value={arrayAngle} onChange={(e:any)=>setArrayAngle(e.target.value)} style={inputStyle}/>
       </Field>
-      <button onClick={onApply} style={{ height:32, background:'rgba(0,180,216,0.15)', border:'1px solid rgba(0,180,216,0.5)', borderRadius:8, color:'#00B4D8', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+      <button onClick={onApply} style={{ height:32, background:'rgba(0,180,216,0.15)', border:'1px solid rgba(0,180,216,0.5)', borderRadius:8, color:PRIMARY, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
         Apply Array
       </button>
     </div>
@@ -1448,8 +1493,8 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
   return (
     <div style={{ padding:16, display:'flex', flexDirection:'column', gap:12 }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:13, fontWeight:700, color:'#FFF' }}>{typeLabel}</span>
-        <button onClick={onClose} style={closeBtnStyle}><X size={13} color="rgba(255,255,255,0.4)"/></button>
+        <span style={{ fontSize:13, fontWeight:700, color:GRAY_900 }}>{typeLabel}</span>
+        <button onClick={onClose} style={closeBtnStyle}><X size={13} color={GRAY_500}/></button>
       </div>
 
       <Field label="Label">
@@ -1461,7 +1506,7 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
         <Field label="Type">
           {(['entrance','exit','custom'] as const).map(t => (
             <button key={t} onClick={() => { setEMType(t); setTimeout(onSave,0) }}
-              style={{ height:30, padding:'0 12px', borderRadius:6, border:'none', background: eMType===t ? MARKER_COLOR[t] : 'rgba(255,255,255,0.07)', color: eMType===t ? '#FFF' : 'rgba(255,255,255,0.5)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginRight:5, marginTop:4, textTransform:'capitalize' }}>
+              style={{ height:30, padding:'0 12px', borderRadius:6, border:'none', background: eMType===t ? MARKER_COLOR[t] : GRAY_300, color: eMType===t ? WHITE : GRAY_500, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginRight:5, marginTop:4, textTransform:'capitalize' }}>
               {t}
             </button>
           ))}
@@ -1474,7 +1519,7 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
             <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
               {COLORS.map(c => (
                 <button key={c} onClick={() => { setESColor(c); setTimeout(onSave,0) }}
-                  style={{ ...swatchStyle, background:c, outline: eSColor===c ? '2px solid #00B4D8' : 'none', border: c==='#FFFFFF'?'1px solid rgba(255,255,255,0.2)':'none' }}/>
+                  style={{ ...swatchStyle, background:c, outline: eSColor===c ? `2px solid ${PRIMARY}` : 'none', border: c===WHITE?`1px solid ${GRAY_500}`:'none' }}/>
               ))}
               <input type="color" value={eSColor} onChange={e => setESColor(e.target.value)} onBlur={onSave}
                 style={{ width:24, height:24, borderRadius:6, border:'none', cursor:'pointer', padding:0 }}/>
@@ -1505,23 +1550,23 @@ function ShapePanel({ shape, eLabel, setELabel, eSColor, setESColor, eSOp, setES
         </>
       )}
 
-      <button onClick={onSave} style={{ height:34, background:'#00B4D8', border:'none', borderRadius:8, color:'#FFF', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+      <button onClick={onSave} style={{ height:34, background:PRIMARY, border:'none', borderRadius:8, color:WHITE, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
         Save Changes
       </button>
 
-      <div style={{ height:1, background:'rgba(255,255,255,0.06)' }}/>
+      <div style={{ height:1, background:GRAY_300 }}/>
 
       {!confirmDel ? (
         <button onClick={() => setConfirmDel(true)}
-          style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:'#EF4444', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+          style={{ height:34, background:'transparent', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:DANGER, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
           <Trash2 size={12}/> Delete {typeLabel}
         </button>
       ) : (
         <div style={{ background:'rgba(239,68,68,0.08)', borderRadius:8, padding:10, border:'1px solid rgba(239,68,68,0.2)' }}>
-          <p style={{ fontSize:11, color:'#FCA5A5', margin:'0 0 8px' }}>Remove this {typeLabel.toLowerCase()}?</p>
+          <p style={{ fontSize:11, color:DANGER_TEXT, margin:'0 0 8px' }}>Remove this {typeLabel.toLowerCase()}?</p>
           <div style={{ display:'flex', gap:6 }}>
-            <button onClick={() => setConfirmDel(false)} style={{ flex:1, height:30, background:'transparent', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6, color:'rgba(255,255,255,0.6)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
-            <button onClick={onDelete} disabled={saving} style={{ flex:1, height:30, background:'#EF4444', border:'none', borderRadius:6, color:'#FFF', fontSize:12, fontWeight:700, cursor:saving?'default':'pointer', fontFamily:'inherit' }}>Delete</button>
+            <button onClick={() => setConfirmDel(false)} style={{ flex:1, height:30, background:'transparent', border:`1px solid ${GRAY_300}`, borderRadius:6, color:GRAY_700, fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>Cancel</button>
+            <button onClick={onDelete} disabled={saving} style={{ flex:1, height:30, background:DANGER, border:'none', borderRadius:6, color:WHITE, fontSize:12, fontWeight:700, cursor:saving?'default':'pointer', fontFamily:'inherit' }}>Delete</button>
           </div>
         </div>
       )}
@@ -1543,14 +1588,14 @@ function EmptyPanel({ tool }: { tool: Tool }) {
   const t = tips[tool]
   return (
     <div style={{ padding:18, display:'flex', flexDirection:'column', gap:10 }}>
-      <p style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.5)', textTransform:'uppercase', letterSpacing:'0.08em', margin:0 }}>{t.title}</p>
+      <p style={{ fontSize:12, fontWeight:700, color:GRAY_500, textTransform:'uppercase', letterSpacing:'0.08em', margin:0 }}>{t.title}</p>
       <ul style={{ margin:0, padding:'0 0 0 14px' }}>
         {t.items.map((item, i) => (
-          <li key={i} style={{ fontSize:12, color:'rgba(255,255,255,0.35)', lineHeight:1.7 }}>{item}</li>
+          <li key={i} style={{ fontSize:12, color:GRAY_500, lineHeight:1.7 }}>{item}</li>
         ))}
       </ul>
-      <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }}/>
-      <p style={{ fontSize:11, color:'rgba(255,255,255,0.2)', margin:0 }}>Shortcuts: S P R Z B M · Esc to deselect · Del to remove · Ctrl/Cmd+C to copy</p>
+      <div style={{ height:1, background:GRAY_300, margin:'4px 0' }}/>
+      <p style={{ fontSize:11, color:GRAY_500, margin:0 }}>Shortcuts: S P R Z B M · Esc to deselect · Del to remove · Ctrl/Cmd+C to copy</p>
     </div>
   )
 }
@@ -1560,7 +1605,7 @@ function EmptyPanel({ tool }: { tool: Tool }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.38)', textTransform:'uppercase', letterSpacing:'0.08em', display:'block', marginBottom:5 }}>{label}</label>
+      <label style={{ fontSize:10, fontWeight:600, color:GRAY_500, textTransform:'uppercase', letterSpacing:'0.08em', display:'block', marginBottom:5 }}>{label}</label>
       {children}
     </div>
   )
@@ -1568,15 +1613,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function TBtn({ label, icon, onClick, active, danger, disabled }: { label:string; icon?:React.ReactNode; onClick:()=>void; active?:boolean; danger?:boolean; disabled?:boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ height:30, padding:'0 10px', borderRadius:7, border: active ? '1px solid rgba(0,180,216,0.5)' : danger ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(255,255,255,0.12)', background: active ? 'rgba(0,180,216,0.15)' : danger ? 'transparent' : 'transparent', color: active ? '#00B4D8' : danger ? '#EF4444' : disabled ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', fontSize:11, fontWeight:600, cursor: disabled ? 'default' : 'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, flexShrink:0, whiteSpace:'nowrap' }}>
+    <button onClick={onClick} disabled={disabled} style={{ height:30, padding:'0 10px', borderRadius:7, border: active ? '1px solid rgba(0,180,216,0.5)' : danger ? '1px solid rgba(239,68,68,0.4)' : `1px solid ${GRAY_300}`, background: active ? 'rgba(0,180,216,0.15)' : danger ? 'transparent' : 'transparent', color: active ? PRIMARY : danger ? DANGER : disabled ? GRAY_300 : GRAY_700, fontSize:11, fontWeight:600, cursor: disabled ? 'default' : 'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', gap:5, flexShrink:0, whiteSpace:'nowrap' }}>
       {icon}{label}
     </button>
   )
 }
 
-function Sep() { return <div style={{ width:1, height:18, background:'rgba(255,255,255,0.1)', flexShrink:0 }}/> }
+function Sep() { return <div style={{ width:1, height:18, background:GRAY_300, flexShrink:0 }}/> }
 
-const iconBtn: React.CSSProperties = { width:26, height:26, borderRadius:6, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }
-const inputStyle: React.CSSProperties = { width:'100%', height:34, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'0 10px', fontSize:13, color:'#FFF', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }
+const iconBtn: React.CSSProperties = { width:26, height:26, borderRadius:6, border:`1px solid ${GRAY_300}`, background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }
+const inputStyle: React.CSSProperties = { width:'100%', height:34, background:WHITE, border:`1px solid ${GRAY_300}`, borderRadius:8, padding:'0 10px', fontSize:13, color:GRAY_900, outline:'none', fontFamily:'inherit', boxSizing:'border-box' }
 const closeBtnStyle: React.CSSProperties = { background:'none', border:'none', cursor:'pointer', padding:4, borderRadius:6, display:'flex' }
 const swatchStyle: React.CSSProperties = { width:24, height:24, borderRadius:6, border:'none', cursor:'pointer', outlineOffset:2 }

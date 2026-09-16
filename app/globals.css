@@ -9,7 +9,7 @@
 body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
-  background-color: #F0F4F8;
+  background-color: #FFFFFF;
 }
 
 .safe-bottom {
@@ -49,19 +49,57 @@ body {
   }
 }
 
-/* Midnight Pro design tokens */
+/* Condition IQ design tokens — white/single-primary-color system */
 :root {
-  --midnight: #0D1B2A;
-  --deep: #1B2D40;
   --cyan: #00B4D8;
   --cyan-light: #E0F7FC;
   --cyan-dark: #0097B2;
+  --cyan-tint: rgba(0, 180, 216, 0.08);
   --amber: #F4A62A;
   --amber-dark: #D4881A;
-  --page-bg: #F0F4F8;
+  --page-bg: #FFFFFF;
   --surface: #FFFFFF;
-  --border: #E1E8F0;
-  --text-primary: #0D1B2A;
-  --text-secondary: #4A5568;
-  --text-muted: #94A3B8;
+  --border: #D1D5DB;
+  --gray-900: #111827;
+  --gray-700: #374151;
+  --gray-500: #6B7280;
+  --gray-300: #D1D5DB;
+  --gray-100: #F3F4F6;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
 }
+
+/* Canonical button variants — new white/single-primary system.
+   Chrome components use these now; remaining pages adopt in Phase 2. */
+.btn-primary, .btn-secondary, .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.btn-primary {
+  background: var(--cyan);
+  border: 1px solid var(--cyan);
+  color: #FFFFFF;
+}
+.btn-primary:hover { background: var(--cyan-dark); border-color: var(--cyan-dark); }
+.btn-secondary {
+  background: #FFFFFF;
+  border: 1px solid var(--gray-300);
+  color: var(--text-secondary);
+}
+.btn-secondary:hover { background: var(--gray-100); }
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover { background: var(--gray-100); }

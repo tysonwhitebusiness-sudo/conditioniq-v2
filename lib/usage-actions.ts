@@ -5,6 +5,7 @@ import { getPlan } from '@/lib/pricing'
 import { captureHighSeverityError } from '@/lib/sentry'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 import { authorizeInspectionAccess } from './inspection-auth'
+import { toLegacyColumns, resolveVehicleMasterId } from './work-order-status'
 
 export interface UsageState {
   used: number
@@ -105,15 +106,33 @@ export async function initiateInspection({
     const vinKey = initialData.vin.trim()
     const { data: existingVeh } = await supabase
       .from('storage_vehicles')
-      .select('id')
+      .select('id, work_order_status')
       .eq('company_id', companyId)
       .eq('vin', vinKey)
+      .neq('work_order_status', 'released')
       .maybeSingle()
     if (existingVeh) {
-      supabase.from('storage_vehicles').update({ status: 'pending_inspection', latest_inspection_id: inspection.id, updated_at: new Date().toISOString() }).eq('id', existingVeh.id).then(() => {})
+      const patch: Record<string, any> = { latest_inspection_id: inspection.id, updated_at: new Date().toISOString() }
+      if (existingVeh.work_order_status === 'pending_arrival') {
+        const legacy = toLegacyColumns('checked_in')
+        patch.work_order_status = 'checked_in'
+        patch.status = legacy.status
+        patch.lifecycle_status = legacy.lifecycle_status
+      }
+      supabase.from('storage_vehicles').update(patch).eq('id', existingVeh.id).then(() => {})
     } else {
-      supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null, lifecycle_status: 'on_lot', status: 'pending_inspection', arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id }).select('id').single().then(({ data: newVeh }) => {
-        if (newVeh) logVehicleEvent({ companyId, vehicleId: newVeh.id, eventType: 'intake', description: 'Vehicle added to inventory', metadata: { source: 'inspection_start', inspection_id: inspection.id, vin: vinKey } })
+      resolveVehicleMasterId(supabase, companyId, vinKey, {
+        year: initialData.year, make: initialData.make, model: initialData.model,
+      }).then(vehicleMasterId => {
+        const legacy = toLegacyColumns('checked_in')
+        supabase.from('storage_vehicles').insert({
+          company_id: companyId, vehicle_master_id: vehicleMasterId, vin: vinKey,
+          year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null,
+          work_order_status: 'checked_in', status: legacy.status, lifecycle_status: legacy.lifecycle_status,
+          arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id,
+        }).select('id').single().then(({ data: newVeh }) => {
+          if (newVeh) logVehicleEvent({ companyId, vehicleId: newVeh.id, eventType: 'intake', description: 'Vehicle added to inventory', metadata: { source: 'inspection_start', inspection_id: inspection.id, vin: vinKey } })
+        })
       })
     }
   }

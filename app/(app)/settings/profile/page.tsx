@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { Check, Loader2, Eye, EyeOff } from 'lucide-react'
+import { PRIMARY, WHITE, DANGER, SUCCESS, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 export default function ProfileSettingsPage() {
   const { user, userProfile, company, isOwnerUser, isCompanyOwner, refreshProfile, loading } = useAuth()
@@ -93,24 +94,24 @@ export default function ProfileSettingsPage() {
   if (loading || !user) return null
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10,
+    width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10,
     padding: '0 12px', fontSize: 14, outline: 'none', fontFamily: 'inherit',
-    background: '#FAFAFA', boxSizing: 'border-box',
+    background: GRAY_100, boxSizing: 'border-box',
   }
 
   const sectionLabel: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, color: '#94A3B8',
+    fontSize: 11, fontWeight: 700, color: GRAY_500,
     textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 16px',
   }
 
   const card: React.CSSProperties = {
-    background: '#FFFFFF', border: '1px solid #E1E8F0',
+    background: WHITE, border: `1px solid ${GRAY_300}`,
     borderRadius: 16, padding: 20, marginBottom: 16,
   }
 
   const saveBtn = (saved: boolean, saving: boolean): React.CSSProperties => ({
     height: 42, padding: '0 20px', borderRadius: 10, border: 'none',
-    background: saved ? '#10B981' : '#0D1B2A', color: '#FFF',
+    background: saved ? SUCCESS : GRAY_900, color: WHITE,
     fontSize: 14, fontWeight: 700,
     cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit',
     opacity: saving ? 0.7 : 1, transition: 'background 300ms ease',
@@ -128,24 +129,24 @@ export default function ProfileSettingsPage() {
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 800, color: '#0D1B2A', margin: '0 0 4px' }}>Profile</h1>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>Manage your personal details and password</p>
+          <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 800, color: GRAY_900, margin: '0 0 4px' }}>Profile</h1>
+          <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>Manage your personal details and password</p>
         </div>
 
         {/* Avatar card */}
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{
             width: 56, height: 56, borderRadius: 28, flexShrink: 0,
-            background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20, fontWeight: 700, color: '#FFFFFF',
+            background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, fontWeight: 700, color: WHITE,
           }}>
             {initials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: GRAY_900, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {userProfile?.full_name || '—'}
             </p>
-            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ fontSize: 13, color: GRAY_500, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.email}
             </p>
           </div>
@@ -156,17 +157,17 @@ export default function ProfileSettingsPage() {
           <p style={sectionLabel}>Personal Info</p>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Full Name</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Full Name</label>
             <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your full name" style={inputStyle} />
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Email</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Email</label>
             <input
               type="email" value={user.email ?? ''} disabled
-              style={{ ...inputStyle, background: '#F0F4F8', color: '#94A3B8', cursor: 'not-allowed' }}
+              style={{ ...inputStyle, background: GRAY_100, color: GRAY_500, cursor: 'not-allowed' }}
             />
-            <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Email changes require contacting support.</p>
+            <p style={{ fontSize: 11, color: GRAY_500, margin: '4px 0 0' }}>Email changes require contacting support.</p>
           </div>
 
           <button onClick={handleSaveProfile} disabled={savingProfile} style={saveBtn(profileSaved, savingProfile)}>
@@ -184,7 +185,7 @@ export default function ProfileSettingsPage() {
             <p style={sectionLabel}>Organization</p>
 
             <div style={{ marginBottom: canEditCompany ? 16 : 0 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Company Name</label>
+              <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Company Name</label>
               <input
                 type="text"
                 value={companyName}
@@ -192,13 +193,13 @@ export default function ProfileSettingsPage() {
                 disabled={!canEditCompany}
                 style={{
                   ...inputStyle,
-                  background: canEditCompany ? '#FAFAFA' : '#F0F4F8',
-                  color: canEditCompany ? '#0D1B2A' : '#6B7280',
+                  background: canEditCompany ? GRAY_100 : GRAY_100,
+                  color: canEditCompany ? GRAY_900 : GRAY_500,
                   cursor: canEditCompany ? 'text' : 'not-allowed',
                 }}
               />
               {!canEditCompany && (
-                <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>Only the account owner can change the company name.</p>
+                <p style={{ fontSize: 11, color: GRAY_500, margin: '4px 0 0' }}>Only the account owner can change the company name.</p>
               )}
             </div>
 
@@ -219,7 +220,7 @@ export default function ProfileSettingsPage() {
           <p style={sectionLabel}>Change Password</p>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Current Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Current Password</label>
             <div style={{ position: 'relative' }}>
               <input
                 type={showCurrentPw ? 'text' : 'password'}
@@ -229,14 +230,14 @@ export default function ProfileSettingsPage() {
                 style={{ ...inputStyle, paddingRight: 42 }}
               />
               <button onClick={() => setShowCurrentPw(v => !v)}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94A3B8', display: 'flex' }}>
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: GRAY_500, display: 'flex' }}>
                 {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>New Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>New Password</label>
             <div style={{ position: 'relative' }}>
               <input
                 type={showNewPw ? 'text' : 'password'}
@@ -246,14 +247,14 @@ export default function ProfileSettingsPage() {
                 style={{ ...inputStyle, paddingRight: 42 }}
               />
               <button onClick={() => setShowNewPw(v => !v)}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94A3B8', display: 'flex' }}>
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: GRAY_500, display: 'flex' }}>
                 {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Confirm New Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Confirm New Password</label>
             <input
               type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
               placeholder="Repeat new password" style={inputStyle}
@@ -261,7 +262,7 @@ export default function ProfileSettingsPage() {
           </div>
 
           {passwordError && (
-            <p style={{ fontSize: 13, color: '#EF4444', margin: '0 0 12px' }}>{passwordError}</p>
+            <p style={{ fontSize: 13, color: DANGER, margin: '0 0 12px' }}>{passwordError}</p>
           )}
 
           <button
@@ -270,11 +271,11 @@ export default function ProfileSettingsPage() {
             style={{
               ...saveBtn(passwordSaved, passwordSaving),
               background: passwordSaved
-                ? '#10B981'
+                ? SUCCESS
                 : (!currentPassword || !newPassword || !confirmPassword || passwordSaving)
-                ? '#E1E8F0'
-                : '#0D1B2A',
-              color: (!currentPassword || !newPassword || !confirmPassword) && !passwordSaved ? '#94A3B8' : '#FFF',
+                ? GRAY_300
+                : GRAY_900,
+              color: (!currentPassword || !newPassword || !confirmPassword) && !passwordSaved ? GRAY_500 : WHITE,
               cursor: (!currentPassword || !newPassword || !confirmPassword || passwordSaving) ? 'default' : 'pointer',
             }}
           >

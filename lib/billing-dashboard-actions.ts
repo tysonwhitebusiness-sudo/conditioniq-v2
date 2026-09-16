@@ -144,7 +144,7 @@ export async function getVehicleBillingRows(companyId: string): Promise<VehicleB
   cutoff.setDate(cutoff.getDate() - 90)
   const cutoffStr = cutoff.toISOString()
 
-  const [vehiclesRes, invoicesRes, chargesRes, customersRes] = await Promise.all([
+  const [vehiclesRes, invoicesRes, chargesRes, billedChargesRes, customersRes] = await Promise.all([
     supabase
       .from('storage_vehicles')
       .select('id, vin, year, make, model, arrived_at, released_at, customer_id, sub_client_name, daily_rate, monthly_rate, billing_type')
@@ -159,7 +159,14 @@ export async function getVehicleBillingRows(companyId: string): Promise<VehicleB
       .order('created_at', { ascending: false }),
     supabase
       .from('vehicle_charges')
-      .select('vehicle_id, amount')
+      .select('id, vehicle_id, amount')
+      .eq('company_id', companyId),
+    // Same billed/unbilled mechanism as getBilledChargeIds (a vehicle_charges row
+    // is billed once it has a matching lot_invoice_charges row) — fetched in bulk
+    // here since this loops over every vehicle, not just one.
+    supabase
+      .from('lot_invoice_charges')
+      .select('vehicle_charge_id')
       .eq('company_id', companyId),
     supabase
       .from('customers')
@@ -170,6 +177,7 @@ export async function getVehicleBillingRows(companyId: string): Promise<VehicleB
   const vehicles = vehiclesRes.data ?? []
   const invoices = invoicesRes.data ?? []
   const charges = chargesRes.data ?? []
+  const billedChargeIds = new Set((billedChargesRes.data ?? []).map(r => r.vehicle_charge_id))
   const customers = customersRes.data ?? []
 
   const customerMap = new Map(customers.map(c => [c.id, c.name]))
@@ -182,8 +190,12 @@ export async function getVehicleBillingRows(companyId: string): Promise<VehicleB
     invoicesByVehicle.set(inv.vehicle_id, arr)
   }
 
+  // Unbilled-only sum — previously summed every charge regardless of billed
+  // status, so this "Unbilled tab" was actually showing total-fees-ever. Fixed
+  // per explicit instruction; this changes existing (non-service) numbers too.
   const chargesByVehicle = new Map<string, number>()
   for (const c of charges) {
+    if (billedChargeIds.has(c.id)) continue
     chargesByVehicle.set(c.vehicle_id, (chargesByVehicle.get(c.vehicle_id) ?? 0) + Number(c.amount))
   }
 

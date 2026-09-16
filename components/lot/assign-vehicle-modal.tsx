@@ -4,14 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X, Search } from 'lucide-react'
 import { getAvailableVehicles, assignVehicleToSpot } from '@/lib/lot-actions'
 import type { AvailableVehicle, LotSpot } from '@/lib/lot-actions'
-
-const STATUS_LABEL: Record<string, string> = {
-  pending_arrival: 'Pending Arrival',
-  on_lot: 'On Lot',
-  pending_pickup: 'Pending Pickup',
-  picked_up: 'Picked Up',
-  completed: 'Completed',
-}
+import { WORK_ORDER_STATUS_LABEL } from '@/lib/work-order-status'
 
 interface Props {
   spot: LotSpot
@@ -116,9 +109,9 @@ export default function AssignVehicleModal({ spot, companyId, userId, onClose, o
                     </p>
                     <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>{v.vin}</p>
                   </div>
-                  {v.lifecycle_status && (
+                  {v.work_order_status && (
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F0F4F8', color: '#4A5568', flexShrink: 0 }}>
-                      {STATUS_LABEL[v.lifecycle_status] ?? v.lifecycle_status}
+                      {WORK_ORDER_STATUS_LABEL[v.work_order_status] ?? v.work_order_status}
                     </span>
                   )}
                 </button>

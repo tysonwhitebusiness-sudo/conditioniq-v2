@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Search, Bell, ChevronDown, Ghost } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { useRouter } from 'next/navigation'
+import { PRIMARY, AMBER, AMBER_DARK, DANGER, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 interface Props {
   pageTitle?: string
@@ -23,19 +24,19 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
     <div style={{
       position: 'fixed', top: 0, left: sidebarWidth, right: 0, height: 64, zIndex: 30,
       transition: 'left 200ms ease',
-      background: '#0D1B2A',
+      background: WHITE,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 24px',
-      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      borderBottom: `1px solid ${GRAY_300}`,
     }}>
       {/* Left: page title */}
       <div>
         {isInspecting ? (
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#00B4D8' }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: PRIMARY }}>
             Inspection in Progress
           </span>
         ) : (
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#FFFFFF' }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: GRAY_900 }}>
             {pageTitle}
           </span>
         )}
@@ -46,16 +47,16 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
         {/* Search */}
         {!isInspecting && (
           <div style={{ position: 'relative' }}>
-            <Search size={15} color="rgba(255,255,255,0.4)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <Search size={15} color={GRAY_500} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             <input
               placeholder="Search VIN, company..."
               style={{
                 height: 36, width: 260,
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
+                background: GRAY_100,
+                border: `1px solid ${GRAY_300}`,
                 borderRadius: 10,
                 paddingLeft: 32, paddingRight: 12,
-                color: '#FFFFFF', fontSize: 13,
+                color: GRAY_900, fontSize: 13,
                 outline: 'none', fontFamily: 'inherit',
               }}
             />
@@ -69,7 +70,7 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
               padding: '4px 9px', borderRadius: 20,
-              background: '#F4A62A', color: '#0D1B2A',
+              background: AMBER, color: GRAY_900,
               fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
             }}
           >
@@ -80,11 +81,11 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
         {/* Bell */}
         <button style={{
           width: 36, height: 36, borderRadius: 8,
-          background: 'rgba(255,255,255,0.06)', border: 'none',
+          background: GRAY_100, border: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
         }}>
-          <Bell size={18} color="rgba(255,255,255,0.7)" />
+          <Bell size={18} color={GRAY_700} />
         </button>
 
         {/* Avatar */}
@@ -98,13 +99,13 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
           >
             <div style={{
               width: 36, height: 36, borderRadius: 18,
-              background: '#00B4D8',
+              background: PRIMARY,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 700, color: '#FFFFFF',
+              fontSize: 13, fontWeight: 700, color: WHITE,
             }}>
               {initials}
             </div>
-            <ChevronDown size={14} color="rgba(255,255,255,0.5)" />
+            <ChevronDown size={14} color={GRAY_500} />
           </button>
 
           {showAvatarMenu && (
@@ -116,15 +117,15 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
               />
               <div style={{
                 position: 'absolute', top: 44, right: 0, zIndex: 50,
-                background: '#FFFFFF', borderRadius: 12, minWidth: 180,
+                background: WHITE, borderRadius: 12, minWidth: 180,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                border: '1px solid #E1E8F0', overflow: 'hidden',
+                border: `1px solid ${GRAY_300}`, overflow: 'hidden',
               }}>
-                <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid #F0F4F8' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{displayName || 'Account'}</p>
-                  <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{user?.email}</p>
+                <div style={{ padding: '12px 16px 8px', borderBottom: `1px solid ${GRAY_100}` }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>{displayName || 'Account'}</p>
+                  <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>{user?.email}</p>
                   {impersonatedCompany && (
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#C2820A', margin: '4px 0 0' }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: AMBER_DARK, margin: '4px 0 0' }}>
                       Viewing: {impersonatedCompany.name}
                     </p>
                   )}
@@ -132,14 +133,14 @@ export default function DesktopTopBar({ pageTitle = 'Condition IQ', isInspecting
                 {isOwnerUser && (
                   <button
                     onClick={() => { setShowAvatarMenu(false); router.push('/admin/overview') }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#0D1B2A', fontFamily: 'inherit' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: GRAY_900, fontFamily: 'inherit' }}
                   >
                     Admin Center
                   </button>
                 )}
                 <button
                   onClick={() => signOut()}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#EF4444', fontFamily: 'inherit' }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: DANGER, fontFamily: 'inherit' }}
                 >
                   Sign Out
                 </button>

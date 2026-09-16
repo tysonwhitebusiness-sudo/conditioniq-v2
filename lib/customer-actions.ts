@@ -60,7 +60,7 @@ export async function getCustomerVehicles(customerId: string) {
   const supabase = createClient()
   const { data } = await supabase
     .from('storage_vehicles')
-    .select('id, vin, year, make, model, lifecycle_status, status, arrived_at, released_at, latest_score, location:location_id(id, name)')
+    .select('id, vin, year, make, model, work_order_status, arrived_at, released_at, latest_score, location:location_id(id, name)')
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false })
   return data ?? []

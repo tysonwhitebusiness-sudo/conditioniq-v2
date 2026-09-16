@@ -69,7 +69,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
       const { addVehicleToSystem } = await import('@/lib/storage-actions')
       await addVehicleToSystem(effectiveCompany.id, {
         vin: vd.vin, year: vd.year, make: vd.make, model: vd.model,
-        lifecycleStatus: 'on_lot',
+        workOrderStatus: 'checked_in',
       }).catch(() => {})
     }
 

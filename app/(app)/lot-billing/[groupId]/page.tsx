@@ -27,6 +27,7 @@ import {
 import { INVOICE_STATUS_LABELS, PAYMENT_METHOD_LABELS, INVOICE_STATUS_BADGE_STYLE } from '@/lib/invoice-utils'
 import { getInvoiceSignedUrl } from '@/lib/invoice-actions'
 import SectionCard from '@/components/ui/section-card'
+import { PRIMARY, WHITE, DANGER_TEXT, DANGER_LIGHT, SUCCESS, AMBER, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 export default function InvoiceGroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -87,7 +88,7 @@ export default function InvoiceGroupDetailPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <Loader2 size={24} color="#00B4D8" style={{ animation: 'spin 0.8s linear infinite' }} />
+        <Loader2 size={24} color={PRIMARY} style={{ animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     )
@@ -96,8 +97,8 @@ export default function InvoiceGroupDetailPage() {
   if (!group) {
     return (
       <div style={{ padding: 32, textAlign: 'center' }}>
-        <p style={{ color: '#94A3B8' }}>Invoice not found.</p>
-        <button onClick={() => router.back()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', fontFamily: 'inherit' }}>Go Back</button>
+        <p style={{ color: GRAY_500 }}>Invoice not found.</p>
+        <button onClick={() => router.back()} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', fontFamily: 'inherit' }}>Go Back</button>
       </div>
     )
   }
@@ -210,9 +211,9 @@ export default function InvoiceGroupDetailPage() {
   }
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', height: 38, border: '1.5px solid #E1E8F0', borderRadius: 9,
+    width: '100%', height: 38, border: `1.5px solid ${GRAY_300}`, borderRadius: 9,
     padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit',
-    background: '#FAFAFA', color: '#0D1B2A', boxSizing: 'border-box',
+    background: GRAY_100, color: GRAY_900, boxSizing: 'border-box',
   }
 
   return (
@@ -227,20 +228,20 @@ export default function InvoiceGroupDetailPage() {
 
         {/* Back + title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <button onClick={() => router.back()} style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <ArrowLeft size={16} color="#4A5568" />
+          <button onClick={() => router.back()} style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <ArrowLeft size={16} color={GRAY_700} />
           </button>
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: GRAY_900, margin: 0, fontFamily: 'monospace' }}>
               {group.invoice_number}
             </h1>
-            <p style={{ fontSize: 12, color: '#94A3B8', margin: '2px 0 0' }}>
+            <p style={{ fontSize: 12, color: GRAY_500, margin: '2px 0 0' }}>
               {group.bill_to_name ?? '—'} · {new Date(group.invoice_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
           {/* Status */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {statusSaving && <Loader2 size={14} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />}
+            {statusSaving && <Loader2 size={14} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />}
             <select
               value={group.status}
               onChange={e => handleStatusChange(e.target.value as InvoiceGroupStatus)}
@@ -276,8 +277,8 @@ export default function InvoiceGroupDetailPage() {
                   ['Vehicles', String(group.line_items.length)],
                 ].map(([label, value]) => (
                   <div key={label}>
-                    <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 2px' }}>{label}</p>
-                    <p style={{ fontSize: 13, color: '#0D1B2A', fontWeight: 600, margin: 0 }}>{value}</p>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 2px' }}>{label}</p>
+                    <p style={{ fontSize: 13, color: GRAY_900, fontWeight: 600, margin: 0 }}>{value}</p>
                   </div>
                 ))}
               </div>
@@ -286,31 +287,31 @@ export default function InvoiceGroupDetailPage() {
             {/* Line items */}
             <SectionCard title="Line Items" count={group.line_items.length}>
               {group.line_items.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No line items.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>No line items.</p>
               ) : (
                 <div>
                   {group.line_items.map((li, i) => {
                     const pdfUrl = li.storage_path ? pdfUrls[li.storage_path] : null
                     return (
-                      <div key={li.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8' }}>
+                      <div key={li.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i === 0 ? 'none' : `1px solid ${GRAY_100}` }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{li.vehicle_description ?? li.vehicle_vin ?? '—'}</p>
-                          <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>{li.vehicle_description ?? li.vehicle_vin ?? '—'}</p>
+                          <p style={{ fontSize: 11, color: GRAY_500, margin: '2px 0 0', fontFamily: 'monospace' }}>
                             {li.vehicle_vin ?? ''} · {li.days_on_lot}d · ${(li.rate ?? 0).toFixed(2)}/{li.billing_type === 'daily' ? 'day' : 'mo'}
                           </p>
                         </div>
-                        <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>${(li.total_amount ?? 0).toFixed(2)}</p>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: 0 }}>${(li.total_amount ?? 0).toFixed(2)}</p>
                         {pdfUrl && (
-                          <button onClick={() => window.open(pdfUrl, '_blank')} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                            <ExternalLink size={12} color="#00B4D8" />
+                          <button onClick={() => window.open(pdfUrl, '_blank')} style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                            <ExternalLink size={12} color={PRIMARY} />
                           </button>
                         )}
                       </div>
                     )
                   })}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid #E1E8F0' }}>
-                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>Subtotal</p>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>${lineTotal.toFixed(2)}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${GRAY_300}` }}>
+                    <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>Subtotal</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0 }}>${lineTotal.toFixed(2)}</p>
                   </div>
                 </div>
               )}
@@ -320,7 +321,7 @@ export default function InvoiceGroupDetailPage() {
             <SectionCard
               title="Adjustments / Credits"
               action={
-                <button onClick={() => setShowAdjForm(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#4A5568', fontFamily: 'inherit' }}>
+                <button onClick={() => setShowAdjForm(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: GRAY_700, fontFamily: 'inherit' }}>
                   <Plus size={12} /> Add
                 </button>
               }
@@ -329,30 +330,30 @@ export default function InvoiceGroupDetailPage() {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <input value={adjLabel} onChange={e => setAdjLabel(e.target.value)} placeholder="Description (e.g. Discount)" style={{ ...inputStyle, flex: 2, minWidth: 120 }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 90 }}>
-                    <span style={{ fontSize: 13, color: '#94A3B8' }}>$</span>
+                    <span style={{ fontSize: 13, color: GRAY_500 }}>$</span>
                     <input type="number" step="0.01" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" style={{ ...inputStyle }} />
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={handleAddAdjustment} disabled={adjSaving || !adjLabel.trim() || !adjAmount} style={{ height: 38, padding: '0 14px', borderRadius: 9, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button onClick={handleAddAdjustment} disabled={adjSaving || !adjLabel.trim() || !adjAmount} style={{ height: 38, padding: '0 14px', borderRadius: 9, border: 'none', background: GRAY_900, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {adjSaving ? '…' : 'Save'}
                     </button>
-                    <button onClick={() => setShowAdjForm(false)} style={{ height: 38, width: 38, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <X size={14} color="#94A3B8" />
+                    <button onClick={() => setShowAdjForm(false)} style={{ height: 38, width: 38, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={14} color={GRAY_500} />
                     </button>
                   </div>
                 </div>
               )}
               {group.adjustments.length === 0 && !showAdjForm ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No adjustments.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>No adjustments.</p>
               ) : (
                 group.adjustments.map((a, i) => (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i === 0 && !showAdjForm ? 'none' : '1px solid #F0F4F8' }}>
-                    <p style={{ flex: 1, fontSize: 13, color: '#0D1B2A', margin: 0 }}>{a.label}</p>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: a.amount < 0 ? '#DC2626' : '#10B981', margin: 0 }}>
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i === 0 && !showAdjForm ? 'none' : `1px solid ${GRAY_100}` }}>
+                    <p style={{ flex: 1, fontSize: 13, color: GRAY_900, margin: 0 }}>{a.label}</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: a.amount < 0 ? DANGER_TEXT : SUCCESS, margin: 0 }}>
                       {a.amount < 0 ? '-' : '+'}${Math.abs(a.amount).toFixed(2)}
                     </p>
-                    <button onClick={() => handleDeleteAdjustment(a.id)} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                      <Trash2 size={11} color="#DC2626" />
+                    <button onClick={() => handleDeleteAdjustment(a.id)} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${DANGER_LIGHT}`, background: DANGER_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                      <Trash2 size={11} color={DANGER_TEXT} />
                     </button>
                   </div>
                 ))
@@ -364,7 +365,7 @@ export default function InvoiceGroupDetailPage() {
               title="Notes"
               action={
                 !editingNotes
-                  ? <button onClick={() => setEditingNotes(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#4A5568', fontFamily: 'inherit' }}>
+                  ? <button onClick={() => setEditingNotes(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: GRAY_700, fontFamily: 'inherit' }}>
                       <Pencil size={11} /> Edit
                     </button>
                   : undefined
@@ -372,16 +373,16 @@ export default function InvoiceGroupDetailPage() {
             >
               {editingNotes ? (
                 <div>
-                  <textarea value={notesValue} onChange={e => setNotesValue(e.target.value)} rows={3} style={{ width: '100%', border: '1.5px solid #E1E8F0', borderRadius: 9, padding: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', background: '#FAFAFA' }} />
+                  <textarea value={notesValue} onChange={e => setNotesValue(e.target.value)} rows={3} style={{ width: '100%', border: `1.5px solid ${GRAY_300}`, borderRadius: 9, padding: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', background: GRAY_100 }} />
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button onClick={handleSaveNotes} disabled={notesSaving} style={{ height: 34, padding: '0 14px', borderRadius: 8, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button onClick={handleSaveNotes} disabled={notesSaving} style={{ height: 34, padding: '0 14px', borderRadius: 8, border: 'none', background: GRAY_900, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {notesSaving ? 'Saving…' : 'Save'}
                     </button>
-                    <button onClick={() => { setEditingNotes(false); setNotesValue(group.notes ?? '') }} style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', fontSize: 13, color: '#4A5568', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                    <button onClick={() => { setEditingNotes(false); setNotesValue(group.notes ?? '') }} style={{ height: 34, padding: '0 14px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, fontSize: 13, color: GRAY_700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                   </div>
                 </div>
               ) : (
-                <p style={{ fontSize: 13, color: group.notes ? '#0D1B2A' : '#CBD5E1', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                <p style={{ fontSize: 13, color: group.notes ? GRAY_900 : GRAY_300, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                   {group.notes || 'No notes.'}
                 </p>
               )}
@@ -393,18 +394,18 @@ export default function InvoiceGroupDetailPage() {
           <div>
 
             {/* Total card */}
-            <div style={{ background: 'linear-gradient(135deg, #1B2D40, #0D1B2A)', borderRadius: 16, padding: 18, marginBottom: 16 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Invoice Total</p>
-              <p style={{ fontSize: 28, fontWeight: 800, color: '#00B4D8', margin: '0 0 12px' }}>${grandTotal.toFixed(2)}</p>
+            <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Invoice Total</p>
+              <p style={{ fontSize: 28, fontWeight: 800, color: PRIMARY, margin: '0 0 12px' }}>${grandTotal.toFixed(2)}</p>
               {group.payments.length > 0 && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, color: '#64748B' }}>Paid</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#10B981' }}>${totalPaid.toFixed(2)}</span>
+                    <span style={{ fontSize: 12, color: GRAY_500 }}>Paid</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: SUCCESS }}>${totalPaid.toFixed(2)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid #1B2D40' }}>
-                    <span style={{ fontSize: 12, color: '#F0F4F8', fontWeight: 700 }}>Balance Due</span>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: balanceDue <= 0 ? '#10B981' : '#F4A62A' }}>${Math.max(0, balanceDue).toFixed(2)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: `1px solid ${GRAY_300}` }}>
+                    <span style={{ fontSize: 12, color: GRAY_700, fontWeight: 700 }}>Balance Due</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: balanceDue <= 0 ? SUCCESS : AMBER }}>${Math.max(0, balanceDue).toFixed(2)}</span>
                   </div>
                 </>
               )}
@@ -414,7 +415,7 @@ export default function InvoiceGroupDetailPage() {
             <SectionCard
               title="Payments"
               action={
-                <button onClick={() => setShowPaymentForm(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#4A5568', fontFamily: 'inherit' }}>
+                <button onClick={() => setShowPaymentForm(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: GRAY_700, fontFamily: 'inherit' }}>
                   <Plus size={12} /> Record
                 </button>
               }
@@ -422,7 +423,7 @@ export default function InvoiceGroupDetailPage() {
               {showPaymentForm && (
                 <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <DollarSign size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+                    <DollarSign size={13} color={GRAY_500} style={{ flexShrink: 0 }} />
                     <input type="number" min="0" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder="Amount" style={{ ...inputStyle }} />
                   </div>
                   <select value={payMethod} onChange={e => setPayMethod(e.target.value as typeof payMethod)} style={{ ...inputStyle, cursor: 'pointer' }}>
@@ -431,28 +432,28 @@ export default function InvoiceGroupDetailPage() {
                   <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inputStyle} />
                   <input value={payNotes} onChange={e => setPayNotes(e.target.value)} placeholder="Notes (optional)" style={inputStyle} />
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={handleAddPayment} disabled={paymentSaving || !payAmount} style={{ flex: 1, height: 36, borderRadius: 8, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <button onClick={handleAddPayment} disabled={paymentSaving || !payAmount} style={{ flex: 1, height: 36, borderRadius: 8, border: 'none', background: GRAY_900, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {paymentSaving ? '…' : 'Add Payment'}
                     </button>
-                    <button onClick={() => setShowPaymentForm(false)} style={{ height: 36, width: 36, borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <X size={13} color="#94A3B8" />
+                    <button onClick={() => setShowPaymentForm(false)} style={{ height: 36, width: 36, borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={13} color={GRAY_500} />
                     </button>
                   </div>
                 </div>
               )}
               {group.payments.length === 0 && !showPaymentForm ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No payments recorded.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>No payments recorded.</p>
               ) : (
                 group.payments.map((p, i) => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i === 0 && !showPaymentForm ? 'none' : '1px solid #F0F4F8' }}>
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i === 0 && !showPaymentForm ? 'none' : `1px solid ${GRAY_100}` }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>${(p.amount ?? 0).toFixed(2)}</p>
-                      <p style={{ fontSize: 10, color: '#94A3B8', margin: '1px 0 0' }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: GRAY_900, margin: 0 }}>${(p.amount ?? 0).toFixed(2)}</p>
+                      <p style={{ fontSize: 10, color: GRAY_500, margin: '1px 0 0' }}>
                         {PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method} · {new Date(p.payment_date).toLocaleDateString()}
                       </p>
                     </div>
-                    <button onClick={() => handleDeletePayment(p.id)} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid #FEE2E2', background: '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                      <Trash2 size={10} color="#DC2626" />
+                    <button onClick={() => handleDeletePayment(p.id)} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${DANGER_LIGHT}`, background: DANGER_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                      <Trash2 size={10} color={DANGER_TEXT} />
                     </button>
                   </div>
                 ))
@@ -463,38 +464,38 @@ export default function InvoiceGroupDetailPage() {
             <SectionCard title="Client Portal">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 {group.portal_viewed
-                  ? <Eye size={14} color="#10B981" />
-                  : <EyeOff size={14} color="#94A3B8" />}
-                <p style={{ fontSize: 12, color: group.portal_viewed ? '#10B981' : '#94A3B8', margin: 0 }}>
+                  ? <Eye size={14} color={SUCCESS} />
+                  : <EyeOff size={14} color={GRAY_500} />}
+                <p style={{ fontSize: 12, color: group.portal_viewed ? SUCCESS : GRAY_500, margin: 0 }}>
                   {group.portal_viewed
                     ? `Viewed ${group.portal_viewed_at ? new Date(group.portal_viewed_at).toLocaleDateString() : ''}`
                     : 'Not yet viewed'}
                 </p>
               </div>
-              <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 10px', wordBreak: 'break-all', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, color: GRAY_500, margin: '0 0 10px', wordBreak: 'break-all', lineHeight: 1.5 }}>
                 {portalUrl}
               </p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button onClick={copyPortalLink} style={{ flex: 1, height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: copied ? '#10B981' : '#0D1B2A', fontFamily: 'inherit' }}>
+                <button onClick={copyPortalLink} style={{ flex: 1, height: 36, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: copied ? SUCCESS : GRAY_900, fontFamily: 'inherit' }}>
                   {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy Link</>}
                 </button>
-                <button onClick={() => window.open(portalUrl, '_blank')} style={{ width: 36, height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                  <ExternalLink size={13} color="#00B4D8" />
+                <button onClick={() => window.open(portalUrl, '_blank')} style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <ExternalLink size={13} color={PRIMARY} />
                 </button>
               </div>
               {mailtoUrl ? (
                 <a
                   href={mailtoUrl}
                   onClick={handleSendInvoiceClick}
-                  style={{ height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0D1B2A', fontFamily: 'inherit', textDecoration: 'none' }}
+                  style={{ height: 36, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: GRAY_900, fontFamily: 'inherit', textDecoration: 'none' }}
                 >
-                  <Mail size={13} color="#00B4D8" /> Send Invoice
+                  <Mail size={13} color={PRIMARY} /> Send Invoice
                 </a>
               ) : (
                 <button disabled title="Add a customer email to send this invoice"
-                  style={{ height: 36, borderRadius: 9, border: '1px solid #E1E8F0', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'not-allowed', fontSize: 12, fontWeight: 700, color: '#94A3B8', fontFamily: 'inherit' }}
+                  style={{ height: 36, borderRadius: 9, border: `1px solid ${GRAY_300}`, background: GRAY_100, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'not-allowed', fontSize: 12, fontWeight: 700, color: GRAY_500, fontFamily: 'inherit' }}
                 >
-                  <Mail size={13} color="#94A3B8" /> Send Invoice
+                  <Mail size={13} color={GRAY_500} /> Send Invoice
                 </button>
               )}
             </SectionCard>

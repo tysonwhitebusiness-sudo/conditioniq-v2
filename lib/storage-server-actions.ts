@@ -4,6 +4,7 @@ import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 import { authorizeCompanyAccess } from './inspection-auth'
 import { createAdminClient } from './supabase/admin'
 import type { InspectionType } from './storage-actions'
+import { type WorkOrderStatus, toLegacyColumns, resolveVehicleMasterId } from './work-order-status'
 
 // ── Upsert on inspection completion ─────────────────────────────────────────
 
@@ -31,10 +32,10 @@ export async function upsertVehicleToInventory(
 
   const { data: existing } = await supabase
     .from('storage_vehicles')
-    .select('id, checkin_inspection_id, checkout_inspection_id, status, year, make, model')
+    .select('id, checkin_inspection_id, checkout_inspection_id, work_order_status, year, make, model')
     .eq('company_id', companyId)
     .eq('vin', vinKey)
-    .neq('lifecycle_status', 'completed')
+    .neq('work_order_status', 'released')
     .maybeSingle()
 
   const now = new Date().toISOString()
@@ -47,30 +48,51 @@ export async function upsertVehicleToInventory(
       make: make || existing.make,
       model: model || existing.model,
     }
+    let nextStatus: WorkOrderStatus | null = null
     if (isInitiation) {
-      if (existing.status === 'active') updates.status = 'pending_inspection'
+      // Only advance from the base pending_arrival state — an inspection
+      // starting on a vehicle already checked_in/in_storage/etc. shouldn't
+      // regress or skip its more specific status (matches the old code's
+      // narrow `existing.status === 'active'` guard).
+      if (existing.work_order_status === 'pending_arrival') nextStatus = 'checked_in'
     } else {
       updates.latest_inspection_id = inspectionId
       updates.latest_score = score
       if (inspectionType === 'check_in') {
         updates.checkin_inspection_id = inspectionId
-        updates.status = 'inspected'
         updates.arrived_at = now
+        nextStatus = 'in_storage'
       } else if (inspectionType === 'check_out') {
         updates.checkout_inspection_id = inspectionId
+        // Preserving existing behavior: this flow does not auto-advance
+        // status on checkout (that only happens via the separate
+        // updateVehicleLifecycleStatusAction path used when the wizard is
+        // launched from the vehicle detail page).
       }
+    }
+    if (nextStatus) {
+      const legacy = toLegacyColumns(nextStatus)
+      updates.work_order_status = nextStatus
+      updates.status = legacy.status
+      updates.lifecycle_status = legacy.lifecycle_status
     }
     await supabase.from('storage_vehicles').update(updates).eq('id', existing.id)
     return existing.id
   } else {
+    const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vinKey, { year, make, model })
+    const initialStatus: WorkOrderStatus = isInitiation ? 'checked_in' : (inspectionType === 'check_in' ? 'in_storage' : 'checked_in')
+    const legacy = toLegacyColumns(initialStatus)
     const insert: Record<string, any> = {
       company_id: companyId,
+      vehicle_master_id: vehicleMasterId,
       location_id: locationId,
       vin: vinKey,
       year,
       make,
       model,
-      status: isInitiation ? 'pending_inspection' : 'active',
+      work_order_status: initialStatus,
+      status: legacy.status,
+      lifecycle_status: legacy.lifecycle_status,
       arrived_at: now,
     }
     if (!isInitiation) {
@@ -78,7 +100,6 @@ export async function upsertVehicleToInventory(
       insert.latest_score = score
       if (inspectionType === 'check_in') {
         insert.checkin_inspection_id = inspectionId
-        insert.status = 'inspected'
       } else if (inspectionType === 'check_out') {
         insert.checkout_inspection_id = inspectionId
       }

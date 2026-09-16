@@ -57,7 +57,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-navy-600 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan mb-4">
             <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-navy-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan focus:border-transparent text-sm"
                   placeholder="you@company.com"
                 />
               </div>
@@ -89,12 +89,12 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-navy-600 hover:bg-navy-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full bg-cyan hover:bg-cyan-dark disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
                 {loading ? 'Sending…' : 'Send reset link'}
               </button>
               <div className="text-center">
-                <Link href="/login" className="text-sm text-navy-600 hover:underline">Back to sign in</Link>
+                <Link href="/login" className="text-sm text-cyan hover:underline">Back to sign in</Link>
               </div>
             </form>
           ) : (
@@ -107,7 +107,7 @@ export default function ResetPasswordPage() {
                   onChange={e => setNewPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-navy-500 focus:border-transparent text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan focus:border-transparent text-sm"
                   placeholder="Min. 8 characters"
                 />
               </div>
@@ -116,7 +116,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-navy-600 hover:bg-navy-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full bg-cyan hover:bg-cyan-dark disabled:opacity-60 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm"
               >
                 {loading ? 'Updating…' : 'Update password'}
               </button>

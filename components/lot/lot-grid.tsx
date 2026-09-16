@@ -1,22 +1,18 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Minimize2 } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
+import { Minimize2, MousePointerClick } from 'lucide-react'
 import type { LotSpot, LotShape, ZoneConfig, BorderConfig, MarkerConfig } from '@/lib/lot-actions'
+import { getSpotPinColor } from '@/lib/work-order-status'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { PRIMARY, SUCCESS, DANGER, WARN, WHITE, GRAY_300, GRAY_500, GRAY_900, GRAY_100 } from '@/lib/design-tokens'
 
 export type LotGridMode = 'view' | 'setup'
 
-export const SPOT_COLOR: Record<string, string> = {
-  pending_arrival: '#94A3B8',
-  on_lot:          '#00B4D8',
-  pending_pickup:  '#F4A62A',
-  picked_up:       '#10B981',
-  completed:       '#9333EA',
-}
-export const EMPTY_COLOR = '#E1E8F0'
+export const EMPTY_COLOR = GRAY_300
 
-// ── Fullscreen zoom/pan math (fullBleed only) ───────────────────────────────────
+// ── Pan/zoom math — shared by the card view and the fullBleed fullscreen overlay ──
 
 const FS_MIN_SCALE = 1
 const FS_MAX_SCALE = 4
@@ -61,6 +57,82 @@ function computeMarkerSize(containerWidth: number) {
   return { visual, hit, fontSize, borderWidth }
 }
 
+// Only empty spots become drop targets (id `spot:${id}`, matched by the
+// DndContext in storage-lot-view.tsx). Occupied spots stay exactly as before —
+// drag-to-reassign only covers "drag a waiting vehicle onto an empty spot,"
+// not spot-to-spot moves, so their existing click-to-open-detail behavior
+// isn't touched. useDroppable is a passive hook (no listeners attached to the
+// element), so this can't interfere with any pointer/click handling below.
+function SpotMarker({
+  spot, mode, interactive, isSelected, pos, markerHit, markerVisual, markerFont, markerBorder,
+  onPointerDown, onPointerMove, onPointerUp,
+}: {
+  spot: LotSpot
+  mode: LotGridMode
+  interactive: boolean
+  isSelected: boolean
+  pos: { left: number | string; top: number | string }
+  markerHit: number; markerVisual: number; markerFont: number; markerBorder: number
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void
+  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void
+  onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void
+}) {
+  const isEmpty = !spot.active_assignment
+  const { setNodeRef, isOver } = useDroppable({ id: `spot:${spot.id}`, disabled: !(interactive && isEmpty) })
+
+  const workOrderStatus = spot.active_assignment?.vehicle?.work_order_status
+  const isInspecting = (spot.active_assignment?.vehicle as any)?._inspecting === true
+  const defaultColor = isEmpty ? EMPTY_COLOR : (workOrderStatus ? (getSpotPinColor(workOrderStatus) ?? EMPTY_COLOR) : EMPTY_COLOR)
+  const bg = spot.custom_color ?? defaultColor
+  const isDefaultEmpty = isEmpty && !spot.custom_color
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-spot="true"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      style={{
+        position: 'absolute',
+        left: pos.left,
+        top: pos.top,
+        width: markerHit,
+        height: markerHit,
+        transform: 'translate(-50%, -50%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: mode === 'setup' ? 'grab' : 'pointer',
+        zIndex: isSelected ? 10 : 2,
+        pointerEvents: 'auto',
+      }}
+    >
+      {/* Visual dot — sized independently of the (larger) tap/click target above */}
+      <div style={{
+        position: 'relative',
+        width: markerVisual, height: markerVisual,
+        background: bg, borderRadius: '50%',
+        border: isOver
+          ? `${markerBorder + 1}px solid ${SUCCESS}`
+          : isSelected ? `${markerBorder}px solid ${GRAY_900}` : isDefaultEmpty ? `${markerBorder}px solid rgba(255,255,255,0.7)` : `${markerBorder}px solid rgba(15,23,42,0.35)`,
+        boxShadow: isOver ? '0 0 0 4px rgba(16,185,129,0.35)' : isSelected ? '0 0 0 3px rgba(0,180,216,0.35)' : '0 2px 6px rgba(15,23,42,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'box-shadow 120ms',
+        pointerEvents: 'none',
+      }}>
+        <span style={{
+          fontSize: markerFont, fontWeight: 700, lineHeight: 1,
+          color: isDefaultEmpty ? GRAY_100 : GRAY_900, textAlign: 'center',
+        }}>
+          {spot.label}
+        </span>
+        {isInspecting && (
+          <span title="Inspection in progress" style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 4, background: WARN, border: `1.5px solid ${WHITE}`, animation: 'lot-pulse 1.5s ease-in-out infinite' }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 interface Props {
   spots: LotSpot[]
   shapes?: LotShape[]
@@ -87,14 +159,15 @@ export default function LotGrid({
   const containerRef = useRef<HTMLDivElement>(null)
   const spotDragging = useRef<{ spotId: string; lastX: number; lastY: number } | null>(null)
   const panCapture = useRef<{ startCX: number; startCY: number; startPX: number; startPY: number } | null>(null)
-  const pinchRef = useRef<{ dist: number; baseScale: number } | null>(null)
   const [livePan, setLivePan] = useState<{ x: number; y: number }>(bgPan ?? { x: 0, y: 0 })
-  const [viewScale, setViewScale] = useState(1)
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => { setLivePan(bgPan ?? { x: 0, y: 0 }) }, [bgPan?.x, bgPan?.y])
 
-  // ── Fullscreen zoom/pan state — only used when fullBleed is true ─────────────
+  // ── Pan/zoom state — the default interaction whenever mode === 'view', both
+  // in the normal card layout and the fullBleed fullscreen overlay. Setup mode
+  // uses its own separate spot-dragging/background-pan handlers below instead.
+  const interactive = mode === 'view'
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 })
   const [fsScale, setFsScale] = useState(1)
@@ -102,6 +175,16 @@ export default function LotGrid({
   const fsPinchRef = useRef<{ dist: number; baseScale: number; midX: number; midY: number; basePan: { x: number; y: number } } | null>(null)
   const fsDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null)
   const lastTapRef = useRef(0)
+
+  // Plain-scroll-to-zoom is opt-in (persisted per-browser) — off by default
+  // because the map now renders inline on a page that still needs to scroll
+  // normally. Ctrl/cmd+scroll always zooms regardless of this toggle.
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false)
+  const scrollZoomEnabledRef = useRef(scrollZoomEnabled)
+  scrollZoomEnabledRef.current = scrollZoomEnabled
+  useEffect(() => {
+    setScrollZoomEnabled(localStorage.getItem('lotmap-scroll-zoom') === '1')
+  }, [])
 
   // Measured in every mode (not just fullBleed) — card view needs the real
   // rendered width too, to size markers relative to the map instead of a
@@ -129,11 +212,14 @@ export default function LotGrid({
   fsPanRef.current = fsPan
 
   useEffect(() => {
-    if (!fullBleed) return
+    if (!interactive) return
     const el = viewportRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return // plain scroll must keep working normally
+      // Ctrl/cmd+scroll always zooms. Plain scroll only zooms when the user
+      // has opted into scroll-to-zoom — otherwise it must pass through to
+      // the page untouched.
+      if (!(e.ctrlKey || e.metaKey) && !scrollZoomEnabledRef.current) return
       e.preventDefault()
       const rect = el.getBoundingClientRect()
       const cx = e.clientX - rect.left, cy = e.clientY - rect.top
@@ -143,7 +229,7 @@ export default function LotGrid({
     }
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
-  }, [fullBleed])
+  }, [interactive])
 
   const fsGetPinchDist = (t1: React.Touch, t2: React.Touch) => {
     const dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY
@@ -233,24 +319,6 @@ export default function LotGrid({
     panCapture.current = null
   }
 
-  const getPinchDist = (t1: React.Touch, t2: React.Touch) => {
-    const dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY
-    return Math.sqrt(dx * dx + dy * dy)
-  }
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      pinchRef.current = { dist: getPinchDist(e.touches[0], e.touches[1]), baseScale: viewScale }
-    }
-  }
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && pinchRef.current) {
-      const newDist = getPinchDist(e.touches[0], e.touches[1])
-      const ratio = newDist / pinchRef.current.dist
-      setViewScale(Math.max(0.8, Math.min(4, pinchRef.current.baseScale * ratio)))
-    }
-  }
-  const handleTouchEnd = () => { pinchRef.current = null }
-
   const toContainerPct = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return null
@@ -287,61 +355,26 @@ export default function LotGrid({
   const { visual: markerVisual, hit: markerHit, fontSize: markerFont, borderWidth: markerBorder } = computeMarkerSize(viewportSize.w)
 
   const markerElements = spots.map(spot => {
-    const status = spot.active_assignment?.vehicle?.lifecycle_status
-    const isInspecting = (spot.active_assignment?.vehicle as any)?._inspecting === true
-    const isEmpty = !spot.active_assignment
-    const defaultColor = isEmpty ? 'rgba(13,27,42,0.35)' : (status ? (SPOT_COLOR[status] ?? EMPTY_COLOR) : EMPTY_COLOR)
-    const bg = spot.custom_color ?? defaultColor
-    const isDefaultEmpty = isEmpty && !spot.custom_color
     const isSelected = selectedSpotId === spot.id
-    const pos = fullBleed
+    const pos = interactive
       ? { left: (spot.x_position / 100) * viewportSize.w * fsScale + fsPan.x, top: (spot.y_position / 100) * viewportSize.h * fsScale + fsPan.y }
       : { left: `${spot.x_position}%`, top: `${spot.y_position}%` }
     return (
-      <div
+      <SpotMarker
         key={spot.id}
-        data-spot="true"
+        spot={spot}
+        mode={mode}
+        interactive={interactive}
+        isSelected={isSelected}
+        pos={pos}
+        markerHit={markerHit} markerVisual={markerVisual} markerFont={markerFont} markerBorder={markerBorder}
         onPointerDown={e => mode === 'setup'
           ? handleSpotPointerDown(e, spot)
           : (e.stopPropagation(), onSpotClick?.(spot))
         }
         onPointerMove={e => handleSpotPointerMove(e, spot)}
         onPointerUp={e => handleSpotPointerUp(e, spot)}
-        style={{
-          position: 'absolute',
-          left: pos.left,
-          top: pos.top,
-          width: markerHit,
-          height: markerHit,
-          transform: 'translate(-50%, -50%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: mode === 'setup' ? 'grab' : 'pointer',
-          zIndex: isSelected ? 10 : 2,
-          pointerEvents: 'auto',
-        }}
-      >
-        {/* Visual dot — sized independently of the (larger) tap/click target above */}
-        <div style={{
-          position: 'relative',
-          width: markerVisual, height: markerVisual,
-          background: bg, borderRadius: '50%',
-          border: isSelected ? `${markerBorder}px solid #0D1B2A` : isDefaultEmpty ? `${markerBorder}px solid rgba(255,255,255,0.7)` : `${markerBorder}px solid rgba(13,27,42,0.35)`,
-          boxShadow: isSelected ? '0 0 0 3px rgba(0,180,216,0.35)' : '0 2px 6px rgba(13,27,42,0.35)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'box-shadow 120ms',
-          pointerEvents: 'none',
-        }}>
-          <span style={{
-            fontSize: markerFont, fontWeight: 700, lineHeight: 1,
-            color: isDefaultEmpty ? '#F0F4F8' : '#0D1B2A', textAlign: 'center',
-          }}>
-            {spot.label}
-          </span>
-          {isInspecting && (
-            <span title="Inspection in progress" style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 4, background: '#F59E0B', border: '1.5px solid #FFF', animation: 'lot-pulse 1.5s ease-in-out infinite' }} />
-          )}
-        </div>
-      </div>
+      />
     )
   })
 
@@ -351,13 +384,13 @@ export default function LotGrid({
     <div
       ref={viewportRef}
       style={{ position: 'relative', width: '100%', height: fullBleed ? '100%' : undefined, overflow: 'hidden', touchAction: 'none' }}
-      onTouchStart={fullBleed ? handleFsTouchStart : mode === 'view' ? handleTouchStart : undefined}
-      onTouchMove={fullBleed ? handleFsTouchMove : mode === 'view' ? handleTouchMove : undefined}
-      onTouchEnd={fullBleed ? handleFsTouchEnd : mode === 'view' ? handleTouchEnd : undefined}
-      onPointerDown={fullBleed ? handleFsPointerDown : undefined}
-      onPointerMove={fullBleed ? handleFsPointerMove : undefined}
-      onPointerUp={fullBleed ? handleFsPointerUp : undefined}
-      onDoubleClick={fullBleed ? fsResetZoom : undefined}
+      onTouchStart={interactive ? handleFsTouchStart : undefined}
+      onTouchMove={interactive ? handleFsTouchMove : undefined}
+      onTouchEnd={interactive ? handleFsTouchEnd : undefined}
+      onPointerDown={interactive ? handleFsPointerDown : undefined}
+      onPointerMove={interactive ? handleFsPointerMove : undefined}
+      onPointerUp={interactive ? handleFsPointerUp : undefined}
+      onDoubleClick={interactive ? fsResetZoom : undefined}
     >
     <div
       ref={containerRef}
@@ -367,15 +400,13 @@ export default function LotGrid({
       style={{
         position: 'relative', width: '100%',
         ...(fullBleed ? { height: '100%' } : { paddingBottom: aspectRatio }),
-        background: bgUrl ? undefined : '#F0F4F8',
+        background: bgUrl ? undefined : GRAY_100,
         borderRadius: fullBleed ? 0 : 12, overflow: 'hidden',
-        border: fullBleed ? 'none' : '1px solid #E1E8F0',
-        cursor: mode === 'setup' ? 'crosshair' : fullBleed && fsScale > 1 ? 'grab' : 'default',
+        border: fullBleed ? 'none' : `1px solid ${GRAY_300}`,
+        cursor: mode === 'setup' ? 'crosshair' : interactive && fsScale > 1 ? 'grab' : 'default',
         userSelect: 'none',
-        transform: fullBleed
-          ? (fsScale !== 1 ? `translate(${fsPan.x}px, ${fsPan.y}px) scale(${fsScale})` : undefined)
-          : (mode === 'view' && viewScale !== 1 ? `scale(${viewScale})` : undefined),
-        transformOrigin: fullBleed ? '0 0' : '50% 0',
+        transform: interactive && fsScale !== 1 ? `translate(${fsPan.x}px, ${fsPan.y}px) scale(${fsScale})` : undefined,
+        transformOrigin: '0 0',
         transition: fullBleed ? undefined : 'transform 0.05s',
       }}
     >
@@ -432,8 +463,8 @@ export default function LotGrid({
             const isEntrance = c.marker_type === 'entrance'
             return (
               <g key={s.id}>
-                <circle cx={c.x} cy={c.y} r={2.5} fill={isEntrance ? '#10B981' : '#EF4444'} />
-                <text x={c.x} y={c.y + 4.5} textAnchor="middle" fill={isEntrance ? '#10B981' : '#EF4444'} fontSize={1.8} fontWeight="700" fontFamily="system-ui">
+                <circle cx={c.x} cy={c.y} r={2.5} fill={isEntrance ? SUCCESS : DANGER} />
+                <text x={c.x} y={c.y + 4.5} textAnchor="middle" fill={isEntrance ? SUCCESS : DANGER} fontSize={1.8} fontWeight="700" fontFamily="system-ui">
                   {s.label ?? (isEntrance ? 'IN' : 'OUT')}
                 </text>
               </g>
@@ -445,61 +476,75 @@ export default function LotGrid({
       {/* Empty-state hints */}
       {spots.length === 0 && mode === 'view' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, zIndex: 2 }}>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No spots configured yet.</p>
+          <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>No spots configured yet.</p>
           {canSetup ? (
             <button
               onClick={onSetupClick}
-              style={{ height: 36, padding: '0 18px', borderRadius: 10, border: '1.5px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              style={{ height: 36, padding: '0 18px', borderRadius: 10, border: `1.5px solid ${PRIMARY}`, background: WHITE, color: PRIMARY, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               Set Up Lot Layout
             </button>
           ) : (
-            <p style={{ fontSize: 12, color: '#CBD5E0', margin: 0 }}>Ask an admin to set up the lot layout.</p>
+            <p style={{ fontSize: 12, color: GRAY_300, margin: 0 }}>Ask an admin to set up the lot layout.</p>
           )}
         </div>
       )}
       {spots.length === 0 && mode === 'setup' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>Click anywhere to add a spot · Drag to pan image</p>
+          <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>Click anywhere to add a spot · Drag to pan image</p>
         </div>
       )}
 
-      {!fullBleed && markerElements}
+      {!interactive && markerElements}
     </div>
 
-    {/* Fullscreen: markers rendered in an un-scaled overlay so they stay a constant size */}
-    {fullBleed && viewportSize.w > 0 && (
+    {/* Markers rendered in an un-scaled overlay so they stay a constant size while zoomed */}
+    {interactive && viewportSize.w > 0 && (
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
         {markerElements}
       </div>
     )}
 
-    {/* Fullscreen: persistent reset-zoom button, shown only when zoomed in */}
-    {fullBleed && fsScale > 1 && (
+    {/* Persistent reset-zoom button, shown only when zoomed in */}
+    {interactive && fsScale > 1 && (
       <button
         onPointerDown={e => { e.stopPropagation(); fsResetZoom() }}
         title="Reset zoom"
         style={{
           position: 'absolute', top: 12, left: 12, zIndex: 20,
           width: 34, height: 34, borderRadius: '50%',
-          background: 'rgba(13,27,42,0.75)', border: '1px solid rgba(0,180,216,0.5)',
+          background: WHITE, border: `1px solid ${GRAY_300}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
         }}
       >
-        <Minimize2 size={15} color="#00B4D8" />
+        <Minimize2 size={15} color={GRAY_900} />
       </button>
     )}
 
-    {/* Double-tap reset hint on mobile — non-fullscreen card view only */}
-    {isMobile && !fullBleed && mode === 'view' && viewScale !== 1 && (
+    {/* Scroll-to-zoom toggle — opt-in since plain scroll otherwise scrolls the page */}
+    {interactive && !isMobile && (
       <button
-        onPointerDown={e => { e.stopPropagation(); setViewScale(1) }}
-        style={{
-          position: 'absolute', zIndex: 20, height: 28, padding: '0 10px', borderRadius: 8,
-          background: 'rgba(13,27,42,0.75)', border: 'none', color: '#FFF', fontSize: 11, fontWeight: 700,
-          cursor: 'pointer', fontFamily: 'inherit', top: 8, right: 8,
+        onPointerDown={e => e.stopPropagation()}
+        onClick={() => {
+          const next = !scrollZoomEnabled
+          setScrollZoomEnabled(next)
+          localStorage.setItem('lotmap-scroll-zoom', next ? '1' : '0')
         }}
-      >Reset zoom</button>
+        title={scrollZoomEnabled ? 'Scroll to zoom: on (click to disable)' : 'Scroll to zoom: off (click to enable)'}
+        style={{
+          position: 'absolute', bottom: 12, right: 12, zIndex: 20,
+          height: 30, padding: '0 10px', borderRadius: 15,
+          background: scrollZoomEnabled ? PRIMARY : WHITE,
+          border: `1px solid ${scrollZoomEnabled ? PRIMARY : GRAY_300}`,
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+          color: scrollZoomEnabled ? WHITE : GRAY_900, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+          boxShadow: scrollZoomEnabled ? undefined : '0 2px 8px rgba(15,23,42,0.12)',
+        }}
+      >
+        <MousePointerClick size={13} />
+        Scroll to zoom
+      </button>
     )}
     </div>
     </>

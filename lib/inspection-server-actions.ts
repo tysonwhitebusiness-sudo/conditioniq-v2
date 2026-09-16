@@ -4,15 +4,7 @@ import { createClient } from './supabase/server'
 import { createAdminClient } from './supabase/admin'
 import { logVehicleEvent } from './vehicle-events-actions'
 import { authorizeInspectionAccess, authorizeCompanyAccess } from './inspection-auth'
-
-const LIFECYCLE_STATUS_LABEL: Record<string, string> = {
-  queued: 'Queued',
-  pending_arrival: 'Pending Arrival',
-  on_lot: 'On Lot',
-  pending_pickup: 'Pending Pickup',
-  picked_up: 'Picked Up',
-  completed: 'Completed',
-}
+import { type WorkOrderStatus, WORK_ORDER_STATUS_LABEL, toLegacyColumns } from './work-order-status'
 
 // ── DB helpers use the session-based server client (respects RLS for the
 // authenticated user's own company — no service role key required).
@@ -87,12 +79,12 @@ export async function updateVehicleLifecycleStatusAction(
   const { data: vehicle, error: findErr } = vehicleDbId
     ? await supabase
         .from('storage_vehicles')
-        .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
+        .select('id, checkin_inspection_id, work_order_status, inspection_ids')
         .eq('id', vehicleDbId)
         .maybeSingle()
     : await supabase
         .from('storage_vehicles')
-        .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
+        .select('id, checkin_inspection_id, work_order_status, inspection_ids')
         .eq('company_id', companyId)
         .eq('vin', vin)
         .maybeSingle()
@@ -111,34 +103,37 @@ export async function updateVehicleLifecycleStatusAction(
     updates.inspection_ids = [...existingIds, inspectionId]
   }
 
+  const cur = vehicle.work_order_status as WorkOrderStatus
+  let nextStatus: WorkOrderStatus | null = null
+
   if (inspectionType === 'check_in') {
     updates.checkin_inspection_id = inspectionId
-    updates.status = 'inspected'
-    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival'].includes(vehicle.lifecycle_status)) {
-      updates.lifecycle_status = 'on_lot'
-    }
+    // Only promote from a pre-inspection state — matches the old code's guard
+    // against regressing a vehicle that's already further along (pending_release,
+    // released) if a check_in-type inspection somehow lands on it again.
+    if (cur === 'pending_arrival' || cur === 'checked_in') nextStatus = 'in_storage'
   } else if (inspectionType === 'check_out') {
     updates.checkout_inspection_id = inspectionId
-    if (vehicle.lifecycle_status === 'on_lot') {
-      updates.lifecycle_status = 'pending_pickup'
-    } else if (vehicle.lifecycle_status === 'pending_pickup') {
-      updates.lifecycle_status = 'picked_up'
-    }
+    if (cur === 'in_storage') nextStatus = 'pending_release'
+    else if (cur === 'pending_release') nextStatus = 'released'
   } else {
-    const cur = vehicle.lifecycle_status
-    if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
-      updates.lifecycle_status = 'completed'
-    }
+    if (cur === 'pending_arrival') nextStatus = 'released'
+  }
+
+  if (nextStatus) {
+    const legacy = toLegacyColumns(nextStatus)
+    updates.work_order_status = nextStatus
+    updates.status = legacy.status
+    updates.lifecycle_status = legacy.lifecycle_status
   }
 
   const { error } = await supabase.from('storage_vehicles').update(updates).eq('id', vehicle.id)
   if (error) console.error('[lifecycle] update error', error)
-  else if (updates.lifecycle_status && updates.lifecycle_status !== vehicle.lifecycle_status) {
-    const label = LIFECYCLE_STATUS_LABEL[updates.lifecycle_status] ?? updates.lifecycle_status
+  else if (nextStatus) {
     logVehicleEvent({
       companyId, vehicleId: vehicle.id, eventType: 'status_changed',
-      description: `Status changed to ${label}`,
-      metadata: { old_status: vehicle.lifecycle_status, new_status: updates.lifecycle_status, inspection_id: inspectionId },
+      description: `Status changed to ${WORK_ORDER_STATUS_LABEL[nextStatus]}`,
+      metadata: { old_status: cur, new_status: nextStatus, inspection_id: inspectionId },
     })
   }
 }

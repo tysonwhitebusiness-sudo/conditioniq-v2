@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, CheckCircle, Car, Receipt, Lock, UserPlus } from 'lucide-react'
+import { Search, Plus, Upload, Download, MoreVertical, X, Loader2, CheckCircle, Car, Receipt, Lock, UserPlus, LayoutGrid, Columns3, MapPin, AlertTriangle, DollarSign, Camera } from 'lucide-react'
 import BottomNav from '@/components/ui/bottom-nav'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -17,42 +17,63 @@ import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import BulkBillingModal, { type BulkVehicle } from '@/components/billing/bulk-billing-modal'
-import { calculateVehicleBilling } from '@/lib/lot-actions'
+import { calculateVehicleBilling, getLotOccupancy } from '@/lib/lot-actions'
+import type { SpotSizeClass } from '@/lib/lot-actions'
+import type { VehicleTemplate } from '@/lib/damage-actions'
 import LoadingOverlay from '@/components/ui/loading-overlay'
+import EmptyState from '@/components/ui/empty-state'
+import CapacityBar from '@/components/ui/capacity-bar'
+import ChangeStatus from '@/components/status/change-status'
+import BoardView from '@/components/vehicles/board-view'
+import { getArrivalsTodayCount, getNeedsAttentionCount, getTodaysQueue, type TodaysQueue } from '@/lib/dashboard-stats'
+import { getBillingKPIs } from '@/lib/billing-dashboard-actions'
+import { getSpotPinColor, WORK_ORDER_STATUS_LABEL, WORK_ORDER_STATUSES, type WorkOrderStatus } from '@/lib/work-order-status'
+import { defaultSizeClassForTemplate } from '@/lib/work-order-status'
+import { createCheckpoint } from '@/lib/checkpoint-actions'
+import { uploadCheckpointPhoto } from '@/lib/checkpoint-server-actions'
+import CameraCapture from '@/components/ui/camera-capture'
+import AddVehicleChoice from '@/components/inventory/add-vehicle-choice'
+import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_TEXT, DANGER_LIGHT, DANGER_BORDER, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK, WARN, WARN_LIGHT, WARN_DARK, AMBER_DARK, PURPLE_LIGHT, PURPLE_DARK, INFO_LIGHT, INFO_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Display bucket this page renders — unchanged since before the work_order_status
+// migration. work_order_status has 10 values now; this page still shows the same
+// 5 buckets it always has, so effectiveStatus below collapses the new authoritative
+// column back onto them. The one unavoidable change: the old model had two separate
+// terminal buckets (picked_up / completed) which the new model correctly merges into
+// a single "Released" status (see the picked_up/completed bug fix from the schema
+// migration) — both now render as the old "PICKED UP" bucket/label.
 type LifecycleStatus = 'pending_arrival' | 'on_lot' | 'pending_pickup' | 'picked_up' | 'completed'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function effectiveStatus(v: any): LifecycleStatus {
-  const ls = v.lifecycle_status as string | null | undefined
-  if (ls && !['in_progress', 'releasing', 'released', 'one_off'].includes(ls)) return ls as LifecycleStatus
-  if (ls === 'releasing') return 'pending_pickup'
-  if (ls === 'released') return 'picked_up'
-  if (ls === 'one_off') return 'completed'
-  switch (v.status) {
-    case 'released':           return 'picked_up'
-    case 'releasing':          return 'pending_pickup'
-    case 'inspected':          return 'on_lot'
-    case 'pending_inspection': return 'pending_arrival'
-    case 'active':             return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
-    default:                   return 'pending_arrival'
+  switch (v.work_order_status as WorkOrderStatus) {
+    case 'pending_arrival': return 'pending_arrival'
+    case 'pending_release':
+    case 'ready_for_release': return 'pending_pickup'
+    case 'released': return 'picked_up'
+    default: return 'on_lot'
   }
 }
 
+// Colors sourced from design-tokens.ts, matching getSpotPinColor()'s semantic
+// language (cyan = occupied, amber = attention) even though this is a
+// separate, coarser 5-bucket display — see the design-consistency audit for
+// why this stays a token-only pass rather than switching to real work-order
+// status granularity here.
 const STATUS_CFG: Record<LifecycleStatus, { label: string; bg: string; color: string; pulse?: boolean }> = {
-  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8',  color: '#4A5568' },
-  on_lot:          { label: 'ON LOT',          bg: '#E0F7FC',  color: '#0097B2' },
-  pending_pickup:  { label: 'PENDING PICKUP',  bg: '#FEF3C7',  color: '#92400E', pulse: true },
-  picked_up:       { label: 'PICKED UP',       bg: '#D1FAE5',  color: '#065F46' },
-  completed:       { label: 'COMPLETED',       bg: '#F3E8FF',  color: '#7E22CE' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: GRAY_100,       color: GRAY_700 },
+  on_lot:          { label: 'ON LOT',          bg: PRIMARY_LIGHT,  color: PRIMARY_PILL_TEXT },
+  pending_pickup:  { label: 'PENDING PICKUP',  bg: WARN_LIGHT,     color: WARN_DARK, pulse: true },
+  picked_up:       { label: 'PICKED UP',       bg: SUCCESS_LIGHT,  color: SUCCESS_DARK },
+  completed:       { label: 'COMPLETED',       bg: PURPLE_LIGHT,   color: PURPLE_DARK },
 }
 
 const STATUS_BORDER: Record<LifecycleStatus, string> = {
-  pending_arrival: '#94A3B8', on_lot: '#00B4D8',
-  pending_pickup: '#F59E0B', picked_up: '#10B981', completed: '#9333EA',
+  pending_arrival: GRAY_500, on_lot: PRIMARY,
+  pending_pickup: WARN, picked_up: SUCCESS, completed: PURPLE_DARK,
 }
 
 const STATUS_SORT: Record<string, number> = {
@@ -60,9 +81,9 @@ const STATUS_SORT: Record<string, number> = {
 }
 
 const INSP_BADGE: Record<string, { label: string; bg: string; color: string }> = {
-  check_in:  { label: 'CHECK-IN',    bg: '#D1FAE5', color: '#065F46' },
-  check_out: { label: 'CHECK-OUT',   bg: '#FEF3C7', color: '#92400E' },
-  standard:  { label: 'MID-STORAGE', bg: '#DBEAFE', color: '#1E40AF' },
+  check_in:  { label: 'CHECK-IN',    bg: SUCCESS_LIGHT, color: SUCCESS_DARK },
+  check_out: { label: 'CHECK-OUT',   bg: WARN_LIGHT, color: WARN_DARK },
+  standard:  { label: 'MID-STORAGE', bg: INFO_LIGHT, color: INFO_DARK },
 }
 
 function daysOnLot(arrivedAt: string, releasedAt: string | null, status: LifecycleStatus): number | null {
@@ -71,27 +92,27 @@ function daysOnLot(arrivedAt: string, releasedAt: string | null, status: Lifecyc
   return Math.max(0, Math.floor((end.getTime() - new Date(arrivedAt).getTime()) / 86400000))
 }
 
-const DAYS_ON_LOT_COLOR = '#4A5568'
+const DAYS_ON_LOT_COLOR = GRAY_700
 
 function BilledThroughValue({ date }: { date: string | null | undefined }) {
   if (!date) {
     return (
-      <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
+      <span style={{ background: WARN_LIGHT, color: WARN_DARK, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
         Unbilled
       </span>
     )
   }
   return (
-    <span style={{ color: '#0D1B2A', fontWeight: 600, fontSize: 13 }}>
+    <span style={{ color: GRAY_900, fontWeight: 600, fontSize: 13 }}>
       {new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
     </span>
   )
 }
 
 function SpotBadge({ label }: { label: string | null | undefined }) {
-  if (!label) return <span style={{ color: '#CBD5E1', fontSize: 13 }}>—</span>
+  if (!label) return <span style={{ color: GRAY_300, fontSize: 13 }}>—</span>
   return (
-    <span style={{ background: '#F0F4F8', color: '#374151', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+    <span style={{ background: GRAY_100, color: GRAY_700, borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
       {label}
     </span>
   )
@@ -124,19 +145,19 @@ function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckI
     setSavingNote(false)
   }
 
-  const actionBtnStyle = { height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 } as const
+  const actionBtnStyle = { height: 32, padding: '0 12px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 } as const
 
   return (
-    <div style={{ background: '#F8FAFC', borderTop: '1px solid #E1E8F0', padding: '20px 24px' }}>
+    <div style={{ background: GRAY_100, borderTop: `1px solid ${GRAY_300}`, padding: '20px 24px' }}>
 
       {/* Spot / Billed Through */}
       <div style={{ display: 'flex', gap: 32, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Spot</p>
-          {spotLabel ? <SpotBadge label={spotLabel} /> : <span style={{ fontSize: 13, color: '#94A3B8' }}>Not assigned</span>}
+          <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Spot</p>
+          {spotLabel ? <SpotBadge label={spotLabel} /> : <span style={{ fontSize: 13, color: GRAY_500 }}>Not assigned</span>}
         </div>
         <div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Billed Through</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Billed Through</p>
           <BilledThroughValue date={vehicle.billed_through_date} />
         </div>
       </div>
@@ -149,24 +170,24 @@ function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckI
           <button onClick={onCheckIn} style={actionBtnStyle}>Check In</button>
         ) : (
           <button onClick={onDispatch} disabled={dispatchEnabled === false} style={{ ...actionBtnStyle, opacity: dispatchEnabled === false ? 0.5 : 1 }}>
-            {dispatchEnabled === false && <Lock size={11} color="#374151" />}Send to Inspector
+            {dispatchEnabled === false && <Lock size={11} color={GRAY_700} />}Send to Inspector
           </button>
         )}
       </div>
 
       {/* Notes */}
-      <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Notes</p>
+      <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Notes</p>
       {localNotes && (
-        <pre style={{ fontSize: 12, color: '#4A5568', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 8, padding: '10px 12px', marginBottom: 8, whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0 0 8px' }}>
+        <pre style={{ fontSize: 12, color: GRAY_700, background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0 0 8px' }}>
           {localNotes}
         </pre>
       )}
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note…"
           onKeyDown={e => e.key === 'Enter' && saveNote()}
-          style={{ flex: 1, height: 38, border: '1px solid #E1E8F0', borderRadius: 8, padding: '0 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
+          style={{ flex: 1, height: 38, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
         <button onClick={saveNote} disabled={!note.trim() || savingNote}
-          style={{ height: 38, padding: '0 14px', borderRadius: 8, border: 'none', background: '#0D1B2A', color: '#FFFFFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ height: 38, padding: '0 14px', borderRadius: 8, border: 'none', background: GRAY_900, color: WHITE, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
           {savingNote ? '…' : 'Save'}
         </button>
       </div>
@@ -174,15 +195,38 @@ function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckI
   )
 }
 
-// ── Add Vehicle Slide-Over ────────────────────────────────────────────────────
+// ── Add Existing Vehicle (backfill) Slide-Over ───────────────────────────────
+// Phase 13: repurposed from the old AddVehicleSlideOver, which let someone
+// silently mark a vehicle checked_in via a 2-option status toggle with no
+// checkpoint, no photos, ever run. This is now specifically the one-time
+// backfill path (New Arrival — the live intake path — routes to
+// /vehicles/intake instead, reusing that page as-is): status is a full,
+// never-defaulted picker, and 5 condition photos are required before submit.
 
-function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, onAddAndDispatch }: {
-  companyId: string; isFMC: boolean; locations: any[]; onClose: () => void; onAdded: () => void; onAddAndDispatch: (vin: string) => void
+const BACKFILL_PHOTO_SLOTS: { key: string; label: string }[] = [
+  { key: 'front', label: 'Front' },
+  { key: 'rear', label: 'Rear' },
+  { key: 'driver_side', label: 'Driver Side' },
+  { key: 'passenger_side', label: 'Passenger Side' },
+  { key: 'interior_dash', label: 'Interior / Dash' },
+]
+
+function AddExistingVehicleSlideOver({ companyId, userId, isFMC, locations, onClose, onAdded, onAddAndDispatch }: {
+  companyId: string; userId: string; isFMC: boolean; locations: any[]; onClose: () => void; onAdded: () => void; onAddAndDispatch: (vin: string) => void
 }) {
   const router = useRouter()
-  const [status, setStatus] = useState<'pending_arrival' | 'on_lot'>('pending_arrival')
+  // Never defaulted — the whole point of this picker is reflecting whatever
+  // state the vehicle is actually already in, not assuming one.
+  const [status, setStatus] = useState<WorkOrderStatus | ''>('')
+  const [photos, setPhotos] = useState<Record<string, string>>({})
+  const [sequenceActive, setSequenceActive] = useState(false)
+  const [activePhotoKey, setActivePhotoKey] = useState<string | null>(null)
   const [vin, setVin] = useState('')
   const [year, setYear] = useState(''); const [make, setMake] = useState(''); const [model, setModel] = useState('')
+  const [bodyClass, setBodyClass] = useState('')
+  const [vehicleTemplate, setVehicleTemplate] = useState<VehicleTemplate | ''>('')
+  const [sizeClass, setSizeClass] = useState<SpotSizeClass>('standard')
+  const [sizeTouched, setSizeTouched] = useState(false)
   const [locationId, setLocationId] = useState('')
   const [arrivedAt, setArrivedAt] = useState(new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState('')
@@ -208,29 +252,67 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
     try {
       const { decodeVIN } = await import('@/lib/vin-decode')
       const r = await decodeVIN(cleanVin)
-      if (r) { setYear(r.year ?? ''); setMake(r.make ?? ''); setModel(r.model ?? '') }
+      if (r) { setYear(r.year ?? ''); setMake(r.make ?? ''); setModel(r.model ?? ''); setBodyClass(r.bodyClass ?? '') }
     } finally { setDecoding(false) }
   }
 
   const checkDupe = async () => {
     if (cleanVin.length < 3) return
-    const { data } = await createClient().from('storage_vehicles').select('id').eq('company_id', companyId).eq('vin', cleanVin).neq('lifecycle_status', 'completed').maybeSingle()
+    const { data } = await createClient().from('storage_vehicles').select('id').eq('company_id', companyId).eq('vin', cleanVin).neq('work_order_status', 'released').maybeSingle()
     setDupeVehicleId(data?.id ?? null)
   }
 
+  const applyTemplate = (t: VehicleTemplate) => {
+    setVehicleTemplate(t)
+    if (!sizeTouched) setSizeClass(defaultSizeClassForTemplate(t))
+  }
+
+  // vehicle_master persists across visits (even released ones), so this looks
+  // up by VIN directly rather than through the active-work-order check above —
+  // a returning vehicle's known template/size should prefill even if its prior
+  // storage_vehicles row is long since released.
+  const lookupVehicleMasterDefaults = async () => {
+    if (cleanVin.length !== 17) return
+    const { data } = await createClient().from('vehicle_master')
+      .select('vehicle_template, size_class')
+      .eq('company_id', companyId).eq('vin', cleanVin).maybeSingle()
+    if (data?.vehicle_template) applyTemplate(data.vehicle_template as VehicleTemplate)
+    if (data?.size_class) { setSizeClass(data.size_class as SpotSizeClass); setSizeTouched(true) }
+  }
+
+  const allPhotosReady = BACKFILL_PHOTO_SLOTS.every(s => photos[s.key])
+
   const save = async (andDispatch = false) => {
-    if (!cleanVin || dupeVehicleId) return
+    if (!cleanVin || dupeVehicleId || !status || !allPhotosReady) return
     setSaving(true)
     setSaveError(null)
     try {
-      await addVehicleToSystem(companyId, {
+      const vehicleId = await addVehicleToSystem(companyId, {
         vin: cleanVin, year, make, model,
         locationId: locationId || undefined,
-        arrivedAt: status === 'on_lot' && arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
+        arrivedAt: status !== 'pending_arrival' && arrivedAt ? new Date(arrivedAt).toISOString() : undefined,
         notes,
-        lifecycleStatus: status,
+        workOrderStatus: status,
         customerId: customerId || undefined,
+        sizeClass,
+        vehicleTemplate: vehicleTemplate || undefined,
+        bodyClass: bodyClass || undefined,
       })
+      if (!vehicleId) throw new Error('Could not create vehicle')
+      // Photos can't upload until the vehicle (and its id) exists, unlike the
+      // real checkpoint flow where the vehicle is already there — so these
+      // were only held as local data URLs until now, uploaded as one batch.
+      const uploadedUrls = await Promise.all(
+        BACKFILL_PHOTO_SLOTS.map(slot => uploadCheckpointPhoto(vehicleId, companyId, 'backfill', photos[slot.key], slot.key))
+      )
+      const checkpoint = await createCheckpoint(companyId, {
+        vehicleId,
+        direction: 'backfill',
+        photos: uploadedUrls,
+        notes: notes || undefined,
+        inspectorId: userId,
+      })
+      if (!checkpoint) throw new Error('Vehicle was created but its condition photos could not be saved')
       if (andDispatch) onAddAndDispatch(cleanVin)
       else onAdded()
     } catch (e: any) {
@@ -241,42 +323,44 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} />
-      <div style={{ width: 'min(480px,100vw)', background: '#FFFFFF', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Add Vehicle</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} color="#94A3B8" /></button>
+      <div style={{ width: 'min(480px,100vw)', background: WHITE, display: 'flex', flexDirection: 'column', height: '100%', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${GRAY_300}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: GRAY_900, margin: 0 }}>Add Existing Vehicle</h2>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} color={GRAY_500} /></button>
+          </div>
+          <p style={{ fontSize: 12, color: GRAY_500, margin: '4px 0 0', lineHeight: 1.5 }}>
+            For a vehicle already on the lot that was never logged. A vehicle that&apos;s returning always goes through a full Intake instead.
+          </p>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-          {/* Status */}
+          {/* Status — full picker, never defaulted */}
           <div style={{ marginBottom: 18 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Status *</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['pending_arrival', 'on_lot'] as const).map(s => (
-                <button key={s} onClick={() => setStatus(s)}
-                  style={{ flex: 1, height: 44, borderRadius: 10, border: `1.5px solid ${status === s ? '#00B4D8' : '#E1E8F0'}`, background: status === s ? '#E0F7FC' : '#FAFAFA', color: status === s ? '#0097B2' : '#4A5568', fontSize: 13, fontWeight: status === s ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {s === 'pending_arrival' ? 'Pending Arrival' : 'On Lot'}
-                </button>
-              ))}
-            </div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Status *</label>
+            <select value={status} onChange={e => setStatus(e.target.value as WorkOrderStatus)}
+              style={{ width: '100%', height: 44, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
+              <option value="">Select this vehicle&apos;s actual current status…</option>
+              {WORK_ORDER_STATUSES.map(s => <option key={s} value={s}>{WORK_ORDER_STATUS_LABEL[s]}</option>)}
+            </select>
           </div>
           {/* VIN */}
           <div style={{ marginBottom: 18 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>VIN *</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>VIN *</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input value={vin} onChange={e => { setVin(e.target.value.replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase().slice(0, 17)); setDupeVehicleId(null) }}
-                onBlur={() => { checkDupe(); if (cleanVin.length === 17) decode() }}
+                onBlur={() => { checkDupe(); if (cleanVin.length === 17) { decode(); lookupVehicleMasterDefaults() } }}
                 placeholder="17-character VIN" maxLength={17}
-                style={{ flex: 1, height: 44, border: `1px solid ${dupeVehicleId ? '#EF4444' : '#E1E8F0'}`, borderRadius: 10, padding: '0 12px', fontSize: 14, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA' }} />
+                style={{ flex: 1, height: 44, border: `1px solid ${dupeVehicleId ? DANGER : GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, fontFamily: 'monospace', outline: 'none', background: GRAY_100 }} />
               <button onClick={decode} disabled={cleanVin.length !== 17 || decoding}
-                style={{ height: 44, padding: '0 14px', borderRadius: 10, background: '#00B4D8', color: '#FFF', border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: cleanVin.length !== 17 ? 0.5 : 1, fontFamily: 'inherit' }}>
+                style={{ height: 44, padding: '0 14px', borderRadius: 10, background: PRIMARY, color: WHITE, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: cleanVin.length !== 17 ? 0.5 : 1, fontFamily: 'inherit' }}>
                 {decoding ? '…' : 'Decode'}
               </button>
             </div>
             {dupeVehicleId && (
-              <p style={{ fontSize: 12, color: '#EF4444', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <p style={{ fontSize: 12, color: DANGER, margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
                 This VIN already exists.{' '}
                 <button onClick={() => { onClose(); router.push(`/inventory/${dupeVehicleId}`) }}
-                  style={{ background: 'none', border: 'none', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
+                  style={{ background: 'none', border: 'none', color: PRIMARY, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
                   View vehicle →
                 </button>
               </p>
@@ -286,43 +370,101 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
             {([['Year', year, setYear], ['Make', make, setMake], ['Model', model, setModel]] as const).map(([lbl, val, setter]) => (
               <div key={lbl as string}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>{lbl as string}</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>{lbl as string}</label>
                 <input value={val as string} onChange={e => (setter as any)(e.target.value)}
-                  style={{ width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 10px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                  style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 10px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
               </div>
             ))}
+          </div>
+          {/* Vehicle Template / Size — durable identity data on vehicle_master, set once,
+              always editable. Template drives the size default until Size is touched directly. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>Vehicle Template</label>
+              <select value={vehicleTemplate} onChange={e => applyTemplate(e.target.value as VehicleTemplate)}
+                style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 10px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }}>
+                <option value="">Not set</option>
+                <option value="sedan">Sedan</option>
+                <option value="suv">SUV</option>
+                <option value="truck">Truck</option>
+                <option value="van">Van</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>Size</label>
+              <select value={sizeClass} onChange={e => { setSizeClass(e.target.value as SpotSizeClass); setSizeTouched(true) }}
+                style={{ width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 10px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }}>
+                <option value="compact">Compact</option>
+                <option value="standard">Standard</option>
+                <option value="oversized">Oversized</option>
+              </select>
+            </div>
           </div>
           {/* Location */}
           {isFMC && (
             <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Location</label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Location</label>
               <select value={locationId} onChange={e => setLocationId(e.target.value)}
-                style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                style={{ width: '100%', height: 44, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
                 <option value="">No location</option>
                 {locations.filter(l => l.active !== false).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           )}
-          {/* Arrival Date — only shown when On Lot */}
-          {status === 'on_lot' && (
+          {/* Arrival Date — not shown for Pending Arrival, since that status means it hasn't arrived yet */}
+          {status !== '' && status !== 'pending_arrival' && (
             <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Arrival Date *</label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Arrival Date *</label>
               <input type="date" value={arrivedAt} onChange={e => setArrivedAt(e.target.value)}
-                style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                style={{ width: '100%', height: 44, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
             </div>
           )}
+          {/* Condition Photos — required, one-time continuous capture like the real checkpoint flow */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Condition Photos *</label>
+            {!allPhotosReady && (
+              <button
+                type="button"
+                onClick={() => setSequenceActive(true)}
+                style={{
+                  width: '100%', height: 44, borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE,
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Camera size={15} />
+                {Object.keys(photos).length === 0 ? 'Start Photos' : 'Continue Photos'} ({Object.keys(photos).length}/{BACKFILL_PHOTO_SLOTS.length})
+              </button>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {BACKFILL_PHOTO_SLOTS.map(slot => (
+                <button key={slot.key} type="button" onClick={() => setActivePhotoKey(slot.key)}
+                  style={{
+                    height: 80, borderRadius: 10, border: `1.5px solid ${photos[slot.key] ? SUCCESS : GRAY_300}`,
+                    background: photos[slot.key] ? `url(${photos[slot.key]}) center/cover` : GRAY_100,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                  }}>
+                  {!photos[slot.key] && <Camera size={18} color={GRAY_500} />}
+                  <span style={{ fontSize: 11, fontWeight: 600, color: photos[slot.key] ? WHITE : GRAY_700, textShadow: photos[slot.key] ? '0 1px 3px rgba(0,0,0,0.6)' : 'none' }}>
+                    {slot.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
           {/* Customer */}
           <div style={{ marginBottom: 18 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Customer</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Customer</label>
             {!showQuickAdd ? (
               <div style={{ display: 'flex', gap: 8 }}>
                 <select value={customerId} onChange={e => setCustomerId(e.target.value)}
-                  style={{ flex: 1, height: 44, border: '1px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, height: 44, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }}>
                   <option value="">— No customer —</option>
                   {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <button onClick={() => setShowQuickAdd(true)}
-                  style={{ height: 44, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#F8FAFC', color: '#4A5568', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', flexShrink: 0 }}>
+                  style={{ height: 44, padding: '0 12px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: GRAY_100, color: GRAY_700, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', flexShrink: 0 }}>
                   <UserPlus size={14} /> New
                 </button>
               </div>
@@ -330,7 +472,7 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
               <div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input value={quickAddName} onChange={e => setQuickAddName(e.target.value)} placeholder="Customer name…"
-                    style={{ flex: 1, height: 44, border: '1px solid #00B4D8', borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA', fontFamily: 'inherit' }} />
+                    style={{ flex: 1, height: 44, border: `1px solid ${PRIMARY}`, borderRadius: 10, padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100, fontFamily: 'inherit' }} />
                   <button onClick={async () => {
                     if (!quickAddName.trim()) return
                     setCreatingCustomer(true)
@@ -348,41 +490,56 @@ function AddVehicleSlideOver({ companyId, isFMC, locations, onClose, onAdded, on
                     } catch (e: any) { alert(e.message) }
                     finally { setCreatingCustomer(false) }
                   }} disabled={!quickAddName.trim() || creatingCustomer}
-                    style={{ height: 44, padding: '0 14px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFF', fontWeight: 700, fontSize: 13, cursor: quickAddName.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+                    style={{ height: 44, padding: '0 14px', borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700, fontSize: 13, cursor: quickAddName.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
                     {creatingCustomer ? '…' : 'Create'}
                   </button>
                   <button onClick={() => { setShowQuickAdd(false); setQuickAddName('') }}
-                    style={{ width: 44, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <X size={14} color="#94A3B8" />
+                    style={{ width: 44, height: 44, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={14} color={GRAY_500} />
                   </button>
                 </div>
-                <p style={{ fontSize: 11, color: '#94A3B8', margin: '5px 0 0' }}>Creates a new customer record and links it to this vehicle</p>
+                <p style={{ fontSize: 11, color: GRAY_500, margin: '5px 0 0' }}>Creates a new customer record and links it to this vehicle</p>
               </div>
             )}
           </div>
           {/* Notes */}
           <div style={{ marginBottom: 18 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Notes</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 6 }}>Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Optional…"
-              style={{ width: '100%', border: '1px solid #E1E8F0', borderRadius: 10, padding: '10px 12px', fontSize: 14, resize: 'vertical', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              style={{ width: '100%', border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '10px 12px', fontSize: 14, resize: 'vertical', outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
         </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E8F0' }}>
+        <div style={{ padding: '16px 24px', borderTop: `1px solid ${GRAY_300}` }}>
           {saveError && (
-            <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 10px', lineHeight: 1.5 }}>{saveError}</p>
+            <p style={{ fontSize: 12, color: DANGER, margin: '0 0 10px', lineHeight: 1.5 }}>{saveError}</p>
           )}
           <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => save(false)} disabled={!cleanVin || !!dupeVehicleId || saving}
-            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#00B4D8' : '#E1E8F0', color: cleanVin && !dupeVehicleId ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          <button onClick={() => save(false)} disabled={!cleanVin || !!dupeVehicleId || !status || !allPhotosReady || saving}
+            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId && status && allPhotosReady ? PRIMARY : GRAY_300, color: cleanVin && !dupeVehicleId && status && allPhotosReady ? WHITE : GRAY_500, fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId && status && allPhotosReady ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             {saving ? 'Adding…' : 'Add Vehicle'}
           </button>
-          <button onClick={() => save(true)} disabled={!cleanVin || !!dupeVehicleId || saving}
-            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId ? '#00B4D8' : '#E1E8F0', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+          <button onClick={() => save(true)} disabled={!cleanVin || !!dupeVehicleId || !status || !allPhotosReady || saving}
+            style={{ flex: 1, height: 48, borderRadius: 12, border: 'none', background: cleanVin && !dupeVehicleId && status && allPhotosReady ? PRIMARY : GRAY_300, color: WHITE, fontWeight: 700, fontSize: 15, cursor: cleanVin && !dupeVehicleId && status && allPhotosReady ? 'pointer' : 'default', fontFamily: 'inherit' }}>
             Add & Dispatch
           </button>
           </div>
         </div>
       </div>
+
+      {sequenceActive && (
+        <CameraCapture
+          photoSequence={BACKFILL_PHOTO_SLOTS.map(s => s.label)}
+          currentSequenceIndex={(() => { const i = BACKFILL_PHOTO_SLOTS.findIndex(s => !photos[s.key]); return i === -1 ? 0 : i })()}
+          onSequenceCapture={(index, dataUrl) => setPhotos(prev => ({ ...prev, [BACKFILL_PHOTO_SLOTS[index].key]: dataUrl }))}
+          onClose={() => setSequenceActive(false)}
+        />
+      )}
+      {activePhotoKey && (
+        <CameraCapture
+          onCapture={dataUrl => { setPhotos(prev => ({ ...prev, [activePhotoKey]: dataUrl })); setActivePhotoKey(null) }}
+          onClose={() => setActivePhotoKey(null)}
+        />
+      )}
     </div>
   )
 }
@@ -431,10 +588,10 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
-      <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Import CSV</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color="#94A3B8" /></button>
+      <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${GRAY_300}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: GRAY_900, margin: 0 }}>Import CSV</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} color={GRAY_500} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {step === 'upload' && (
@@ -442,42 +599,42 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
               <div onClick={() => inputRef.current?.click()}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-                style={{ border: '2px dashed #E1E8F0', borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer', background: '#FAFAFA' }}>
-                <Upload size={28} color="#94A3B8" style={{ margin: '0 auto 10px', display: 'block' }} />
-                <p style={{ fontSize: 14, color: '#4A5568', margin: '0 0 4px', fontWeight: 600 }}>Drop CSV or click to browse</p>
-                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>Required: VIN — Optional: Make, Model, Year, Notes, Arrived At</p>
+                style={{ border: `2px dashed ${GRAY_300}`, borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer', background: GRAY_100 }}>
+                <Upload size={28} color={GRAY_500} style={{ margin: '0 auto 10px', display: 'block' }} />
+                <p style={{ fontSize: 14, color: GRAY_700, margin: '0 0 4px', fontWeight: 600 }}>Drop CSV or click to browse</p>
+                <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>Required: VIN — Optional: Make, Model, Year, Notes, Arrived At</p>
               </div>
               <input ref={inputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
-              <div style={{ marginTop: 14, background: '#F8FAFC', borderRadius: 10, padding: '10px 14px' }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px' }}>Expected format</p>
-                <code style={{ fontSize: 11, color: '#4A5568' }}>VIN,Make,Model,Year,Notes,Arrived At</code>
+              <div style={{ marginTop: 14, background: GRAY_100, borderRadius: 10, padding: '10px 14px' }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', margin: '0 0 4px' }}>Expected format</p>
+                <code style={{ fontSize: 11, color: GRAY_700 }}>VIN,Make,Model,Year,Notes,Arrived At</code>
               </div>
             </>
           )}
           {step === 'preview' && (
             <>
               <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-                <div style={{ flex: 1, background: '#D1FAE5', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 22, fontWeight: 700, color: '#065F46', margin: 0 }}>{newRows.length}</p>
-                  <p style={{ fontSize: 11, color: '#065F46', margin: 0 }}>New</p>
+                <div style={{ flex: 1, background: SUCCESS_LIGHT, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 22, fontWeight: 700, color: SUCCESS_DARK, margin: 0 }}>{newRows.length}</p>
+                  <p style={{ fontSize: 11, color: SUCCESS_DARK, margin: 0 }}>New</p>
                 </div>
-                <div style={{ flex: 1, background: '#FEF3C7', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 22, fontWeight: 700, color: '#92400E', margin: 0 }}>{dupeRows.length}</p>
-                  <p style={{ fontSize: 11, color: '#92400E', margin: 0 }}>Duplicates</p>
+                <div style={{ flex: 1, background: WARN_LIGHT, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+                  <p style={{ fontSize: 22, fontWeight: 700, color: WARN_DARK, margin: 0 }}>{dupeRows.length}</p>
+                  <p style={{ fontSize: 11, color: WARN_DARK, margin: 0 }}>Duplicates</p>
                 </div>
               </div>
               {dupeRows.length > 0 && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13, color: GRAY_700 }}>
                   <input type="checkbox" checked={skipDupes} onChange={e => setSkipDupes(e.target.checked)} />
                   Skip duplicate VINs
                 </label>
               )}
-              <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #E1E8F0', borderRadius: 10 }}>
+              <div style={{ maxHeight: 260, overflowY: 'auto', border: `1px solid ${GRAY_300}`, borderRadius: 10 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
-                    <tr style={{ background: '#F8FAFC' }}>
+                    <tr style={{ background: GRAY_100 }}>
                       {['VIN', 'Make', 'Model', 'Year', ''].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#94A3B8', borderBottom: '1px solid #E1E8F0', fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: GRAY_500, borderBottom: `1px solid ${GRAY_300}`, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -485,13 +642,13 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
                     {rows.map((r, i) => {
                       const isDupe = existingVins.has(r.vin.toUpperCase())
                       return (
-                        <tr key={i} style={{ background: isDupe ? '#FFFBEB' : '#FFFFFF' }}>
-                          <td style={{ padding: '7px 12px', fontFamily: 'monospace', borderBottom: '1px solid #F0F4F8' }}>{r.vin}</td>
-                          <td style={{ padding: '7px 12px', color: '#4A5568', borderBottom: '1px solid #F0F4F8' }}>{r.make}</td>
-                          <td style={{ padding: '7px 12px', color: '#4A5568', borderBottom: '1px solid #F0F4F8' }}>{r.model}</td>
-                          <td style={{ padding: '7px 12px', color: '#4A5568', borderBottom: '1px solid #F0F4F8' }}>{r.year}</td>
-                          <td style={{ padding: '7px 12px', borderBottom: '1px solid #F0F4F8' }}>
-                            <span style={{ background: isDupe ? '#FEF3C7' : '#D1FAE5', color: isDupe ? '#92400E' : '#065F46', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                        <tr key={i} style={{ background: isDupe ? WARN_LIGHT : WHITE }}>
+                          <td style={{ padding: '7px 12px', fontFamily: 'monospace', borderBottom: `1px solid ${GRAY_100}` }}>{r.vin}</td>
+                          <td style={{ padding: '7px 12px', color: GRAY_700, borderBottom: `1px solid ${GRAY_100}` }}>{r.make}</td>
+                          <td style={{ padding: '7px 12px', color: GRAY_700, borderBottom: `1px solid ${GRAY_100}` }}>{r.model}</td>
+                          <td style={{ padding: '7px 12px', color: GRAY_700, borderBottom: `1px solid ${GRAY_100}` }}>{r.year}</td>
+                          <td style={{ padding: '7px 12px', borderBottom: `1px solid ${GRAY_100}` }}>
+                            <span style={{ background: isDupe ? WARN_LIGHT : SUCCESS_LIGHT, color: isDupe ? WARN_DARK : SUCCESS_DARK, borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
                               {isDupe ? 'DUPE' : 'NEW'}
                             </span>
                           </td>
@@ -505,23 +662,23 @@ function CSVImportModal({ companyId, existingVins, onClose, onImported }: {
           )}
           {step === 'done' && result && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ width: 60, height: 60, borderRadius: 30, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-                <CheckCircle size={28} color="#10B981" />
+              <div style={{ width: 60, height: 60, borderRadius: 30, background: SUCCESS_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <CheckCircle size={28} color={SUCCESS} />
               </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: '0 0 6px' }}>{result.inserted} vehicles imported</h3>
-              {result.skipped.length > 0 && <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>{result.skipped.length} duplicates skipped</p>}
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: GRAY_900, margin: '0 0 6px' }}>{result.inserted} vehicles imported</h3>
+              {result.skipped.length > 0 && <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>{result.skipped.length} duplicates skipped</p>}
             </div>
           )}
         </div>
-        <div style={{ padding: '14px 24px', borderTop: '1px solid #E1E8F0', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          {step !== 'done' && <button onClick={onClose} style={{ height: 42, padding: '0 18px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>}
+        <div style={{ padding: '14px 24px', borderTop: `1px solid ${GRAY_300}`, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          {step !== 'done' && <button onClick={onClose} style={{ height: 42, padding: '0 18px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>}
           {step === 'preview' && (
             <button onClick={doImport} disabled={importing || toImport.length === 0}
-              style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               {importing ? 'Importing…' : `Import ${toImport.length} Vehicle${toImport.length !== 1 ? 's' : ''}`}
             </button>
           )}
-          {step === 'done' && <button onClick={onClose} style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>}
+          {step === 'done' && <button onClick={onClose} style={{ height: 42, padding: '0 18px', borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Done</button>}
         </div>
       </div>
     </div>
@@ -558,7 +715,10 @@ export default function VehiclesPage() {
   const [locations, setLocations] = useState<any[]>([])
 
   // Modals
+  // showAddVehicle now opens the New Arrival / Add Existing Vehicle choice;
+  // showAddExisting opens the Add Existing Vehicle (backfill) form itself.
   const [showAddVehicle, setShowAddVehicle] = useState(false)
+  const [showAddExisting, setShowAddExisting] = useState(false)
   const [showCSV, setShowCSV] = useState(false)
   const [dispatchSheet, setDispatchSheet] = useState<{ open: boolean; vin?: string; year?: string; make?: string; model?: string }>({ open: false })
 
@@ -576,13 +736,21 @@ export default function VehiclesPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const searchParams = useSearchParams()
-  useEffect(() => {
-    if (searchParams.get('add') === 'true') {
-      setShowAddVehicle(true)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [searchParams])
+  // View toggle + dashboard-style stats
+  const [view, setView] = useState<'table' | 'board'>('table')
+  const [occupancy, setOccupancy] = useState<{ occupied: number; total: number } | null>(null)
+  const [arrivalsToday, setArrivalsToday] = useState(0)
+  const [needsAttention, setNeedsAttention] = useState(0)
+  const [unbilledCount, setUnbilledCount] = useState(0)
+  const [todaysQueue, setTodaysQueue] = useState<TodaysQueue | null>(null)
+  const [statFilter, setStatFilter] = useState<'arrivals_today' | 'needs_attention' | 'unbilled' | null>(null)
+
+  const ATTENTION_STATUSES = new Set<WorkOrderStatus>(['on_lot_pending_repairs', 'on_hold', 'pending_release'])
+  const isArrivingToday = (v: any) => {
+    if (v.work_order_status !== 'pending_arrival' || !v.arrived_at) return false
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    return new Date(v.arrived_at) >= start
+  }
 
   function toggleVehicleSelect(id: string) {
     setSelectedVehicleIds(prev => {
@@ -626,6 +794,24 @@ export default function VehiclesPage() {
   }, [companyId])
 
   useEffect(() => { loadVehicles() }, [loadVehicles])
+
+  const loadStats = useCallback(async () => {
+    if (!companyId) return
+    const [arrivals, attention, queue] = await Promise.all([
+      getArrivalsTodayCount(companyId),
+      getNeedsAttentionCount(companyId),
+      getTodaysQueue(companyId),
+    ])
+    setArrivalsToday(arrivals)
+    setNeedsAttention(attention)
+    setTodaysQueue(queue)
+    if (lotMapEnabled) {
+      const [occ, kpis] = await Promise.all([getLotOccupancy(companyId), getBillingKPIs(companyId)])
+      setOccupancy(occ)
+      setUnbilledCount(kpis.unbilledCount)
+    }
+  }, [companyId, lotMapEnabled])
+  useEffect(() => { loadStats() }, [loadStats])
   useEffect(() => { if (isFMC && companyId) getStorageLocations(companyId).then(setLocations) }, [isFMC, companyId])
 
   // Derived
@@ -637,6 +823,9 @@ export default function VehiclesPage() {
     if (s && !v.vin?.toLowerCase().includes(s) && !v.make?.toLowerCase().includes(s) && !v.model?.toLowerCase().includes(s)) return false
     if (locationFilter && v.location_id !== locationFilter) return false
     if (activeTab !== 'all' && v._status !== activeTab) return false
+    if (statFilter === 'arrivals_today' && !isArrivingToday(v)) return false
+    if (statFilter === 'needs_attention' && !ATTENTION_STATUSES.has(v.work_order_status)) return false
+    if (statFilter === 'unbilled' && v.billed_through_date) return false
     return true
   })
 
@@ -660,22 +849,6 @@ export default function VehiclesPage() {
   const statsReleasedMonth = allTagged.filter(v => v._status === 'picked_up' && v.released_at >= monthStart).length
   const existingVins = new Set(allTagged.filter(v => v._status !== 'completed').map(v => v.vin?.toUpperCase() ?? ''))
 
-  function getPrimaryAction(v: any): { label: string; onClick: () => void; locked?: boolean } {
-    switch (v._status as LifecycleStatus) {
-      case 'pending_arrival':
-        return { label: 'Start', onClick: () => router.push(`/inventory/${v.id}`) }
-      case 'on_lot':
-        return {
-          label: 'Dispatch',
-          onClick: () => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch'),
-          locked: dispatchEnabled === false,
-        }
-      case 'pending_pickup':
-        return { label: 'Resume', onClick: () => router.push(`/inventory/${v.id}`) }
-      default:
-        return { label: 'Reports', onClick: () => handleOpenReports(v) }
-    }
-  }
 
   const handleOpenReports = async (v: any) => {
     setReportsVehicle(v)
@@ -779,29 +952,76 @@ export default function VehiclesPage() {
     <LoadingOverlay show={loading && vehicles.length === 0 && !showAddVehicle} fullScreen />
     {!isDesktop && <MobilePageHeader />}
     <div style={{ padding: isDesktop ? '24px 28px' : '16px', paddingTop: isDesktop ? '24px' : '16px', paddingBottom: isDesktop ? undefined : 'calc(80px + env(safe-area-inset-bottom))', maxWidth: 1400, margin: '0 auto' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.veh-row:hover{background:#F8FAFC!important}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}.veh-row:hover{background:${GRAY_100}!important}`}</style>
 
-      {/* Stats — desktop only */}
-      {isDesktop && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Total on System', value: allTagged.length,    color: '#0D1B2A' },
-          { label: 'On Lot',          value: statsOnLot,           color: '#0097B2' },
-          { label: 'Uninspected',     value: statsUninspected,     color: '#D97706' },
-          { label: 'Picked Up / Mo.',  value: statsReleasedMonth,   color: '#059669' },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 14, padding: '14px 18px' }}>
-            <p style={{ fontSize: 12, color: '#94A3B8', margin: '0 0 4px', fontWeight: 500 }}>{s.label}</p>
-            <p style={{ fontSize: 26, fontWeight: 800, color: s.color, margin: 0, lineHeight: 1 }}>{s.value}</p>
-          </div>
-        ))}
-      </div>}
+      {/* Stat row — clickable, filters the table */}
+      {isDesktop && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+          {[
+            { key: 'free_spots' as const, label: 'Free Spots', value: occupancy ? occupancy.total - occupancy.occupied : '—', color: PRIMARY_PILL_TEXT, icon: MapPin },
+            { key: 'arrivals_today' as const, label: 'Arriving Today', value: arrivalsToday, color: PRIMARY_PILL_TEXT, icon: Car },
+            { key: 'needs_attention' as const, label: 'Needs Attention', value: needsAttention, color: AMBER_DARK, icon: AlertTriangle },
+            { key: 'unbilled' as const, label: 'Unbilled', value: unbilledCount, color: AMBER_DARK, icon: DollarSign },
+          ].map(s => {
+            const Icon = s.icon
+            const clickable = s.key !== 'free_spots'
+            const active = clickable && statFilter === s.key
+            return (
+              <button key={s.key}
+                onClick={() => s.key === 'free_spots' ? router.push('/lot') : setStatFilter(f => f === s.key ? null : s.key as any)}
+                style={{
+                  background: active ? GRAY_900 : WHITE, border: `1px solid ${active ? GRAY_900 : GRAY_300}`,
+                  borderRadius: 14, padding: '14px 18px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                <div>
+                  <p style={{ fontSize: 12, color: active ? 'rgba(240,244,248,0.6)' : GRAY_500, margin: '0 0 4px', fontWeight: 500 }}>{s.label}</p>
+                  <p style={{ fontSize: 26, fontWeight: 800, color: active ? WHITE : s.color, margin: 0, lineHeight: 1 }}>{s.value}</p>
+                </div>
+                <Icon size={18} color={active ? 'rgba(240,244,248,0.4)' : GRAY_300} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Capacity bar */}
+      {isDesktop && lotMapEnabled && occupancy && (
+        <div style={{ marginBottom: 20 }}>
+          <CapacityBar occupied={occupancy.occupied} total={occupancy.total} />
+        </div>
+      )}
+
+      {/* Today strip */}
+      {isDesktop && todaysQueue && (todaysQueue.arrivingToday.length > 0 || todaysQueue.readyForRelease.length > 0 || todaysQueue.needsStatusUpdate.length > 0) && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto' }}>
+          {todaysQueue.arrivingToday.map(v => (
+            <button key={`arr-${v.id}`} onClick={() => router.push(`/inventory/${v.id}`)}
+              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 20, border: `1px solid ${PRIMARY_LIGHT}`, background: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Arriving: {v.vin.slice(-6)}
+            </button>
+          ))}
+          {todaysQueue.readyForRelease.map(v => (
+            <button key={`ready-${v.id}`} onClick={() => router.push(`/inventory/${v.id}`)}
+              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 20, border: `1px solid ${SUCCESS_LIGHT}`, background: SUCCESS_LIGHT, color: SUCCESS_DARK, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Ready for Release: {v.vin.slice(-6)}
+            </button>
+          ))}
+          {todaysQueue.needsStatusUpdate.map(v => (
+            <button key={`stale-${v.id}`} onClick={() => router.push(`/inventory/${v.id}`)}
+              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 20, border: `1px solid ${WARN_LIGHT}`, background: WARN_LIGHT, color: WARN_DARK, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Needs Update: {v.vin.slice(-6)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* FMC location pills */}
       {isFMC && locations.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
           {[{ id: null, name: 'All Locations' }, ...locations.filter(l => l.active !== false)].map(l => (
             <button key={l.id ?? 'all'} onClick={() => setLocationFilter(l.id)}
-              style={{ height: 30, padding: '0 14px', borderRadius: 20, border: `1px solid ${locationFilter === l.id ? '#00B4D8' : '#E1E8F0'}`, background: locationFilter === l.id ? '#E0F7FC' : '#FFFFFF', color: locationFilter === l.id ? '#0097B2' : '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ height: 30, padding: '0 14px', borderRadius: 20, border: `1px solid ${locationFilter === l.id ? PRIMARY : GRAY_300}`, background: locationFilter === l.id ? PRIMARY_LIGHT : WHITE, color: locationFilter === l.id ? PRIMARY_PILL_TEXT : GRAY_700, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
               {l.name}
             </button>
           ))}
@@ -817,9 +1037,9 @@ export default function VehiclesPage() {
             const c = counts[tab.id] ?? 0
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                style={{ height: 30, padding: '0 14px', borderRadius: 20, border: 'none', flexShrink: 0, background: active ? '#0D1B2A' : '#F0F4F8', color: active ? '#FFF' : '#4A5568', fontSize: 12, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+                style={{ height: 30, padding: '0 14px', borderRadius: 20, border: 'none', flexShrink: 0, background: active ? GRAY_900 : GRAY_100, color: active ? WHITE : GRAY_700, fontSize: 12, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
                 {tab.label}
-                {c > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: active ? 'rgba(255,255,255,0.2)' : '#E1E8F0', color: active ? '#FFF' : '#4A5568', borderRadius: 8, padding: '1px 5px' }}>{c}</span>}
+                {c > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: active ? 'rgba(255,255,255,0.2)' : GRAY_300, color: active ? WHITE : GRAY_700, borderRadius: 8, padding: '1px 5px' }}>{c}</span>}
               </button>
             )
           })}
@@ -830,59 +1050,75 @@ export default function VehiclesPage() {
       {isDesktop ? (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1 1 160px', minWidth: 140 }}>
-            <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <Search size={14} color={GRAY_500} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search VIN, make, model…"
-              style={{ width: '100%', height: 38, border: '1px solid #E1E8F0', borderRadius: 10, paddingLeft: 32, paddingRight: 10, fontSize: 13, outline: 'none', background: '#FFF', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              style={{ width: '100%', height: 38, border: `1px solid ${GRAY_300}`, borderRadius: 10, paddingLeft: 32, paddingRight: 10, fontSize: 13, outline: 'none', background: WHITE, boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
-          <div style={{ display: 'flex', gap: 3, background: '#F0F4F8', borderRadius: 10, padding: 3 }}>
+          <div style={{ display: 'flex', gap: 3, background: GRAY_100, borderRadius: 10, padding: 3 }}>
             {TABS.map(tab => {
               const active = activeTab === tab.id
               const c = counts[tab.id] ?? 0
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  style={{ height: 32, padding: '0 10px', borderRadius: 7, border: 'none', background: active ? '#0D1B2A' : 'transparent', color: active ? '#FFF' : '#4A5568', fontSize: 12, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+                  style={{ height: 32, padding: '0 10px', borderRadius: 7, border: 'none', background: active ? GRAY_900 : 'transparent', color: active ? WHITE : GRAY_700, fontSize: 12, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
                   {tab.label}
-                  {c > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: active ? 'rgba(255,255,255,0.2)' : '#E1E8F0', color: active ? '#FFF' : '#4A5568', borderRadius: 8, padding: '1px 5px' }}>{c}</span>}
+                  {c > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: active ? 'rgba(255,255,255,0.2)' : GRAY_300, color: active ? WHITE : GRAY_700, borderRadius: 8, padding: '1px 5px' }}>{c}</span>}
                 </button>
               )
             })}
           </div>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', gap: 2, background: GRAY_100, borderRadius: 10, padding: 2 }}>
+              <button onClick={() => setView('table')} title="Table view"
+                style={{ height: 34, width: 34, borderRadius: 8, border: 'none', background: view === 'table' ? WHITE : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <LayoutGrid size={15} color={view === 'table' ? GRAY_900 : GRAY_500} />
+              </button>
+              <button onClick={() => setView('board')} title="Board view"
+                style={{ height: 34, width: 34, borderRadius: 8, border: 'none', background: view === 'board' ? WHITE : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Columns3 size={15} color={view === 'board' ? GRAY_900 : GRAY_500} />
+              </button>
+            </div>
             <button onClick={reportingExportEnabled ? exportCSV : undefined} title={reportingExportEnabled === false ? 'Pro feature' : undefined}
-              style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: reportingExportEnabled === false ? '#F0F4F8' : '#FFF', color: reportingExportEnabled === false ? '#94A3B8' : '#4A5568', fontSize: 13, fontWeight: 500, cursor: reportingExportEnabled === false ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
-              {reportingExportEnabled === false ? <Lock size={14} color="#CBD5E1" /> : <Download size={14} />}Export
+              style={{ height: 38, padding: '0 12px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: reportingExportEnabled === false ? GRAY_100 : WHITE, color: reportingExportEnabled === false ? GRAY_500 : GRAY_700, fontSize: 13, fontWeight: 500, cursor: reportingExportEnabled === false ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
+              {reportingExportEnabled === false ? <Lock size={14} color={GRAY_300} /> : <Download size={14} />}Export
             </button>
-            <button onClick={() => setShowCSV(true)} style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
-            <button onClick={() => setShowAddVehicle(true)} style={{ height: 38, padding: '0 14px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
+            <button onClick={() => setShowCSV(true)} style={{ height: 38, padding: '0 12px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
+            <button onClick={() => setShowAddVehicle(true)} style={{ height: 38, padding: '0 14px', borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
           </div>
         </div>
       ) : (
         <div style={{ marginBottom: 12 }}>
           {/* Mobile search */}
           <div style={{ position: 'relative', marginBottom: 10 }}>
-            <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <Search size={14} color={GRAY_500} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search VIN, make, model…"
-              style={{ width: '100%', height: 44, border: '1px solid #E1E8F0', borderRadius: 12, paddingLeft: 34, paddingRight: 10, fontSize: 14, outline: 'none', background: '#FFF', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              style={{ width: '100%', height: 44, border: `1px solid ${GRAY_300}`, borderRadius: 12, paddingLeft: 34, paddingRight: 10, fontSize: 14, outline: 'none', background: WHITE, boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
           {/* Mobile action row */}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowCSV(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
-            <button onClick={() => setShowAddVehicle(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
+            <button onClick={() => setShowCSV(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Upload size={14} />Import CSV</button>
+            <button onClick={() => setShowAddVehicle(true)} style={{ flex: 1, height: 44, borderRadius: 12, border: 'none', background: PRIMARY, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}><Plus size={14} />Add Vehicle</button>
           </div>
         </div>
       )}
 
+      {/* Board view */}
+      {view === 'board' && isDesktop && (
+        <BoardView vehicles={sorted} userId={user?.id ?? ''} onChanged={loadVehicles} />
+      )}
+
       {/* Table */}
-      <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 14, overflow: 'hidden' }}>
+      {(view === 'table' || !isDesktop) && (
+      <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 14, overflow: 'hidden' }}>
         {isDesktop ? (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E1E8F0' }}>
+              <tr style={{ background: GRAY_100, borderBottom: `1px solid ${GRAY_300}` }}>
                 {lotMapEnabled && (
                   <th style={{ padding: '11px 10px 11px 14px', width: 36 }}>
                     <input type="checkbox" checked={sorted.length > 0 && sorted.every(v => selectedVehicleIds.has(v.id))}
                       onChange={e => setSelectedVehicleIds(e.target.checked ? new Set(sorted.map(v => v.id)) : new Set())}
-                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#00B4D8' }} />
+                      style={{ width: 15, height: 15, cursor: 'pointer', accentColor: PRIMARY }} />
                   </th>
                 )}
                 {[
@@ -894,44 +1130,44 @@ export default function VehiclesPage() {
                   { label: 'Reports', align: 'right' },
                   { label: 'Actions', align: 'left' },
                 ].map(h => (
-                  <th key={h.label} style={{ padding: '11px 14px', textAlign: h.align as 'left' | 'right', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h.label}</th>
+                  <th key={h.label} style={{ padding: '11px 14px', textAlign: h.align as 'left' | 'right', fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
-              {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: '#94A3B8' }}>No vehicles found</td></tr>}
+              {loading && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} /></td></tr>}
+              {!loading && sorted.length === 0 && <tr><td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: '40px 0', textAlign: 'center', fontSize: 14, color: GRAY_500 }}>No vehicles found</td></tr>}
               {!loading && sorted.map(v => {
                 const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
+                const rowAccent = getSpotPinColor(v.work_order_status) ?? GRAY_500
                 const days = daysOnLot(v.arrived_at, v.released_at, v._status)
                 const isExp = expandedId === v.id
                 const reportCount = v.inspection_ids?.length ?? ([v.checkin_inspection_id, v.checkout_inspection_id].filter(Boolean).length)
                 const isTerminal = v._status === 'picked_up' || v._status === 'completed'
                 const tertiaryDate = v._status === 'pending_arrival' ? null : isTerminal ? (v.released_date ?? v.released_at) : v.arrived_at
                 const tertiaryLabel = isTerminal ? 'Picked up' : 'Arrived'
-                const primary = getPrimaryAction(v)
                 return (
                   <Fragment key={v.id}>
                     <tr className="veh-row" onClick={() => { setExpandedId(isExp ? null : v.id); setOpenKebab(null) }}
-                      style={{ borderBottom: isExp ? 'none' : '1px solid #F0F4F8', cursor: 'pointer', background: selectedVehicleIds.has(v.id) ? '#E0F7FC' : isExp ? '#F8FAFC' : undefined }}>
+                      style={{ borderLeft: `3px solid ${rowAccent}`, borderBottom: isExp ? 'none' : `1px solid ${GRAY_100}`, cursor: 'pointer', background: selectedVehicleIds.has(v.id) ? PRIMARY_LIGHT : isExp ? GRAY_100 : undefined }}>
                       {/* Checkbox */}
                       {lotMapEnabled && (
                         <td style={{ padding: '13px 10px 13px 14px', width: 36 }} onClick={e => { e.stopPropagation(); toggleVehicleSelect(v.id) }}>
                           <input type="checkbox" checked={selectedVehicleIds.has(v.id)} onChange={() => toggleVehicleSelect(v.id)}
-                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#00B4D8' }} />
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: PRIMARY }} />
                         </td>
                       )}
                       {/* Vehicle */}
                       <td style={{ padding: '13px 14px' }}>
                         {(v.make || v.model)
-                          ? <><p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>{[v.year, v.make, v.model].filter(Boolean).join(' ')}</p><p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p></>
-                          : <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>}
+                          ? <><p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>{[v.year, v.make, v.model].filter(Boolean).join(' ')}</p><p style={{ fontSize: 11, color: GRAY_500, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p></>
+                          : <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>}
                         {tertiaryDate && (
-                          <p style={{ fontSize: 10, color: '#CBD5E1', margin: 0 }}>
+                          <p style={{ fontSize: 10, color: GRAY_300, margin: 0 }}>
                             {tertiaryLabel} {new Date(tertiaryDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </p>
                         )}
-                        {v.location?.name && <p style={{ fontSize: 10, color: '#CBD5E1', margin: 0 }}>{v.location.name}</p>}
+                        {v.location?.name && <p style={{ fontSize: 10, color: GRAY_300, margin: 0 }}>{v.location.name}</p>}
                       </td>
                       {/* Spot */}
                       <td style={{ padding: '13px 14px' }}>
@@ -940,17 +1176,17 @@ export default function VehiclesPage() {
                       {/* Status */}
                       <td style={{ padding: '13px 14px' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: sc.bg, color: sc.color, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>
-                          {sc.pulse && <span style={{ width: 6, height: 6, borderRadius: 3, background: '#F59E0B', animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }} />}
+                          {sc.pulse && <span style={{ width: 6, height: 6, borderRadius: 3, background: WARN, animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }} />}
                           {sc.label}
                         </span>
                       </td>
                       {/* Days on Lot */}
                       <td style={{ padding: '13px 14px', fontSize: 13, textAlign: 'right' }}>
                         {v._status === 'pending_arrival'
-                          ? <span style={{ color: '#94A3B8', fontStyle: 'italic' }}>Pending</span>
+                          ? <span style={{ color: GRAY_500, fontStyle: 'italic' }}>Pending</span>
                           : days !== null
                             ? <span style={{ color: DAYS_ON_LOT_COLOR, fontWeight: 600 }}>{days}d</span>
-                            : <span style={{ color: '#CBD5E1' }}>—</span>}
+                            : <span style={{ color: GRAY_300 }}>—</span>}
                       </td>
                       {/* Billed Through */}
                       <td style={{ padding: '13px 14px', textAlign: 'right' }}>
@@ -958,28 +1194,33 @@ export default function VehiclesPage() {
                       </td>
                       {/* Reports */}
                       <td style={{ padding: '13px 14px', textAlign: 'right' }}>
-                        <span style={{ background: '#F0F4F8', color: '#4A5568', borderRadius: 8, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>{reportCount} report{reportCount !== 1 ? 's' : ''}</span>
+                        <span style={{ background: GRAY_100, color: GRAY_700, borderRadius: 8, padding: '3px 10px', fontSize: 12, fontWeight: 500 }}>{reportCount} report{reportCount !== 1 ? 's' : ''}</span>
                       </td>
                       {/* Actions */}
                       <td style={{ padding: '13px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                          <button onClick={primary.onClick} disabled={primary.locked} style={{ height: 28, padding: '0 12px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: primary.locked ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-                            {primary.locked && <Lock size={10} color="#FFF" />}{primary.label}
-                          </button>
+                          {v.work_order_status === 'pending_arrival' ? (
+                            <button onClick={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
+                              style={{ height: 28, padding: '0 12px', borderRadius: 7, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Check In
+                            </button>
+                          ) : (
+                            <ChangeStatus vehicleId={v.id} currentStatus={v.work_order_status} userId={user?.id ?? ''} onChanged={loadVehicles} variant="compact" />
+                          )}
                           {/* Kebab */}
                           <div style={{ position: 'relative' }}>
                             <button onClick={e => { e.stopPropagation(); setOpenKebab(openKebab === v.id ? null : v.id) }}
-                              style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid #E1E8F0', background: '#FFF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <MoreVertical size={13} color="#4A5568" />
+                              style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <MoreVertical size={13} color={GRAY_700} />
                             </button>
                             {openKebab === v.id && (
-                              <div style={{ position: 'absolute', right: 0, top: 32, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 150, padding: '4px 0' }}>
-                                <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
+                              <div style={{ position: 'absolute', right: 0, top: 32, background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 150, padding: '4px 0' }}>
+                                <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: GRAY_900, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                                 {v._status !== 'pending_arrival' && v._status !== 'picked_up' && v._status !== 'completed' && (
-                                  <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#0D1B2A', cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
+                                  <button onClick={() => { router.push(`/inventory/${v.id}`); setOpenKebab(null) }} style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: GRAY_900, cursor: 'pointer', fontFamily: 'inherit' }}>Start Inspection</button>
                                 )}
                                 <button onClick={() => { setConfirmDeleteId(v.id); setOpenKebab(null) }}
-                                  style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: '#EF4444', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                                  style={{ width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, color: DANGER, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
                               </div>
                             )}
                           </div>
@@ -988,13 +1229,13 @@ export default function VehiclesPage() {
                     </tr>
                     {isExp && (
                       <tr>
-                        <td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: 0, borderBottom: '1px solid #E1E8F0' }}>
+                        <td colSpan={lotMapEnabled ? 8 : 7} style={{ padding: 0, borderBottom: `1px solid ${GRAY_300}` }}>
                           <ExpandedRow
                             vehicle={v}
                             spotLabel={spotLabels[v.id] ?? null}
                             dispatchEnabled={dispatchEnabled}
                             onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
-                            onCheckIn={() => router.push(`/inventory/${v.id}`)}
+                            onCheckIn={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
                             onAssignSpot={() => router.push('/lot')}
                             onAddCharge={() => router.push(`/inventory/${v.id}`)}
                           />
@@ -1009,35 +1250,40 @@ export default function VehiclesPage() {
         ) : (
           // Mobile cards
           <div>
-            {loading && <div style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} /></div>}
-            {!loading && sorted.length === 0 && <p style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>No vehicles found</p>}
+            {loading && <div style={{ padding: '40px 0', textAlign: 'center' }}><Loader2 size={20} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} /></div>}
+            {!loading && sorted.length === 0 && <p style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, color: GRAY_500, margin: 0 }}>No vehicles found</p>}
             {!loading && sorted.map(v => {
               const sc = STATUS_CFG[v._status as LifecycleStatus] ?? STATUS_CFG.on_lot
+              const rowAccent = getSpotPinColor(v.work_order_status) ?? GRAY_500
               const days = daysOnLot(v.arrived_at, v.released_at, v._status)
               const isExp = expandedId === v.id
-              const primary = getPrimaryAction(v)
               return (
-                <div key={v.id} style={{ borderBottom: '1px solid #F0F4F8' }}>
+                <div key={v.id} style={{ borderBottom: `1px solid ${GRAY_100}` }}>
                   <div onClick={() => setExpandedId(isExp ? null : v.id)}
-                    style={{ padding: '13px 14px', borderLeft: `4px solid ${STATUS_BORDER[v._status as LifecycleStatus] ?? '#94A3B8'}`, cursor: 'pointer' }}>
+                    style={{ padding: '13px 14px', borderLeft: `4px solid ${rowAccent}`, cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                       <div>
                         {(v.make || v.model)
-                          ? <><p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>{[v.year, v.make, v.model].filter(Boolean).join(' ')}</p><p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p></>
-                          : <p style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>}
+                          ? <><p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: 0 }}>{[v.year, v.make, v.model].filter(Boolean).join(' ')}</p><p style={{ fontSize: 11, color: GRAY_500, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p></>
+                          : <p style={{ fontSize: 13, fontWeight: 700, color: GRAY_900, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>}
                       </div>
                       <span style={{ background: sc.bg, color: sc.color, borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 700 }}>{sc.label}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
                       {v._status === 'pending_arrival'
-                        ? <span style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>Pending</span>
+                        ? <span style={{ fontSize: 12, color: GRAY_500, fontStyle: 'italic' }}>Pending</span>
                         : days !== null && <span style={{ fontSize: 12, color: DAYS_ON_LOT_COLOR, fontWeight: 600 }}>{days}d on lot</span>}
                     </div>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                      <button onClick={primary.onClick} disabled={primary.locked} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: primary.locked ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {primary.locked && <Lock size={10} color="#FFF" />}{primary.label}
-                      </button>
-                      <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid #00B4D8', background: '#FFF', color: '#00B4D8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                      {v.work_order_status === 'pending_arrival' ? (
+                        <button onClick={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
+                          style={{ height: 30, padding: '0 12px', borderRadius: 8, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Check In
+                        </button>
+                      ) : (
+                        <ChangeStatus vehicleId={v.id} currentStatus={v.work_order_status} userId={user?.id ?? ''} onChanged={loadVehicles} variant="compact" />
+                      )}
+                      <button onClick={() => router.push(`/inventory/${v.id}`)} style={{ height: 30, padding: '0 12px', borderRadius: 8, border: `1px solid ${PRIMARY}`, background: WHITE, color: PRIMARY, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>View</button>
                     </div>
                   </div>
                   {isExp && (
@@ -1046,7 +1292,7 @@ export default function VehiclesPage() {
                       spotLabel={spotLabels[v.id] ?? null}
                       dispatchEnabled={dispatchEnabled}
                       onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
-                      onCheckIn={() => router.push(`/inventory/${v.id}`)}
+                      onCheckIn={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
                       onAssignSpot={() => router.push('/lot')}
                       onAddCharge={() => router.push(`/inventory/${v.id}`)}
                     />
@@ -1057,12 +1303,20 @@ export default function VehiclesPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Modals */}
       {showAddVehicle && (
-        <AddVehicleSlideOver companyId={companyId} isFMC={isFMC} locations={locations} onClose={() => setShowAddVehicle(false)}
-          onAdded={() => { setShowAddVehicle(false); loadVehicles() }}
-          onAddAndDispatch={vin => { setShowAddVehicle(false); if (dispatchEnabled === false) { router.push('/storage/dispatch') } else { setDispatchSheet({ open: true, vin }) } }} />
+        <AddVehicleChoice
+          onClose={() => setShowAddVehicle(false)}
+          onNewArrival={() => { setShowAddVehicle(false); router.push('/vehicles/intake') }}
+          onAddExisting={() => { setShowAddVehicle(false); setShowAddExisting(true) }}
+        />
+      )}
+      {showAddExisting && (
+        <AddExistingVehicleSlideOver companyId={companyId} userId={user?.id ?? ''} isFMC={isFMC} locations={locations} onClose={() => setShowAddExisting(false)}
+          onAdded={() => { setShowAddExisting(false); loadVehicles() }}
+          onAddAndDispatch={vin => { setShowAddExisting(false); if (dispatchEnabled === false) { router.push('/storage/dispatch') } else { setDispatchSheet({ open: true, vin }) } }} />
       )}
       {showCSV && <CSVImportModal companyId={companyId} existingVins={existingVins} onClose={() => setShowCSV(false)} onImported={loadVehicles} />}
       {openKebab && <div onClick={() => setOpenKebab(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
@@ -1070,25 +1324,25 @@ export default function VehiclesPage() {
       {/* Reports Modal */}
       {reportsVehicle && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-          <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid #E1E8F0' }}>
+          <div style={{ background: WHITE, borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 16px 48px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: `1px solid ${GRAY_300}` }}>
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Reports</h3>
-                <p style={{ fontSize: 12, color: '#94A3B8', margin: '2px 0 0', fontFamily: 'monospace' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: GRAY_900, margin: 0 }}>Reports</h3>
+                <p style={{ fontSize: 12, color: GRAY_500, margin: '2px 0 0', fontFamily: 'monospace' }}>
                   {[reportsVehicle.year, reportsVehicle.make, reportsVehicle.model].filter(Boolean).join(' ') || reportsVehicle.vin}
                 </p>
               </div>
               <button onClick={() => setReportsVehicle(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-                <X size={18} color="#94A3B8" />
+                <X size={18} color={GRAY_500} />
               </button>
             </div>
             <div style={{ padding: 20 }}>
               {reportsLoading ? (
                 <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                  <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+                  <Loader2 size={20} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
                 </div>
               ) : reportsList.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0', margin: 0 }}>No completed reports found.</p>
+                <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', padding: '16px 0', margin: 0 }}>No completed reports found.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {reportsList.map((r, i) => {
@@ -1099,11 +1353,11 @@ export default function VehiclesPage() {
                     const dateStr = new Date(r.report_generated_at ?? r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
                     const pdfUrl: string | null = r.report_url ?? null
                     return (
-                      <div key={r.id} style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div key={r.id} style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: '0 0 2px' }}>{label}</p>
-                          <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{dateStr}</p>
-                          {r.status === 'in_progress' && <p style={{ fontSize: 11, color: '#F97316', margin: '2px 0 0', fontWeight: 600 }}>In Progress</p>}
+                          <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: '0 0 2px' }}>{label}</p>
+                          <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>{dateStr}</p>
+                          {r.status === 'in_progress' && <p style={{ fontSize: 11, color: WARN, margin: '2px 0 0', fontWeight: 600 }}>In Progress</p>}
                         </div>
                         {pdfUrl ? (
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -1112,11 +1366,11 @@ export default function VehiclesPage() {
                                 const url = pdfUrl.startsWith('http') ? pdfUrl : await getReportSignedUrlAction(pdfUrl)
                                 if (url) window.open(url, '_blank')
                               }}
-                              style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: '#00B4D8', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                              style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
                             >View PDF</button>
                           </div>
                         ) : (
-                          <span style={{ fontSize: 11, color: '#CBD5E1' }}>No report yet</span>
+                          <span style={{ fontSize: 11, color: GRAY_300 }}>No report yet</span>
                         )}
                       </div>
                     )
@@ -1138,17 +1392,17 @@ export default function VehiclesPage() {
 
       {/* Bulk billing selection bar */}
       {lotMapEnabled && selectedVehicleIds.size > 0 && (
-        <div style={{ position: 'fixed', bottom: isDesktop ? 24 : 'calc(72px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: '#0D1B2A', borderRadius: 16, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.35)', whiteSpace: 'nowrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}>
+        <div style={{ position: 'fixed', bottom: isDesktop ? 24 : 'calc(72px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: GRAY_900, borderRadius: 16, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.35)', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>
             {selectedVehicleIds.size} vehicle{selectedVehicleIds.size !== 1 ? 's' : ''} selected
           </span>
           <button onClick={() => setShowBulkBilling(true)}
-            style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+            style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
             <Receipt size={14} /> Bulk Bill
           </button>
           <button onClick={clearSelection}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <X size={14} color="#94A3B8" />
+            <X size={14} color={GRAY_500} />
           </button>
         </div>
       )}
@@ -1167,12 +1421,12 @@ export default function VehiclesPage() {
       {confirmDeleteId && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setConfirmDeleteId(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Delete Vehicle</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to delete this vehicle? This action cannot be undone.</p>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Delete Vehicle</h3>
+            <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to delete this vehicle? This action cannot be undone.</p>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-              <button onClick={() => { deleteStorageVehicle(confirmDeleteId).then(loadVehicles); setConfirmDeleteId(null) }} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+              <button onClick={() => setConfirmDeleteId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => { deleteStorageVehicle(confirmDeleteId).then(loadVehicles); setConfirmDeleteId(null) }} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: DANGER, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
             </div>
           </div>
         </div>
@@ -1181,10 +1435,10 @@ export default function VehiclesPage() {
       {errorMsg && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
-            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
           </div>
         </div>
       )}

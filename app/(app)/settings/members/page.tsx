@@ -7,10 +7,11 @@ import { Mail, Loader2, Shield, Wrench, Trash2 } from 'lucide-react'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { PRIMARY, WHITE, DANGER, DANGER_LIGHT, WARN_LIGHT, WARN_DARK, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 const ROLE_CONFIG = {
-  admin:     { label: 'Admin',     bg: '#FEF3C7', color: '#92400E', icon: Shield },
-  inspector: { label: 'Inspector', bg: '#E0F7FC', color: '#0097B2', icon: Wrench },
+  admin:     { label: 'Admin',     bg: WARN_LIGHT, color: WARN_DARK, icon: Shield },
+  inspector: { label: 'Inspector', bg: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT, icon: Wrench },
 }
 
 export default function MembersPage() {
@@ -60,16 +61,16 @@ export default function MembersPage() {
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 800, color: '#0D1B2A', margin: '0 0 4px' }}>Team Members</h1>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>{effectiveCompany?.name} · {members.length} member{members.length !== 1 ? 's' : ''}</p>
+          <h1 style={{ fontSize: isDesktop ? 22 : 20, fontWeight: 800, color: GRAY_900, margin: '0 0 4px' }}>Team Members</h1>
+          <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>{effectiveCompany?.name} · {members.length} member{members.length !== 1 ? 's' : ''}</p>
         </div>
 
         {/* Add member — via CIQ team */}
         {!authLoading && canManage && (
-          <div style={{ background: '#F8FAFC', border: '1px solid #E1E8F0', borderRadius: 16, padding: '18px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ background: GRAY_100, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: '18px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 4px' }}>Need to add a team member?</p>
-              <p style={{ fontSize: 13, color: '#64748B', margin: 0 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: '0 0 4px' }}>Need to add a team member?</p>
+              <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>
                 Email the Condition IQ team and we'll get them set up on your account — usually within one business day.
               </p>
             </div>
@@ -78,7 +79,7 @@ export default function MembersPage() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 7,
                 height: 42, padding: '0 20px', borderRadius: 10,
-                background: '#00B4D8', border: 'none', color: '#FFFFFF',
+                background: PRIMARY, border: 'none', color: WHITE,
                 fontWeight: 700, fontSize: 14, cursor: 'pointer',
                 fontFamily: 'inherit', textDecoration: 'none', flexShrink: 0,
               }}
@@ -89,14 +90,14 @@ export default function MembersPage() {
         )}
 
         {/* Members list */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, overflow: 'hidden' }}>
           {loading ? (
             <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
-              <Loader2 size={20} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+              <Loader2 size={20} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
             </div>
           ) : members.length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-              <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>No members yet.</p>
+              <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>No members yet.</p>
             </div>
           ) : members.map((m, i) => {
             const role = (m.role ?? 'inspector') as 'admin' | 'inspector'
@@ -105,38 +106,38 @@ export default function MembersPage() {
             const u = m.user as any
             const isSelf = u?.id === user?.id || m.user_id === user?.id
             return (
-              <div key={m.id} style={{ padding: '14px 20px', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 18, background: role === 'admin' ? '#FEF3C7' : '#E0F7FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: role === 'admin' ? '#92400E' : '#0097B2' }}>
+              <div key={m.id} style={{ padding: '14px 20px', borderTop: i === 0 ? 'none' : `1px solid ${GRAY_100}`, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 18, background: role === 'admin' ? WARN_LIGHT : PRIMARY_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: role === 'admin' ? WARN_DARK : PRIMARY_PILL_TEXT }}>
                     {(u?.full_name?.[0] ?? u?.email?.[0] ?? '?').toUpperCase()}
                   </span>
                 </div>
                 <div style={{ flex: 1, minWidth: 120 }}>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: GRAY_900, margin: 0 }}>
                     {u?.full_name ?? '—'}
-                    {isSelf && <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 6 }}>(you)</span>}
+                    {isSelf && <span style={{ fontSize: 11, color: GRAY_500, marginLeft: 6 }}>(you)</span>}
                   </p>
-                  <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{u?.email ?? '—'}</p>
+                  <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>{u?.email ?? '—'}</p>
                 </div>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: cfg.bg, color: cfg.color, borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>
                   <cfg.icon size={11} />{cfg.label}
                 </span>
                 {!authLoading && canManage && !isSelf && (
                   isUpdating ? (
-                    <Loader2 size={16} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+                    <Loader2 size={16} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
                   ) : (
                     <div style={{ display: 'flex', gap: 6 }}>
                       <select
                         value={role}
                         onChange={e => handleRoleChange(m.id, e.target.value as 'admin' | 'inspector')}
-                        style={{ height: 32, padding: '0 8px', border: '1px solid #E1E8F0', borderRadius: 8, fontSize: 12, background: '#FFF', fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }}>
+                        style={{ height: 32, padding: '0 8px', border: `1px solid ${GRAY_300}`, borderRadius: 8, fontSize: 12, background: WHITE, fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }}>
                         <option value="inspector">Inspector</option>
                         <option value="admin">Admin</option>
                       </select>
                       <button
                         onClick={() => setConfirmRemoveId(m.id)}
-                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #FEE2E2', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                        <Trash2 size={13} color="#EF4444" />
+                        style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${DANGER_LIGHT}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <Trash2 size={13} color={DANGER} />
                       </button>
                     </div>
                   )
@@ -151,12 +152,12 @@ export default function MembersPage() {
       {confirmRemoveId && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setConfirmRemoveId(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Remove Member</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to remove this member from your team?</p>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Remove Member</h3>
+            <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>Are you sure you want to remove this member from your team?</p>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setConfirmRemoveId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-              <button onClick={() => doRemove(confirmRemoveId)} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: '#EF4444', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
+              <button onClick={() => setConfirmRemoveId(null)} style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => doRemove(confirmRemoveId)} style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: DANGER, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>
             </div>
           </div>
         </div>
@@ -165,10 +166,10 @@ export default function MembersPage() {
       {errorMsg && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
-            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
           </div>
         </div>
       )}

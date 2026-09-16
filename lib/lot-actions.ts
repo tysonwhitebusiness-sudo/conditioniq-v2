@@ -1,7 +1,11 @@
 import { createClient } from '@/lib/supabase/client'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
+import type { WorkOrderStatus } from '@/lib/work-order-status'
+import { resolveRate, resolveBillableStatus } from '@/lib/billing-defaults-actions'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+export type SpotSizeClass = 'compact' | 'standard' | 'oversized'
 
 export interface LotSpot {
   id: string
@@ -15,6 +19,8 @@ export interface LotSpot {
   rotation: number
   custom_color: string | null
   notes: string | null
+  size_class: SpotSizeClass
+  zone_id: string | null
   created_at: string
   active_assignment: ActiveAssignment | null
 }
@@ -54,7 +60,8 @@ export interface AssignedVehicle {
   year: string | null
   make: string | null
   model: string | null
-  lifecycle_status: string | null
+  work_order_status: WorkOrderStatus
+  customer_id: string | null
   arrived_at: string
   released_at: string | null
   checkin_inspection_id: string | null
@@ -62,6 +69,7 @@ export interface AssignedVehicle {
   daily_rate: number | null
   monthly_rate: number | null
   billing_type: string | null
+  vehicle_master: { size_class: SpotSizeClass | null } | null
 }
 
 export interface AvailableVehicle {
@@ -70,7 +78,9 @@ export interface AvailableVehicle {
   year: string | null
   make: string | null
   model: string | null
-  lifecycle_status: string | null
+  work_order_status: WorkOrderStatus
+  customer_id: string | null
+  vehicle_master: { size_class: SpotSizeClass | null } | null
 }
 
 // ── Label generation ───────────────────────────────────────────────────────────
@@ -122,7 +132,7 @@ export async function getLotSpots(
     .from('lot_vehicle_assignments')
     .select(`
       id, spot_id, vehicle_id, assigned_at, assigned_by,
-      vehicle:storage_vehicles(id, vin, year, make, model, lifecycle_status, arrived_at, released_at, checkin_inspection_id, latest_score, daily_rate, monthly_rate, billing_type, latest_inspection_id)
+      vehicle:storage_vehicles(id, vin, year, make, model, work_order_status, customer_id, arrived_at, released_at, checkin_inspection_id, latest_score, daily_rate, monthly_rate, billing_type, latest_inspection_id, vehicle_master:vehicle_master_id(size_class))
     `)
     .in('spot_id', spots.map(s => s.id))
     .is('unassigned_at', null)
@@ -177,6 +187,7 @@ export async function updateLotSpot(
   updates: Partial<{
     label: string; x_position: number; y_position: number; notes: string | null
     width: number; height: number; rotation: number; custom_color: string | null
+    size_class: SpotSizeClass; zone_id: string | null
   }>,
 ): Promise<void> {
   const supabase = createClient()
@@ -233,13 +244,70 @@ export async function unassignVehicleFromSpot(assignmentId: string, unassignedBy
   }
 }
 
+const SIZE_RANK: Record<SpotSizeClass, number> = { compact: 0, standard: 1, oversized: 2 }
+
+// Scores empty spots for a vehicle awaiting assignment:
+//  1. Hard filter — a spot must be at least as large as the vehicle's known
+//     size (compact < standard < oversized). A vehicle with no size_class set
+//     skips this filter entirely (no data, no constraint). If nothing fits,
+//     returns null rather than suggesting an undersized spot.
+//  2. Same zone as another on-lot vehicle from the same customer, if any.
+//  3. Exact size match preferred over "fits but bigger than needed" — keeps
+//     scarce oversized spots free for vehicles that actually need them.
+//  4. Nearest to an entrance marker.
+//  5. First available in label order (emptySpots is already label-sorted,
+//     since getLotSpots orders by label and this is filtered from that result).
+export function suggestSpotForVehicle(
+  vehicle: { customer_id?: string | null; vehicle_master?: { size_class: SpotSizeClass | null } | null },
+  emptySpots: LotSpot[],
+  allSpots: LotSpot[],
+  shapes: LotShape[],
+): LotSpot | null {
+  if (emptySpots.length === 0) return null
+
+  const vehicleSizeClass = vehicle.vehicle_master?.size_class ?? null
+  let candidates = vehicleSizeClass
+    ? emptySpots.filter(s => SIZE_RANK[s.size_class] >= SIZE_RANK[vehicleSizeClass])
+    : emptySpots
+  if (candidates.length === 0) return null
+
+  if (vehicle.customer_id) {
+    const customerZones = new Set(
+      allSpots
+        .filter(s => s.zone_id && s.active_assignment?.vehicle?.customer_id === vehicle.customer_id)
+        .map(s => s.zone_id),
+    )
+    const zoneMatches = candidates.filter(s => s.zone_id && customerZones.has(s.zone_id))
+    if (zoneMatches.length > 0) candidates = zoneMatches
+  }
+
+  if (vehicleSizeClass) {
+    const exactMatches = candidates.filter(s => s.size_class === vehicleSizeClass)
+    if (exactMatches.length > 0) candidates = exactMatches
+  }
+
+  const entrances = shapes.filter(s => s.shape_type === 'marker' && (s.config as MarkerConfig).marker_type === 'entrance')
+  if (entrances.length === 0) return candidates[0]
+
+  let best = candidates[0]
+  let bestDist = Infinity
+  for (const spot of candidates) {
+    for (const e of entrances) {
+      const c = e.config as MarkerConfig
+      const dist = Math.hypot(spot.x_position - c.x, spot.y_position - c.y)
+      if (dist < bestDist) { bestDist = dist; best = spot }
+    }
+  }
+  return best
+}
+
 export async function getAvailableVehicles(companyId: string): Promise<AvailableVehicle[]> {
   const supabase = createClient()
   const { data: vehicles } = await supabase
     .from('storage_vehicles')
-    .select('id, vin, year, make, model, lifecycle_status')
+    .select('id, vin, year, make, model, work_order_status, customer_id, vehicle_master:vehicle_master_id(size_class)')
     .eq('company_id', companyId)
-    .not('lifecycle_status', 'in', '(picked_up,completed)')
+    .neq('work_order_status', 'released')
     .order('arrived_at', { ascending: false })
 
   if (!vehicles?.length) return []
@@ -250,7 +318,10 @@ export async function getAvailableVehicles(companyId: string): Promise<Available
     .is('unassigned_at', null)
 
   const assigned = new Set((active ?? []).map(a => a.vehicle_id))
-  return vehicles.filter(v => !assigned.has(v.id))
+  // Supabase's untyped client infers embedded to-one relations (vehicle_master
+  // via vehicle_master_id) as an array shape without generated types, even
+  // though PostgREST returns a single object at runtime for a many-to-one FK.
+  return (vehicles as unknown as AvailableVehicle[]).filter(v => !assigned.has(v.id))
 }
 
 // ── Background image ──────────────────────────────────────────────────────────
@@ -328,36 +399,45 @@ export type BillingType = 'daily' | 'monthly'
 export interface VehicleBillingResult {
   daysOnLot: number
   billingType: BillingType
-  rate: number | null       // resolved rate (vehicle override or company default)
-  accruedAmount: number | null
+  rate: number | null       // resolved rate (vehicle override > customer default > company default)
+  accruedAmount: number | null  // 0 when isBillable is false, even though rate stays populated
+  isBillable: boolean
 }
 
+// companyStatusDefaults/customer/customerStatusOverrides are all optional and
+// pre-fetched by the caller (this stays a pure function, matching its existing
+// style) — omitting them preserves the pre-Phase-5 behavior (always billable)
+// for any call site not yet updated to pass them.
 export function calculateVehicleBilling(
-  vehicle: { arrived_at?: string | null; released_at?: string | null; billing_type?: string | null; daily_rate?: number | null; monthly_rate?: number | null },
+  vehicle: {
+    arrived_at?: string | null; released_at?: string | null
+    billing_type?: string | null; daily_rate?: number | null; monthly_rate?: number | null
+    work_order_status?: WorkOrderStatus | null
+  },
   company: { default_billing_type?: string | null; default_daily_rate?: number | null; default_monthly_rate?: number | null },
+  companyStatusDefaults?: Record<WorkOrderStatus, boolean>,
+  customer?: { default_billing_type?: string | null; default_daily_rate?: number | null; default_monthly_rate?: number | null } | null,
+  customerStatusOverrides?: Partial<Record<WorkOrderStatus, boolean>> | null,
 ): VehicleBillingResult {
   const start = vehicle.arrived_at ? new Date(vehicle.arrived_at) : null
   const end = vehicle.released_at ? new Date(vehicle.released_at) : new Date()
   const daysOnLot = start ? Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86400000)) : 0
 
-  const billingType: BillingType =
-    (vehicle.billing_type as BillingType) ??
-    (company.default_billing_type as BillingType) ??
-    'daily'
+  const { billingType, rate } = resolveRate(vehicle, customer, company)
 
-  const rate =
-    billingType === 'daily'
-      ? (vehicle.daily_rate ?? company.default_daily_rate ?? null)
-      : (vehicle.monthly_rate ?? company.default_monthly_rate ?? null)
+  const isBillable =
+    vehicle.work_order_status && companyStatusDefaults
+      ? resolveBillableStatus(vehicle.work_order_status, companyStatusDefaults, customerStatusOverrides)
+      : true
 
   let accruedAmount: number | null = null
   if (rate !== null) {
-    accruedAmount = billingType === 'daily'
-      ? daysOnLot * rate
-      : (daysOnLot / 30) * rate
+    accruedAmount = isBillable
+      ? (billingType === 'daily' ? daysOnLot * rate : (daysOnLot / 30) * rate)
+      : 0
   }
 
-  return { daysOnLot, billingType, rate, accruedAmount }
+  return { daysOnLot, billingType, rate, accruedAmount, isBillable }
 }
 
 // ── Occupancy ─────────────────────────────────────────────────────────────────
@@ -389,6 +469,7 @@ export interface BulkVehicleRow {
   warning: 'arrived_late' | null   // arrived after range start — yellow, must acknowledge
   note: 'released_early' | null    // released before range end — gray
   excluded: boolean                 // not on lot during range at all — red
+  isBillable: boolean               // current status only — not tracked historically per-day
 }
 
 function toUtcDay(isoStr: string): Date {
@@ -408,6 +489,8 @@ export function calculateBulkBilling(
     billing_type?: string | null
     daily_rate?: number | null
     monthly_rate?: number | null
+    work_order_status?: WorkOrderStatus | null
+    customer_id?: string | null
   }>,
   rangeStart: string,   // YYYY-MM-DD
   rangeEnd: string,     // YYYY-MM-DD
@@ -416,6 +499,9 @@ export function calculateBulkBilling(
     default_daily_rate?: number | null
     default_monthly_rate?: number | null
   },
+  companyStatusDefaults?: Record<WorkOrderStatus, boolean>,
+  customersById?: Map<string, { default_billing_type?: string | null; default_daily_rate?: number | null; default_monthly_rate?: number | null }>,
+  customerStatusOverridesById?: Map<string, Partial<Record<WorkOrderStatus, boolean>>>,
 ): BulkVehicleRow[] {
   const rStart = toUtcDay(rangeStart)
   const rEnd   = toUtcDay(rangeEnd)
@@ -439,19 +525,22 @@ export function calculateBulkBilling(
     const warning: 'arrived_late' | null = !excluded && arrivedAt && arrivedAt > rStart ? 'arrived_late' : null
     const note: 'released_early' | null  = !excluded && releasedAt && releasedAt < rEnd ? 'released_early' : null
 
-    const billingType: BillingType =
-      (v.billing_type as BillingType) ??
-      (company.default_billing_type as BillingType) ??
-      'daily'
+    const customer = v.customer_id ? customersById?.get(v.customer_id) : null
+    const { billingType, rate } = resolveRate(v, customer, company)
 
-    const rate =
-      billingType === 'daily'
-        ? (v.daily_rate ?? company.default_daily_rate ?? null)
-        : (v.monthly_rate ?? company.default_monthly_rate ?? null)
+    // Current status only — this function bills a date range, but work_order_status
+    // has no history, so a vehicle's status-as-of-now is applied to the whole range.
+    // Not historically accurate; that's a known approximation, not a bug.
+    const isBillable =
+      v.work_order_status && companyStatusDefaults
+        ? resolveBillableStatus(v.work_order_status, companyStatusDefaults, v.customer_id ? customerStatusOverridesById?.get(v.customer_id) : null)
+        : true
 
     let subtotal: number | null = null
-    if (!excluded && rate !== null) {
+    if (!excluded && rate !== null && isBillable) {
       subtotal = billingType === 'daily' ? days * rate : (days / 30) * rate
+    } else if (!excluded && rate !== null) {
+      subtotal = 0
     }
 
     return {
@@ -471,6 +560,7 @@ export function calculateBulkBilling(
       warning,
       note,
       excluded,
+      isBillable,
     }
   })
 }

@@ -12,31 +12,34 @@ import {
   PAYMENT_TERMS_LABELS, type Customer, type CustomerFormData,
 } from '@/lib/customer-actions'
 import ExportCsvModal from '@/components/billing/export-csv-modal'
+import { WORK_ORDER_STATUSES, WORK_ORDER_STATUS_LABEL, type WorkOrderStatus } from '@/lib/work-order-status'
+import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK, WARN, WARN_LIGHT, WARN_DARK, PURPLE_LIGHT, PURPLE_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
+import {
+  getCustomerRateOverride, setCustomerRateOverride, getCustomerStatusOverrides,
+  setCustomerStatusOverride, clearCustomerStatusOverride, type CustomerRateOverride,
+} from '@/lib/billing-defaults-actions'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function effectiveStatus(v: any): string {
-  const ls = v.lifecycle_status as string | null | undefined
-  if (ls && !['in_progress', 'releasing', 'released', 'one_off'].includes(ls)) return ls
-  if (ls === 'releasing') return 'pending_pickup'
-  if (ls === 'released') return 'picked_up'
-  if (ls === 'one_off') return 'completed'
-  switch (v.status) {
-    case 'released':           return 'picked_up'
-    case 'releasing':          return 'pending_pickup'
-    case 'inspected':          return 'on_lot'
-    case 'pending_inspection': return 'pending_arrival'
-    case 'active':             return v.checkin_inspection_id ? 'on_lot' : 'pending_arrival'
-    default:                   return 'pending_arrival'
+  switch (v.work_order_status as WorkOrderStatus) {
+    case 'pending_arrival': return 'pending_arrival'
+    case 'pending_release':
+    case 'ready_for_release': return 'pending_pickup'
+    case 'released': return 'picked_up'
+    default: return 'on_lot'
   }
 }
 
+// Colors sourced from design-tokens.ts, matching getSpotPinColor()'s semantic
+// language (cyan = occupied, amber = attention) — see vehicles/page.tsx's
+// STATUS_CFG for the identical treatment and the reasoning.
 const STATUS_CFG: Record<string, { label: string; bg: string; color: string }> = {
-  pending_arrival: { label: 'PENDING ARRIVAL', bg: '#F0F4F8',  color: '#4A5568' },
-  on_lot:          { label: 'ON LOT',          bg: '#E0F7FC',  color: '#0097B2' },
-  pending_pickup:  { label: 'PENDING PICKUP',  bg: '#FEF3C7',  color: '#92400E' },
-  picked_up:       { label: 'PICKED UP',       bg: '#D1FAE5',  color: '#065F46' },
-  completed:       { label: 'COMPLETED',       bg: '#F3E8FF',  color: '#7E22CE' },
+  pending_arrival: { label: 'PENDING ARRIVAL', bg: GRAY_100,      color: GRAY_700 },
+  on_lot:          { label: 'ON LOT',          bg: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT },
+  pending_pickup:  { label: 'PENDING PICKUP',  bg: WARN_LIGHT,    color: WARN_DARK },
+  picked_up:       { label: 'PICKED UP',       bg: SUCCESS_LIGHT, color: SUCCESS_DARK },
+  completed:       { label: 'COMPLETED',       bg: PURPLE_LIGHT,  color: PURPLE_DARK },
 }
 
 function field(val: string | null | undefined) { return val ?? '' }
@@ -73,20 +76,20 @@ function EditSlideOver({ customer, onClose, onSaved }: {
   }
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', height: 42, border: '1px solid #E1E8F0', borderRadius: 10,
-    padding: '0 12px', fontSize: 14, outline: 'none', background: '#FAFAFA',
+    width: '100%', height: 42, border: `1px solid ${GRAY_300}`, borderRadius: 10,
+    padding: '0 12px', fontSize: 14, outline: 'none', background: GRAY_100,
     boxSizing: 'border-box', fontFamily: 'inherit',
   }
-  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }
-  const sh: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '20px 0 10px' }
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 5 }
+  const sh: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '20px 0 10px' }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} />
-      <div style={{ width: 'min(520px,100vw)', background: '#FFF', display: 'flex', flexDirection: 'column', height: '100%', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E1E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Edit Customer</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} color="#94A3B8" /></button>
+      <div style={{ width: 'min(520px,100vw)', background: WHITE, display: 'flex', flexDirection: 'column', height: '100%', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${GRAY_300}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: GRAY_900, margin: 0 }}>Edit Customer</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={20} color={GRAY_500} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           <p style={sh}>Primary Info</p>
@@ -116,8 +119,8 @@ function EditSlideOver({ customer, onClose, onSaved }: {
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.tax_exempt} onChange={e => setForm(f => ({ ...f, tax_exempt: e.target.checked }))} style={{ width: 16, height: 16, accentColor: '#00B4D8' }} />
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>Tax Exempt</span>
+            <input type="checkbox" checked={form.tax_exempt} onChange={e => setForm(f => ({ ...f, tax_exempt: e.target.checked }))} style={{ width: 16, height: 16, accentColor: PRIMARY }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: GRAY_700 }}>Tax Exempt</span>
           </label>
           <p style={sh}>Secondary Contact</p>
           <div style={{ marginBottom: 14 }}><label style={labelStyle}>Name</label><input value={field(form.secondary_contact_name)} onChange={e => set('secondary_contact_name', e.target.value)} style={inputStyle} /></div>
@@ -129,12 +132,12 @@ function EditSlideOver({ customer, onClose, onSaved }: {
           <textarea value={field(form.notes)} onChange={e => set('notes', e.target.value)} rows={4}
             style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: 1.5 }} />
         </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E1E8F0', flexShrink: 0 }}>
-          {error && <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 10px' }}>{error}</p>}
+        <div style={{ padding: '16px 24px', borderTop: `1px solid ${GRAY_300}`, flexShrink: 0 }}>
+          {error && <p style={{ fontSize: 12, color: DANGER, margin: '0 0 10px' }}>{error}</p>}
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onClose} style={{ flex: 1, height: 46, borderRadius: 12, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: 1, height: 46, borderRadius: 12, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
             <button onClick={save} disabled={saving || !form.name.trim()}
-              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? '#00B4D8' : '#E1E8F0', color: form.name.trim() ? '#FFFFFF' : '#94A3B8', fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
+              style={{ flex: 2, height: 46, borderRadius: 12, border: 'none', background: form.name.trim() ? PRIMARY : GRAY_300, color: form.name.trim() ? WHITE : GRAY_500, fontWeight: 700, fontSize: 15, cursor: form.name.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
@@ -150,10 +153,10 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   if (!value) return null
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-      <div style={{ flexShrink: 0, marginTop: 2, color: '#94A3B8' }}>{icon}</div>
+      <div style={{ flexShrink: 0, marginTop: 2, color: GRAY_500 }}>{icon}</div>
       <div>
-        <p style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>{label}</p>
-        <p style={{ fontSize: 14, color: '#0D1B2A', margin: '1px 0 0' }}>{value}</p>
+        <p style={{ fontSize: 11, fontWeight: 600, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>{label}</p>
+        <p style={{ fontSize: 14, color: GRAY_900, margin: '1px 0 0' }}>{value}</p>
       </div>
     </div>
   )
@@ -161,12 +164,148 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden', marginBottom: 16 }}>
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid #F0F4F8' }}>
-        <h2 style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{title}</h2>
+    <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '12px 20px', borderBottom: `1px solid ${GRAY_100}` }}>
+        <h2 style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{title}</h2>
       </div>
       <div style={{ padding: '16px 20px' }}>{children}</div>
     </div>
+  )
+}
+
+// ── Billing Overrides ─────────────────────────────────────────────────────────
+// Precedence: this customer's override > the company-wide defaults configured
+// in Settings > Fee Structure > hardcoded fallback. Rate override here sits
+// below the existing per-vehicle override on a work order (set on the vehicle
+// detail page) — that stays the most specific, highest-precedence signal.
+
+function BillingOverridesCard({ customerId, companyId }: { customerId: string; companyId: string }) {
+  const [rate, setRate] = useState<CustomerRateOverride | null>(null)
+  const [statusOverrides, setStatusOverrides] = useState<Partial<Record<WorkOrderStatus, boolean>> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [savingRate, setSavingRate] = useState(false)
+  const [rateSaved, setRateSaved] = useState(false)
+  const [savingStatus, setSavingStatus] = useState<WorkOrderStatus | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getCustomerRateOverride(customerId), getCustomerStatusOverrides(customerId)]).then(([r, s]) => {
+      if (cancelled) return
+      setRate(r ?? { default_daily_rate: null, default_monthly_rate: null, default_billing_type: null })
+      setStatusOverrides(s)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [customerId])
+
+  const saveRate = async () => {
+    if (!rate) return
+    setSavingRate(true)
+    try {
+      await setCustomerRateOverride(customerId, rate)
+      setRateSaved(true)
+      setTimeout(() => setRateSaved(false), 2000)
+    } finally { setSavingRate(false) }
+  }
+
+  const setStatusOverride = async (status: WorkOrderStatus, value: boolean | null) => {
+    setSavingStatus(status)
+    try {
+      if (value === null) {
+        await clearCustomerStatusOverride(customerId, status)
+        setStatusOverrides(so => { const next = { ...so }; delete next[status]; return next })
+      } else {
+        await setCustomerStatusOverride(companyId, customerId, status, value)
+        setStatusOverrides(so => ({ ...so, [status]: value }))
+      }
+    } finally { setSavingStatus(null) }
+  }
+
+  if (loading || !rate) {
+    return (
+      <SectionCard title="Billing Overrides">
+        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+          <Loader2 size={16} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <SectionCard title="Billing Overrides">
+      <p style={{ fontSize: 11, color: GRAY_500, margin: '0 0 12px', lineHeight: 1.5 }}>
+        Negotiated terms for this customer. Overrides the company-wide defaults in Settings.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>Daily Rate</label>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: GRAY_500 }}>$</span>
+            <input type="number" min="0" step="0.01"
+              value={rate.default_daily_rate ?? ''}
+              onChange={e => setRate(r => r && ({ ...r, default_daily_rate: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+              style={{ width: '100%', height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
+          </div>
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>Monthly Rate</label>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: GRAY_500 }}>$</span>
+            <input type="number" min="0" step="0.01"
+              value={rate.default_monthly_rate ?? ''}
+              onChange={e => setRate(r => r && ({ ...r, default_monthly_rate: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+              style={{ width: '100%', height: 36, border: `1px solid ${GRAY_300}`, borderRadius: 8, padding: '0 8px 0 20px', fontSize: 13, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }} />
+          </div>
+        </div>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: GRAY_700, display: 'block', marginBottom: 4 }}>Billing Type</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['daily', 'monthly'] as const).map(t => (
+            <button key={t} onClick={() => setRate(r => r && ({ ...r, default_billing_type: t }))}
+              style={{ flex: 1, height: 32, borderRadius: 7, border: `1.5px solid ${rate.default_billing_type === t ? PRIMARY : GRAY_300}`, background: rate.default_billing_type === t ? PRIMARY_LIGHT : WHITE, color: rate.default_billing_type === t ? PRIMARY_PILL_TEXT : GRAY_500, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}>
+              {t}
+            </button>
+          ))}
+          <button onClick={() => setRate(r => r && ({ ...r, default_billing_type: null }))}
+            style={{ flex: 1, height: 32, borderRadius: 7, border: `1.5px solid ${!rate.default_billing_type ? PRIMARY : GRAY_300}`, background: !rate.default_billing_type ? PRIMARY_LIGHT : WHITE, color: !rate.default_billing_type ? PRIMARY_PILL_TEXT : GRAY_500, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Company Default
+          </button>
+        </div>
+      </div>
+      <button onClick={saveRate} disabled={savingRate}
+        style={{ height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: rateSaved ? SUCCESS : GRAY_900, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 18 }}>
+        {rateSaved ? 'Saved' : savingRate ? 'Saving…' : 'Save Rate Override'}
+      </button>
+
+      <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+        Storage Billable by Status
+      </p>
+      {WORK_ORDER_STATUSES.map(status => {
+        const override = statusOverrides?.[status]
+        const value = override === undefined ? null : override
+        return (
+          <div key={status} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: `1px solid ${GRAY_100}`, opacity: savingStatus === status ? 0.6 : 1 }}>
+            <span style={{ fontSize: 12, color: GRAY_700 }}>{WORK_ORDER_STATUS_LABEL[status]}</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setStatusOverride(status, null)} disabled={savingStatus === status}
+                style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1.5px solid ${value === null ? GRAY_500 : GRAY_300}`, background: value === null ? GRAY_100 : WHITE, color: value === null ? GRAY_700 : GRAY_300, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Default
+              </button>
+              <button onClick={() => setStatusOverride(status, true)} disabled={savingStatus === status}
+                style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1.5px solid ${value === true ? PRIMARY : GRAY_300}`, background: value === true ? PRIMARY_LIGHT : WHITE, color: value === true ? PRIMARY_PILL_TEXT : GRAY_300, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Billable
+              </button>
+              <button onClick={() => setStatusOverride(status, false)} disabled={savingStatus === status}
+                style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1.5px solid ${value === false ? WARN : GRAY_300}`, background: value === false ? WARN_LIGHT : WHITE, color: value === false ? WARN_DARK : GRAY_300, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Not
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </SectionCard>
   )
 }
 
@@ -200,7 +339,7 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <Loader2 size={24} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+        <Loader2 size={24} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     )
@@ -209,8 +348,8 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
   if (!customer) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
-        <p style={{ color: '#94A3B8' }}>Customer not found.</p>
-        <button onClick={() => router.push('/customers')} style={{ marginTop: 12, color: '#00B4D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>← Back to Customers</button>
+        <p style={{ color: GRAY_500 }}>Customer not found.</p>
+        <button onClick={() => router.push('/customers')} style={{ marginTop: 12, color: PRIMARY, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>← Back to Customers</button>
       </div>
     )
   }
@@ -227,26 +366,26 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
         {/* Back + header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <button onClick={() => router.push('/customers')}
-            style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <ArrowLeft size={16} color="#4A5568" />
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <ArrowLeft size={16} color={GRAY_700} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: isDesktop ? 22 : 18, fontWeight: 800, color: '#0D1B2A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <h1 style={{ fontSize: isDesktop ? 22 : 18, fontWeight: 800, color: GRAY_900, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {customer.name}
             </h1>
             {customer.account_number && (
-              <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>Account #{customer.account_number}</p>
+              <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>Account #{customer.account_number}</p>
             )}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => setShowExport(true)}
-              style={{ height: 36, padding: '0 12px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}
+              style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}
             >
               <Download size={13} /> Export
             </button>
             <button onClick={() => setShowEdit(true)}
-              style={{ height: 36, padding: '0 14px', borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+              style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
               <Pencil size={13} /> Edit
             </button>
           </div>
@@ -260,7 +399,7 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
               <InfoRow icon={<Mail size={15} />} label="Email" value={customer.email} />
               <InfoRow icon={<MapPin size={15} />} label="Billing Address" value={customer.billing_address} />
               {!customer.phone && !customer.email && !customer.billing_address && (
-                <p style={{ fontSize: 13, color: '#CBD5E1', margin: 0 }}>No contact info</p>
+                <p style={{ fontSize: 13, color: GRAY_300, margin: 0 }}>No contact info</p>
               )}
             </SectionCard>
 
@@ -268,14 +407,16 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
               <InfoRow icon={<Hash size={15} />} label="Account #" value={customer.account_number} />
               <InfoRow icon={<FileText size={15} />} label="Payment Terms" value={customer.payment_terms ? PAYMENT_TERMS_LABELS[customer.payment_terms] : null} />
               {customer.tax_exempt && (
-                <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, color: '#065F46', background: '#D1FAE5', borderRadius: 8, padding: '3px 10px' }}>
+                <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, color: SUCCESS_DARK, background: SUCCESS_LIGHT, borderRadius: 8, padding: '3px 10px' }}>
                   Tax Exempt
                 </span>
               )}
               {!customer.account_number && !customer.payment_terms && !customer.tax_exempt && (
-                <p style={{ fontSize: 13, color: '#CBD5E1', margin: 0 }}>No billing info</p>
+                <p style={{ fontSize: 13, color: GRAY_300, margin: 0 }}>No billing info</p>
               )}
             </SectionCard>
+
+            {effectiveCompany && <BillingOverridesCard customerId={customer.id} companyId={effectiveCompany.id} />}
 
             {(customer.secondary_contact_name || customer.secondary_contact_phone || customer.secondary_contact_email) && (
               <SectionCard title="Secondary Contact">
@@ -287,24 +428,24 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
 
             {customer.notes && (
               <SectionCard title="Notes">
-                <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{customer.notes}</p>
+                <p style={{ fontSize: 13, color: GRAY_700, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{customer.notes}</p>
               </SectionCard>
             )}
           </div>
 
           {/* Right column — vehicles */}
           <div>
-            <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 20px', borderBottom: '1px solid #F0F4F8', display: 'flex', alignItems: 'center' }}>
-                <h2 style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, flex: 1 }}>
+            <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 20px', borderBottom: `1px solid ${GRAY_100}`, display: 'flex', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0, flex: 1 }}>
                   Vehicles
-                  <span style={{ marginLeft: 6, background: '#F0F4F8', color: '#4A5568', fontSize: 11, padding: '1px 7px', borderRadius: 8 }}>{vehicles.length}</span>
+                  <span style={{ marginLeft: 6, background: GRAY_100, color: GRAY_700, fontSize: 11, padding: '1px 7px', borderRadius: 8 }}>{vehicles.length}</span>
                 </h2>
               </div>
               {vehicles.length === 0 ? (
                 <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                  <Car size={22} color="#CBD5E1" style={{ marginBottom: 8 }} />
-                  <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>No vehicles linked yet</p>
+                  <Car size={22} color={GRAY_300} style={{ marginBottom: 8 }} />
+                  <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>No vehicles linked yet</p>
                 </div>
               ) : (
                 vehicles.map((v, i) => {
@@ -313,17 +454,17 @@ export default function CustomerDetailPage({ params }: { params: { customerId: s
                   return (
                     <div key={v.id}
                       onClick={() => router.push(`/inventory/${v.id}`)}
-                      style={{ padding: '12px 16px', borderBottom: i < vehicles.length - 1 ? '1px solid #F0F4F8' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                      style={{ padding: '12px 16px', borderBottom: i < vehicles.length - 1 ? `1px solid ${GRAY_100}` : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = GRAY_100)}
                       onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: '#F0F4F8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Car size={16} color="#94A3B8" />
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: GRAY_100, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Car size={16} color={GRAY_500} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0 }}>
                           {[v.year, v.make, v.model].filter(Boolean).join(' ') || v.vin}
                         </p>
-                        <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>
+                        <p style={{ fontSize: 11, color: GRAY_500, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>
                       </div>
                       <span style={{ fontSize: 10, fontWeight: 700, background: sc.bg, color: sc.color, borderRadius: 6, padding: '2px 7px', flexShrink: 0 }}>
                         {sc.label}

@@ -10,6 +10,7 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { ArrowLeft, Upload, X, Image as ImageIcon, Check, Building2 } from 'lucide-react'
 import LoadingOverlay from '@/components/ui/loading-overlay'
+import { PRIMARY, AMBER, WHITE, DANGER, DANGER_TEXT, DANGER_BORDER, SUCCESS, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_SIZE_MB = 5
@@ -33,8 +34,8 @@ export default function BrandingPage() {
   const [nameSaving, setNameSaving] = useState(false)
   const [nameSaved, setNameSaved] = useState(false)
 
-  const [headerColor, setHeaderColor] = useState('#0D1B2A')
-  const [accentColor, setAccentColor] = useState('#F4A62A')
+  const [headerColor, setHeaderColor] = useState(GRAY_900)
+  const [accentColor, setAccentColor] = useState(AMBER)
   const [colorSaving, setColorSaving] = useState(false)
   const [colorSaved, setColorSaved] = useState(false)
 
@@ -152,12 +153,12 @@ export default function BrandingPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <button
             onClick={() => router.back()}
-            style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <ArrowLeft size={16} color="#0D1B2A" />
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <ArrowLeft size={16} color={GRAY_900} />
           </button>
           <div>
-            <h1 style={{ fontSize: isDesktop ? 22 : 18, fontWeight: 900, color: '#0D1B2A', margin: 0 }}>White Label Branding</h1>
-            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Your logo appears on inspection reports and invoices</p>
+            <h1 style={{ fontSize: isDesktop ? 22 : 18, fontWeight: 900, color: GRAY_900, margin: 0 }}>White Label Branding</h1>
+            <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>Your logo appears on inspection reports and invoices</p>
           </div>
         </div>
 
@@ -167,26 +168,26 @@ export default function BrandingPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* Current Logo */}
-            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 20 }}>
               <LoadingOverlay show={removing} />
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Current Logo</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Current Logo</p>
               {currentLogoUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 120, height: 60, border: '1px solid #E1E8F0', borderRadius: 10, background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  <div style={{ width: 120, height: 60, border: `1px solid ${GRAY_300}`, borderRadius: 10, background: GRAY_100, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                     <img src={currentLogoUrl} alt="Company logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 13, color: '#374151', margin: '0 0 8px' }}>Logo uploaded. Appears on all PDF reports and invoices.</p>
+                    <p style={{ fontSize: 13, color: GRAY_700, margin: '0 0 8px' }}>Logo uploaded. Appears on all PDF reports and invoices.</p>
                     <button onClick={handleRemove} disabled={removing}
-                      style={{ height: 34, padding: '0 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FFF', color: '#EF4444', fontSize: 13, fontWeight: 600, cursor: removing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, opacity: removing ? 0.6 : 1 }}>
+                      style={{ height: 34, padding: '0 14px', borderRadius: 8, border: `1px solid ${DANGER_TEXT}`, background: WHITE, color: DANGER, fontSize: 13, fontWeight: 600, cursor: removing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, opacity: removing ? 0.6 : 1 }}>
                       <X size={13} />{removing ? 'Removing…' : 'Remove Logo'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#94A3B8' }}>
-                  <div style={{ width: 60, height: 60, border: '1.5px dashed #E1E8F0', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <ImageIcon size={24} color="#CBD5E1" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: GRAY_500 }}>
+                  <div style={{ width: 60, height: 60, border: `1.5px dashed ${GRAY_300}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ImageIcon size={24} color={GRAY_300} />
                   </div>
                   <p style={{ fontSize: 13, margin: 0 }}>No logo uploaded. Reports will show "Condition IQ" branding.</p>
                 </div>
@@ -194,47 +195,47 @@ export default function BrandingPage() {
             </div>
 
             {/* Business Name */}
-            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 20 }}>
               <LoadingOverlay show={nameSaving} />
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Business Name on Reports</p>
-              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 12px', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Business Name on Reports</p>
+              <p style={{ fontSize: 13, color: GRAY_500, margin: '0 0 12px', lineHeight: 1.5 }}>
                 Appears alongside your logo on PDF reports and invoices.
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-                  <Building2 size={15} color="#94A3B8" style={{ position: 'absolute', left: 12, flexShrink: 0 }} />
+                  <Building2 size={15} color={GRAY_500} style={{ position: 'absolute', left: 12, flexShrink: 0 }} />
                   <input
                     value={businessName}
                     onChange={e => setBusinessName(e.target.value)}
                     placeholder="Your Company Name"
-                    style={{ width: '100%', height: 44, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px 0 36px', fontSize: 14, outline: 'none', background: '#FAFAFA', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    style={{ width: '100%', height: 44, border: `1.5px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px 0 36px', fontSize: 14, outline: 'none', background: GRAY_100, boxSizing: 'border-box', fontFamily: 'inherit' }}
                   />
                 </div>
                 <button onClick={handleSaveName} disabled={nameSaving || !businessName.trim()}
-                  style={{ height: 44, padding: '0 18px', borderRadius: 10, border: 'none', background: nameSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: nameSaving || !businessName.trim() ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: nameSaving || !businessName.trim() ? 0.6 : 1, transition: 'background 300ms ease', flexShrink: 0 }}>
+                  style={{ height: 44, padding: '0 18px', borderRadius: 10, border: 'none', background: nameSaved ? SUCCESS : GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: nameSaving || !businessName.trim() ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: nameSaving || !businessName.trim() ? 0.6 : 1, transition: 'background 300ms ease', flexShrink: 0 }}>
                   {nameSaved ? <><Check size={14} />Saved!</> : nameSaving ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>
 
             {/* Brand Colors */}
-            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 20 }}>
               <LoadingOverlay show={colorSaving} />
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>PDF Brand Colors</p>
-              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 16px', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>PDF Brand Colors</p>
+              <p style={{ fontSize: 13, color: GRAY_500, margin: '0 0 16px', lineHeight: 1.5 }}>
                 Customize the header background and accent stripe on inspection reports and invoices.
               </p>
 
               <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
                 {/* Header Color */}
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Header Background</p>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, margin: '0 0 8px' }}>Header Background</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       type="color"
                       value={headerColor}
                       onChange={e => setHeaderColor(e.target.value)}
-                      style={{ width: 40, height: 40, borderRadius: 8, border: '1.5px solid #E1E8F0', padding: 2, cursor: 'pointer', background: 'none' }}
+                      style={{ width: 40, height: 40, borderRadius: 8, border: `1.5px solid ${GRAY_300}`, padding: 2, cursor: 'pointer', background: 'none' }}
                     />
                     <input
                       value={headerColor}
@@ -243,20 +244,20 @@ export default function BrandingPage() {
                         if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) setHeaderColor(v)
                       }}
                       maxLength={7}
-                      style={{ flex: 1, height: 40, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }}
+                      style={{ flex: 1, height: 40, border: `1.5px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: GRAY_100, boxSizing: 'border-box' }}
                     />
                   </div>
                 </div>
 
                 {/* Accent Color */}
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Accent Stripe</p>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, margin: '0 0 8px' }}>Accent Stripe</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       type="color"
                       value={accentColor}
                       onChange={e => setAccentColor(e.target.value)}
-                      style={{ width: 40, height: 40, borderRadius: 8, border: '1.5px solid #E1E8F0', padding: 2, cursor: 'pointer', background: 'none' }}
+                      style={{ width: 40, height: 40, borderRadius: 8, border: `1.5px solid ${GRAY_300}`, padding: 2, cursor: 'pointer', background: 'none' }}
                     />
                     <input
                       value={accentColor}
@@ -265,7 +266,7 @@ export default function BrandingPage() {
                         if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) setAccentColor(v)
                       }}
                       maxLength={7}
-                      style={{ flex: 1, height: 40, border: '1.5px solid #E1E8F0', borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: '#FAFAFA', boxSizing: 'border-box' }}
+                      style={{ flex: 1, height: 40, border: `1.5px solid ${GRAY_300}`, borderRadius: 10, padding: '0 12px', fontSize: 13, fontFamily: 'monospace', outline: 'none', background: GRAY_100, boxSizing: 'border-box' }}
                     />
                   </div>
                 </div>
@@ -273,15 +274,15 @@ export default function BrandingPage() {
 
               {/* Live preview */}
               <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: '#4A5568', margin: '0 0 8px' }}>Preview</p>
-                <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E1E8F0', width: '100%', maxWidth: 360 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: GRAY_700, margin: '0 0 8px' }}>Preview</p>
+                <div style={{ borderRadius: 8, overflow: 'hidden', border: `1px solid ${GRAY_300}`, width: '100%', maxWidth: 360 }}>
                   <div style={{ backgroundColor: headerColor, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 13 }}>{businessName || 'Your Company'}</span>
+                    <span style={{ color: WHITE, fontWeight: 700, fontSize: 13 }}>{businessName || 'Your Company'}</span>
                     <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>CONDITION REPORT</span>
                   </div>
                   <div style={{ height: 4, backgroundColor: accentColor }} />
-                  <div style={{ background: '#F8FAFC', padding: '10px 16px' }}>
-                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Report content appears here…</span>
+                  <div style={{ background: GRAY_100, padding: '10px 16px' }}>
+                    <span style={{ fontSize: 11, color: GRAY_500 }}>Report content appears here…</span>
                   </div>
                 </div>
               </div>
@@ -289,24 +290,24 @@ export default function BrandingPage() {
               <button
                 onClick={handleSaveColors}
                 disabled={colorSaving || headerColor.length !== 7 || accentColor.length !== 7}
-                style={{ height: 44, padding: '0 20px', borderRadius: 10, border: 'none', background: colorSaved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 0.6 : 1, transition: 'background 300ms ease' }}>
+                style={{ height: 44, padding: '0 20px', borderRadius: 10, border: 'none', background: colorSaved ? SUCCESS : GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: colorSaving || headerColor.length !== 7 || accentColor.length !== 7 ? 0.6 : 1, transition: 'background 300ms ease' }}>
                 {colorSaved ? <><Check size={14} />Saved!</> : colorSaving ? 'Saving…' : 'Save Colors'}
               </button>
             </div>
 
             {/* Upload */}
-            <div style={{ position: 'relative', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 20 }}>
+            <div style={{ position: 'relative', background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 20 }}>
               <LoadingOverlay show={uploading} />
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Upload New Logo</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 14px' }}>Upload New Logo</p>
 
               <div
                 onDragOver={e => e.preventDefault()}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 style={{
-                  border: '2px dashed #E1E8F0', borderRadius: 12, padding: '28px 20px',
+                  border: `2px dashed ${GRAY_300}`, borderRadius: 12, padding: '28px 20px',
                   textAlign: 'center', cursor: 'pointer',
-                  background: preview ? '#F8FAFC' : '#FAFAFA',
+                  background: preview ? GRAY_100 : GRAY_100,
                   marginBottom: 14,
                 }}>
                 <input
@@ -319,27 +320,27 @@ export default function BrandingPage() {
                 {preview ? (
                   <div>
                     <img src={preview} alt="Preview" style={{ maxHeight: 80, maxWidth: '100%', objectFit: 'contain', marginBottom: 8 }} />
-                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{selectedFile?.name}</p>
+                    <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>{selectedFile?.name}</p>
                   </div>
                 ) : (
                   <>
-                    <Upload size={28} color="#CBD5E1" style={{ display: 'block', margin: '0 auto 8px' }} />
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#4A5568', margin: '0 0 4px' }}>Click or drag to upload</p>
-                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>PNG, JPEG, WebP, SVG · Max {MAX_SIZE_MB}MB</p>
+                    <Upload size={28} color={GRAY_300} style={{ display: 'block', margin: '0 auto 8px' }} />
+                    <p style={{ fontSize: 14, fontWeight: 600, color: GRAY_700, margin: '0 0 4px' }}>Click or drag to upload</p>
+                    <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>PNG, JPEG, WebP, SVG · Max {MAX_SIZE_MB}MB</p>
                   </>
                 )}
               </div>
 
-              {error && <p style={{ fontSize: 13, color: '#EF4444', marginBottom: 12 }}>{error}</p>}
+              {error && <p style={{ fontSize: 13, color: DANGER, marginBottom: 12 }}>{error}</p>}
 
               {selectedFile && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { setSelectedFile(null); setPreview(null); setError('') }}
-                    style={{ flex: 1, height: 44, borderRadius: 10, border: '1px solid #E1E8F0', background: '#FFF', color: '#4A5568', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ flex: 1, height: 44, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     Clear
                   </button>
                   <button onClick={handleUpload} disabled={uploading}
-                    style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: saved ? '#10B981' : '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: uploading ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: uploading ? 0.7 : 1, transition: 'background 300ms ease' }}>
+                    style={{ flex: 2, height: 44, borderRadius: 10, border: 'none', background: saved ? SUCCESS : GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: uploading ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: uploading ? 0.7 : 1, transition: 'background 300ms ease' }}>
                     {saved ? <><Check size={15} />Saved!</> : uploading ? 'Uploading…' : <><Upload size={15} />Upload Logo</>}
                   </button>
                 </div>
@@ -347,8 +348,8 @@ export default function BrandingPage() {
             </div>
 
             {/* Info */}
-            <div style={{ background: '#F0F4F8', borderRadius: 12, padding: '12px 16px' }}>
-              <p style={{ fontSize: 12, color: '#64748B', margin: 0, lineHeight: 1.6 }}>
+            <div style={{ background: GRAY_100, borderRadius: 12, padding: '12px 16px' }}>
+              <p style={{ fontSize: 12, color: GRAY_500, margin: 0, lineHeight: 1.6 }}>
                 <strong>Recommended:</strong> Square or horizontal logo · PNG with transparent background · Min 200×60px for best quality on PDFs.
               </p>
             </div>

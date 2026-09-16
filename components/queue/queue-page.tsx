@@ -282,9 +282,9 @@ function AddToQueueSheet({ companyId, existingQueueVins, onClose, onAdded }: {
     const fetch = async () => {
       const { data } = await supabase
         .from('storage_vehicles')
-        .select('id, vin, year, make, model, lifecycle_status')
+        .select('id, vin, year, make, model, work_order_status')
         .eq('company_id', companyId)
-        .in('lifecycle_status', ['on_lot', 'pending_arrival'])
+        .in('work_order_status', ['pending_arrival', 'checked_in', 'in_storage'])
         .order('arrived_at', { ascending: false })
       setVehicles((data ?? []).filter(v => v.vin && !existingQueueVins.has(v.vin)))
       setLoading(false)
@@ -338,7 +338,7 @@ function AddToQueueSheet({ companyId, existingQueueVins, onClose, onAdded }: {
           ) : filtered.map(v => {
             const title = [v.year, v.make, v.model].filter(Boolean).join(' ') || v.vin
             const sel = selected.has(v.id)
-            const onLot = v.lifecycle_status === 'on_lot'
+            const onLot = v.work_order_status !== 'pending_arrival'
             return (
               <button key={v.id} onClick={() => toggle(v.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '12px 20px', background: sel ? '#F0FDFF' : 'none', border: 'none', borderBottom: '1px solid #F0F4F8', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>

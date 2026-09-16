@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Lock, ChevronRight, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
+import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_LIGHT, SUCCESS_LIGHT, SUCCESS_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import BottomNav from '@/components/ui/bottom-nav'
 import ActionSheet from '@/components/ui/action-sheet'
@@ -194,10 +195,10 @@ export default function VehicleInspectionApp() {
       {errorMsg && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setErrorMsg(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Something went wrong</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
-            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
+          <div style={{ position: 'relative', background: WHITE, borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: '0 0 12px' }}>Something went wrong</h3>
+            <p style={{ fontSize: 14, color: GRAY_700, lineHeight: 1.6, margin: '0 0 24px' }}>{errorMsg}</p>
+            <button onClick={() => setErrorMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: GRAY_900, color: WHITE, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
           </div>
         </div>
       )}
@@ -210,7 +211,7 @@ export default function VehicleInspectionApp() {
   if (appStep === 'inspecting' && currentInspectionId) {
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4F8' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
           <DesktopSidebar
             activeTab={navTab}
             onTabChange={tab => setNavTab(tab as NavTab)}
@@ -257,22 +258,22 @@ export default function VehicleInspectionApp() {
   if (appStep === 'completed') {
     const score = currentInspectionData.scoreResult
     const completedContent = (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: 32, textAlign: 'center', background: '#F0F4F8' }}>
-        <div style={{ width: 80, height: 80, borderRadius: 40, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#065F46" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: 32, textAlign: 'center', background: GRAY_100 }}>
+        <div style={{ width: 80, height: 80, borderRadius: 40, background: SUCCESS_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={SUCCESS_DARK} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
         </div>
-        <h2 style={{ fontSize: 24, fontWeight: 900, color: '#0D1B2A', margin: '0 0 8px' }}>Inspection Complete</h2>
-        <p style={{ color: '#94A3B8', margin: '0 0 32px' }}>Report generated successfully</p>
+        <h2 style={{ fontSize: 24, fontWeight: 900, color: GRAY_900, margin: '0 0 8px' }}>Inspection Complete</h2>
+        <p style={{ color: GRAY_500, margin: '0 0 32px' }}>Report generated successfully</p>
         {score && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 16, padding: 24, marginBottom: 32, width: '100%', maxWidth: 360 }}>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#0D1B2A' }}>{score.grade}</div>
-            <div style={{ fontSize: 20, color: '#94A3B8' }}>{score.score}/100</div>
-            <div style={{ fontSize: 14, color: '#94A3B8', marginTop: 8 }}>{score.description}</div>
+          <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 16, padding: 24, marginBottom: 32, width: '100%', maxWidth: 360 }}>
+            <div style={{ fontSize: 48, fontWeight: 900, color: GRAY_900 }}>{score.grade}</div>
+            <div style={{ fontSize: 20, color: GRAY_500 }}>{score.score}/100</div>
+            <div style={{ fontSize: 14, color: GRAY_500, marginTop: 8 }}>{score.description}</div>
           </div>
         )}
         <button
           onClick={() => { setAppStep('browse'); setCurrentInspectionId(null); setCurrentInspectionData({}) }}
-          style={{ background: '#0D1B2A', color: '#FFFFFF', padding: '14px 32px', borderRadius: 32, fontWeight: 700, fontSize: 15, border: 'none', cursor: 'pointer', width: '100%', maxWidth: 360 }}
+          style={{ background: GRAY_900, color: WHITE, padding: '14px 32px', borderRadius: 32, fontWeight: 700, fontSize: 15, border: 'none', cursor: 'pointer', width: '100%', maxWidth: 360 }}
         >
           Back to Dashboard
         </button>
@@ -281,7 +282,7 @@ export default function VehicleInspectionApp() {
 
     if (isDesktop) {
       return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4F8' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
           <DesktopSidebar
             activeTab={navTab}
             onTabChange={tab => setNavTab(tab as NavTab)}
@@ -340,7 +341,7 @@ export default function VehicleInspectionApp() {
   // ── Desktop layout ───────────────────────────────────────────────────────
   if (isDesktop) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: '#F0F4F8' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
         <DesktopSidebar
           activeTab={navTab}
           onTabChange={tab => setNavTab(tab as NavTab)}
@@ -369,7 +370,7 @@ export default function VehicleInspectionApp() {
 
   // ── Mobile layout ────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ background: '#F0F4F8' }}>
+    <div className="min-h-screen" style={{ background: GRAY_100 }}>
       {tabContent}
       <BottomNav />
       <ActionSheet
@@ -397,14 +398,13 @@ function VehiclePickerSheet({ companyId, onClose, onSelect }: {
     import('@/lib/supabase/client').then(({ createClient }) => {
       createClient()
         .from('storage_vehicles')
-        .select('id, vin, year, make, model, lifecycle_status, status, checkin_inspection_id')
+        .select('id, vin, year, make, model, work_order_status, checkin_inspection_id')
         .eq('company_id', companyId)
         .order('arrived_at', { ascending: false, nullsFirst: false })
         .then(({ data }) => {
-          const active = (data ?? []).filter(v => {
-            const s = v.lifecycle_status || v.status
-            return ['pending_arrival', 'on_lot', 'pending_inspection', 'active', 'inspected'].includes(s)
-          })
+          const active = (data ?? []).filter(v =>
+            !['pending_release', 'ready_for_release', 'released'].includes(v.work_order_status)
+          )
           setVehicles(active)
           setLoading(false)
         })
@@ -417,40 +417,38 @@ function VehiclePickerSheet({ companyId, onClose, onSelect }: {
   }, [])
 
   const getStatusLabel = (v: any) => {
-    const s = v.lifecycle_status || v.status
-    if (s === 'on_lot' || s === 'inspected') return 'On Lot'
-    return 'Pending Arrival'
+    if (v.work_order_status === 'pending_arrival') return 'Pending Arrival'
+    return 'On Lot'
   }
 
   const getStatusColors = (v: any) => {
-    const s = v.lifecycle_status || v.status
-    if (s === 'on_lot' || s === 'inspected') return { bg: '#E0F7FC', color: '#0097B2' }
-    return { bg: '#F0F4F8', color: '#4A5568' }
+    if (v.work_order_status === 'pending_arrival') return { bg: GRAY_100, color: GRAY_700 }
+    return { bg: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT }
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.65)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
       <div style={{
-        position: 'relative', background: '#FFFFFF',
+        position: 'relative', background: WHITE,
         borderRadius: '28px 28px 0 0',
         paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         maxHeight: '75vh', display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{ width: 40, height: 4, background: '#E1E8F0', borderRadius: 2, margin: '12px auto 0' }} />
-        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid #F0F4F8' }}>
-          <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Select Vehicle</p>
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: '2px 0 0' }}>On Lot · Pending Arrival</p>
+        <div style={{ width: 40, height: 4, background: GRAY_300, borderRadius: 2, margin: '12px auto 0' }} />
+        <div style={{ padding: '16px 20px 12px', borderBottom: `1px solid ${GRAY_100}` }}>
+          <p style={{ fontSize: 16, fontWeight: 700, color: GRAY_900, margin: 0 }}>Select Vehicle</p>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: '2px 0 0' }}>On Lot · Pending Arrival</p>
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {loading && (
             <div style={{ padding: '32px 0', display: 'flex', justifyContent: 'center' }}>
-              <Loader2 size={24} color="#94A3B8" style={{ animation: 'spin 0.8s linear infinite' }} />
+              <Loader2 size={24} color={GRAY_500} style={{ animation: 'spin 0.8s linear infinite' }} />
               <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
           )}
           {!loading && vehicles.length === 0 && (
-            <p style={{ padding: '32px 20px', textAlign: 'center', fontSize: 14, color: '#94A3B8', margin: 0 }}>
+            <p style={{ padding: '32px 20px', textAlign: 'center', fontSize: 14, color: GRAY_500, margin: 0 }}>
               No vehicles on lot or pending arrival.
             </p>
           )}
@@ -458,26 +456,26 @@ function VehiclePickerSheet({ companyId, onClose, onSelect }: {
             const sc = getStatusColors(v)
             return (
               <button key={v.id} onClick={() => onSelect(v.id)}
-                style={{ width: '100%', padding: '14px 20px', background: 'none', border: 'none', borderBottom: '1px solid #F0F4F8', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, fontFamily: 'inherit' }}>
+                style={{ width: '100%', padding: '14px 20px', background: 'none', border: 'none', borderBottom: `1px solid ${GRAY_100}`, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, fontFamily: 'inherit' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0D1B2A', margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: GRAY_900, margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {[v.year, v.make, v.model].filter(Boolean).join(' ') || v.vin}
                   </p>
                   {(v.make || v.model) && (
-                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>
+                    <p style={{ fontSize: 12, color: GRAY_500, margin: 0, fontFamily: 'monospace' }}>{v.vin}</p>
                   )}
                 </div>
                 <span style={{ background: sc.bg, color: sc.color, borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                   {getStatusLabel(v)}
                 </span>
-                <ChevronRight size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                <ChevronRight size={16} color={GRAY_500} style={{ flexShrink: 0 }} />
               </button>
             )
           })}
         </div>
         <div style={{ padding: '12px 20px' }}>
           <button onClick={onClose}
-            style={{ width: '100%', height: 52, borderRadius: 14, background: '#FFFFFF', border: '1.5px solid #E1E8F0', color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ width: '100%', height: 52, borderRadius: 14, background: WHITE, border: `1.5px solid ${GRAY_300}`, color: GRAY_700, fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
         </div>
@@ -494,19 +492,19 @@ function LockedInspectionModal({ inspection, onClose, onViewReport }: { inspecti
       background: 'rgba(13,27,42,0.65)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
     }}>
-      <div style={{ background: '#FFFFFF', borderRadius: 20, width: '100%', maxWidth: 360, padding: 24, boxShadow: '0 20px 60px rgba(13,27,42,0.2)' }}>
+      <div style={{ background: WHITE, borderRadius: 20, width: '100%', maxWidth: 360, padding: 24, boxShadow: '0 20px 60px rgba(13,27,42,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 28, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Lock size={28} color="#EF4444" />
+          <div style={{ width: 56, height: 56, borderRadius: 28, background: DANGER_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Lock size={28} color={DANGER} />
           </div>
         </div>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0D1B2A', textAlign: 'center', margin: '0 0 8px' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: GRAY_900, textAlign: 'center', margin: '0 0 8px' }}>
           Inspection Auto-Completed
         </h2>
-        <p style={{ fontSize: 14, color: '#4A5568', textAlign: 'center', margin: '0 0 6px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: GRAY_700, textAlign: 'center', margin: '0 0 6px', lineHeight: 1.5 }}>
           {title}
         </p>
-        <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', margin: '0 0 20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', margin: '0 0 20px', lineHeight: 1.5 }}>
           This inspection was inactive for 24 hours and was automatically completed. You can view the generated report.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -514,7 +512,7 @@ function LockedInspectionModal({ inspection, onClose, onViewReport }: { inspecti
             onClick={onViewReport}
             style={{
               height: 52, borderRadius: 12, border: 'none',
-              background: '#00B4D8', color: '#FFFFFF', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+              background: PRIMARY, color: WHITE, fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}
           >
             View Report
@@ -522,8 +520,8 @@ function LockedInspectionModal({ inspection, onClose, onViewReport }: { inspecti
           <button
             onClick={onClose}
             style={{
-              height: 48, borderRadius: 12, background: '#FFFFFF',
-              border: '1.5px solid #E1E8F0', color: '#4A5568', fontWeight: 600, fontSize: 15, cursor: 'pointer',
+              height: 48, borderRadius: 12, background: WHITE,
+              border: `1.5px solid ${GRAY_300}`, color: GRAY_700, fontWeight: 600, fontSize: 15, cursor: 'pointer',
             }}
           >
             Dismiss

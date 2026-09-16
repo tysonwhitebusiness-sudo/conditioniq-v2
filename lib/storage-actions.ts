@@ -1,18 +1,25 @@
 import { createClient } from '@/lib/supabase/client'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
+import { unassignVehicleFromSpot } from '@/lib/lot-actions'
+import type { SpotSizeClass } from '@/lib/lot-actions'
+import type { VehicleTemplate } from '@/lib/damage-actions'
+import { type WorkOrderStatus, toLegacyColumns, resolveVehicleMasterId, updateWorkOrderStatus } from '@/lib/work-order-status'
 
 export type InspectionType = 'standard' | 'check_in' | 'check_out'
+// Legacy — kept only as the dual-write target type. work_order_status is authoritative.
 export type StorageStatus = 'active' | 'pending_inspection' | 'inspected' | 'releasing' | 'released'
 
 export interface StorageVehicle {
   id: string
   company_id: string
   location_id: string | null
+  vehicle_master_id: string
   vin: string
   year: string | null
   make: string | null
   model: string | null
   status: StorageStatus
+  work_order_status: WorkOrderStatus
   checkin_inspection_id: string | null
   checkout_inspection_id: string | null
   latest_inspection_id: string | null
@@ -48,10 +55,10 @@ export async function inferInspectionType(
   const supabase = createClient()
   const { data } = await supabase
     .from('storage_vehicles')
-    .select('id, status, checkin_inspection_id')
+    .select('id, checkin_inspection_id')
     .eq('company_id', companyId)
     .eq('vin', vin)
-    .neq('lifecycle_status', 'completed')
+    .neq('work_order_status', 'released')
     .maybeSingle()
 
   if (!data) return 'check_in'
@@ -69,21 +76,21 @@ export async function getStorageStats(companyId: string) {
     supabase.from('storage_vehicles')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
-      .in('status', ['active', 'inspected', 'releasing', 'pending_inspection']),
+      .not('work_order_status', 'in', '(pending_arrival,released)'),
     supabase.from('storage_vehicles')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .not('latest_inspection_id', 'is', null)
-      .in('status', ['active', 'inspected', 'releasing', 'pending_inspection']),
+      .not('work_order_status', 'in', '(pending_arrival,released)'),
     supabase.from('storage_vehicles')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
       .is('latest_inspection_id', null)
-      .in('status', ['active', 'inspected', 'releasing', 'pending_inspection']),
+      .not('work_order_status', 'in', '(pending_arrival,released)'),
     supabase.from('storage_vehicles')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', companyId)
-      .eq('status', 'released')
+      .eq('work_order_status', 'released')
       .gte('released_at', monthStart),
   ])
 
@@ -99,7 +106,7 @@ export async function getStorageStats(companyId: string) {
 
 export async function getStorageVehicles(
   companyId: string,
-  filters?: { search?: string; status?: string; locationId?: string }
+  filters?: { search?: string; status?: WorkOrderStatus; locationId?: string }
 ): Promise<StorageVehicle[]> {
   const supabase = createClient()
   let query = supabase
@@ -108,7 +115,7 @@ export async function getStorageVehicles(
     .eq('company_id', companyId)
     .order('arrived_at', { ascending: false })
 
-  if (filters?.status) query = query.eq('status', filters.status)
+  if (filters?.status) query = query.eq('work_order_status', filters.status)
   if (filters?.locationId) query = query.eq('location_id', filters.locationId)
 
   const { data, error } = await query
@@ -148,18 +155,28 @@ export async function addStorageVehicle(payload: {
   notes?: string
 }): Promise<StorageVehicle> {
   const supabase = createClient()
+  const vin = payload.vin.trim()
+  const vehicleMasterId = await resolveVehicleMasterId(supabase, payload.companyId, vin, {
+    year: payload.year, make: payload.make, model: payload.model,
+  })
+  // arrived_at always defaults to now() here, so the vehicle has already
+  // physically arrived — checked_in, not pending_arrival.
+  const legacy = toLegacyColumns('checked_in')
   const { data, error } = await supabase
     .from('storage_vehicles')
     .insert({
       company_id: payload.companyId,
-      vin: payload.vin.trim(),
+      vehicle_master_id: vehicleMasterId,
+      vin,
       year: payload.year || null,
       make: payload.make || null,
       model: payload.model || null,
       location_id: payload.locationId || null,
       arrived_at: payload.arrivedAt || new Date().toISOString(),
       notes: payload.notes || null,
-      status: 'active',
+      work_order_status: 'checked_in',
+      status: legacy.status,
+      lifecycle_status: legacy.lifecycle_status,
     })
     .select('*, location:location_id(id, name, city, state)')
     .single()
@@ -189,23 +206,28 @@ export async function bulkInsertVehicles(
 ): Promise<{ inserted: number; skipped: string[] }> {
   const supabase = createClient()
 
-  // Fetch existing non-completed VINs (completed records don't block re-adds)
+  // Fetch existing open (non-released) VINs — released records don't block re-adds
   const { data: existing } = await supabase
     .from('storage_vehicles')
     .select('vin')
     .eq('company_id', companyId)
-    .neq('lifecycle_status', 'completed')
+    .neq('work_order_status', 'released')
 
   const existingVins = new Set((existing ?? []).map(r => r.vin.toUpperCase()))
   const skipped: string[] = []
   const toInsert: any[] = []
+  const legacy = toLegacyColumns('checked_in')
 
   for (const v of vehicles) {
     const vin = v.vin?.trim().toUpperCase()
     if (!vin) continue
     if (existingVins.has(vin)) { skipped.push(vin); continue }
+    const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vin, {
+      year: v.year, make: v.make, model: v.model,
+    })
     toInsert.push({
       company_id: companyId,
+      vehicle_master_id: vehicleMasterId,
       vin,
       year: v.year || null,
       make: v.make || null,
@@ -213,7 +235,9 @@ export async function bulkInsertVehicles(
       location_id: locationId || null,
       arrived_at: v.arrived_at || new Date().toISOString(),
       notes: v.notes || null,
-      status: 'active',
+      work_order_status: 'checked_in',
+      status: legacy.status,
+      lifecycle_status: legacy.lifecycle_status,
     })
   }
 
@@ -375,7 +399,7 @@ export async function getFMCLocationSummaries(companyId: string) {
 
 export async function getVehiclesForCompany(
   companyId: string,
-  filters?: { lifecycleStatus?: string; locationId?: string; search?: string }
+  filters?: { status?: WorkOrderStatus; locationId?: string; search?: string }
 ) {
   const supabase = createClient()
   let query = supabase
@@ -389,8 +413,8 @@ export async function getVehiclesForCompany(
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
 
-  if (filters?.lifecycleStatus && filters.lifecycleStatus !== 'all') {
-    query = query.eq('lifecycle_status', filters.lifecycleStatus)
+  if (filters?.status) {
+    query = query.eq('work_order_status', filters.status)
   }
   if (filters?.locationId) {
     query = query.eq('location_id', filters.locationId)
@@ -402,6 +426,10 @@ export async function getVehiclesForCompany(
   return query
 }
 
+// Superseded by updateVehicleLifecycleStatusAction in inspection-server-actions.ts
+// (the one actually wired to the wizard-completion flow). Kept as a thin wrapper
+// around updateWorkOrderStatus for any future direct caller; no longer duplicates
+// its own status-transition logic.
 export async function updateVehicleLifecycleStatus(
   companyId: string,
   vin: string,
@@ -412,10 +440,10 @@ export async function updateVehicleLifecycleStatus(
   const supabase = createClient()
   const { data: vehicle } = await supabase
     .from('storage_vehicles')
-    .select('id, checkin_inspection_id, lifecycle_status, inspection_ids')
+    .select('id, checkin_inspection_id, work_order_status, inspection_ids')
     .eq('company_id', companyId)
     .eq('vin', vin)
-    .neq('lifecycle_status', 'completed')
+    .neq('work_order_status', 'released')
     .maybeSingle()
 
   if (!vehicle) return
@@ -431,15 +459,14 @@ export async function updateVehicleLifecycleStatus(
     updates.inspection_ids = [...existingIds, inspectionId]
   }
 
+  let nextStatus: WorkOrderStatus | null = null
+
   if (inspectionType === 'check_in') {
     updates.checkin_inspection_id = inspectionId
-    updates.status = 'inspected'
-    // Promote to on_lot from any pre-completion status
-    if (!vehicle.lifecycle_status || ['queued', 'pending_arrival'].includes(vehicle.lifecycle_status)) {
-      updates.lifecycle_status = 'on_lot'
-    }
+    if (vehicle.work_order_status === 'pending_arrival') nextStatus = 'in_storage'
   } else if (inspectionType === 'check_out') {
     updates.checkout_inspection_id = inspectionId
+    if (vehicle.work_order_status !== 'released') nextStatus = 'pending_release'
     if (vehicle.checkin_inspection_id && score !== null) {
       const { data: checkin } = await supabase
         .from('vehicle_inspections')
@@ -450,14 +477,12 @@ export async function updateVehicleLifecycleStatus(
         updates.condition_delta = score - checkin.vehicle_score
       }
     }
-  } else {
-    const cur = vehicle.lifecycle_status
-    if (!cur || ['queued', 'pending_arrival'].includes(cur)) {
-      updates.lifecycle_status = 'completed'
-    }
+  } else if (vehicle.work_order_status === 'pending_arrival') {
+    nextStatus = 'in_storage'
   }
 
   await supabase.from('storage_vehicles').update(updates).eq('id', vehicle.id)
+  if (nextStatus) await updateWorkOrderStatus(vehicle.id, nextStatus)
 }
 
 export async function addVehicleToSystem(
@@ -471,8 +496,11 @@ export async function addVehicleToSystem(
     arrivedAt?: string
     notes?: string
     inspectionId?: string
-    lifecycleStatus?: string
+    workOrderStatus?: WorkOrderStatus
     customerId?: string
+    sizeClass?: SpotSizeClass
+    vehicleTemplate?: VehicleTemplate
+    bodyClass?: string
   }
 ): Promise<string | undefined> {
   const supabase = createClient()
@@ -483,7 +511,7 @@ export async function addVehicleToSystem(
     .select('id')
     .eq('company_id', companyId)
     .eq('vin', vin)
-    .neq('lifecycle_status', 'completed')
+    .neq('work_order_status', 'released')
     .maybeSingle()
 
   if (existing) {
@@ -496,10 +524,19 @@ export async function addVehicleToSystem(
     return existing.id
   }
 
+  const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vin, {
+    year: data.year, make: data.make, model: data.model,
+    sizeClass: data.sizeClass, vehicleTemplate: data.vehicleTemplate,
+    bodyClass: data.bodyClass,
+  })
+  const workOrderStatus = data.workOrderStatus ?? 'pending_arrival'
+  const legacy = toLegacyColumns(workOrderStatus)
+
   const { data: inserted, error: insertError } = await supabase
     .from('storage_vehicles')
     .insert({
       company_id: companyId,
+      vehicle_master_id: vehicleMasterId,
       vin,
       year: data.year || null,
       make: data.make || null,
@@ -507,8 +544,9 @@ export async function addVehicleToSystem(
       location_id: data.locationId || null,
       arrived_at: data.arrivedAt ?? new Date().toISOString(),
       notes: data.notes || null,
-      lifecycle_status: data.lifecycleStatus ?? 'pending_arrival',
-      status: 'active',
+      work_order_status: workOrderStatus,
+      status: legacy.status,
+      lifecycle_status: legacy.lifecycle_status,
       latest_inspection_id: data.inspectionId || null,
       customer_id: data.customerId || null,
     })
@@ -533,7 +571,7 @@ export async function getVehiclesNeedingAttention(companyId: string) {
     .from('storage_vehicles')
     .select('*, location:location_id(name)')
     .eq('company_id', companyId)
-    .eq('status', 'active')
+    .eq('work_order_status', 'checked_in')
     .is('latest_inspection_id', null)
     .lt('arrived_at', sevenDaysAgo)
     .order('arrived_at')
@@ -543,39 +581,34 @@ export async function getVehiclesNeedingAttention(companyId: string) {
 export async function releaseVehicle(vehicleId: string): Promise<void> {
   const supabase = createClient()
   const now = new Date()
+  const legacy = toLegacyColumns('released')
   const { data, error } = await supabase.from('storage_vehicles').update({
-    lifecycle_status: 'picked_up',
-    status: 'released',
+    work_order_status: 'released',
+    status: legacy.status,
+    lifecycle_status: legacy.lifecycle_status,
     released_at: now.toISOString(),
     released_date: now.toISOString().split('T')[0],
     updated_at: now.toISOString(),
   }).eq('id', vehicleId).select('company_id').single()
   if (error) throw error
   if (data) {
+    const { data: activeAssignment } = await supabase
+      .from('lot_vehicle_assignments')
+      .select('id')
+      .eq('vehicle_id', vehicleId)
+      .is('unassigned_at', null)
+      .maybeSingle()
+    if (activeAssignment) {
+      await unassignVehicleFromSpot(activeAssignment.id)
+    }
     logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'released', description: 'Vehicle released from lot' })
   }
 }
 
 export async function markVehiclePendingPickup(vehicleId: string): Promise<void> {
-  const supabase = createClient()
-  const { data, error } = await supabase.from('storage_vehicles').update({
-    lifecycle_status: 'pending_pickup',
-    updated_at: new Date().toISOString(),
-  }).eq('id', vehicleId).select('company_id').single()
-  if (error) throw error
-  if (data) {
-    logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'status_changed', description: 'Status changed to Pending Pickup' })
-  }
+  await updateWorkOrderStatus(vehicleId, 'pending_release')
 }
 
 export async function markVehicleOnLot(vehicleId: string): Promise<void> {
-  const supabase = createClient()
-  const { data, error } = await supabase.from('storage_vehicles').update({
-    lifecycle_status: 'on_lot',
-    updated_at: new Date().toISOString(),
-  }).eq('id', vehicleId).select('company_id').single()
-  if (error) throw error
-  if (data) {
-    logVehicleEvent({ companyId: data.company_id, vehicleId, eventType: 'status_changed', description: 'Status changed to On Lot' })
-  }
+  await updateWorkOrderStatus(vehicleId, 'in_storage')
 }

@@ -35,12 +35,12 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
           background: 'none', border: 'none', cursor: 'pointer', padding: 0,
         }}>
         <div style={{ position: 'relative', display: 'inline-flex' }}>
-          <Icon size={22} color={locked ? 'rgba(255,255,255,0.25)' : active ? '#00B4D8' : 'rgba(255,255,255,0.4)'} strokeWidth={active && !locked ? 2.5 : 2} />
+          <Icon size={22} color={locked ? '#D1D5DB' : active ? '#00B4D8' : '#6B7280'} strokeWidth={active && !locked ? 2.5 : 2} />
           {locked && (
-            <Lock size={10} color="rgba(255,255,255,0.45)" style={{ position: 'absolute', bottom: -2, right: -3 }} />
+            <Lock size={10} color="#9CA3AF" style={{ position: 'absolute', bottom: -2, right: -3 }} />
           )}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 600, color: locked ? 'rgba(255,255,255,0.25)' : active ? '#00B4D8' : 'rgba(255,255,255,0.4)', lineHeight: 1 }}>
+        <span style={{ fontSize: 10, fontWeight: 600, color: locked ? '#D1D5DB' : active ? '#00B4D8' : '#6B7280', lineHeight: 1 }}>
           {label}
         </span>
       </button>
@@ -51,9 +51,10 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
     <>
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
-        background: '#0D1B2A',
+        background: '#FFFFFF',
+        borderTop: '1px solid #D1D5DB',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        boxShadow: '0 -2px 12px rgba(13,27,42,0.15)',
+        boxShadow: '0 -1px 12px rgba(17,24,39,0.08)',
       }}>
         <div style={{ display: 'flex', height: 64, position: 'relative' }}>
           {/* Left tabs */}

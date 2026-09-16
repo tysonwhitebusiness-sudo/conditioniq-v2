@@ -41,3 +41,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# curated vehicle diagram library staging — large binaries (GLB/PNG), never
+# committed; uploaded directly to Supabase Storage via scripts/seed-vehicle-model-assets.ts
+/vehicle-library-staging

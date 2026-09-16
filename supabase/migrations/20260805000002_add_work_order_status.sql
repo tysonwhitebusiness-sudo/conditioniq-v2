@@ -1,0 +1,15 @@
+-- New single status column replacing the two disagreeing legacy columns
+-- (status, lifecycle_status) and the three independently-written "effective
+-- status" derivation functions that existed in application code to paper
+-- over their disagreement (lib/dashboard-stats.ts, app/(app)/vehicles/page.tsx,
+-- the LIFECYCLE_STATUS_LABEL map in lib/inspection-server-actions.ts).
+--
+-- No CHECK constraint yet — added in 20260805000003 after the backfill, same
+-- two-step pattern 20260617000001 used when lifecycle_status's values were
+-- last remapped.
+--
+-- status and lifecycle_status are left in place and untouched here. They are
+-- only dropped in a later migration, after application code is fully migrated
+-- to work_order_status and that deploy is verified (expand/contract, not a
+-- same-migration swap).
+alter table storage_vehicles add column if not exists work_order_status text;

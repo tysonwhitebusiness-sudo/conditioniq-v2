@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vehicle Detail — Redesign</title>
+<style>
+  :root {
+    --primary: #00B4D8; --primary-tint: rgba(0,180,216,0.07);
+    --amber: #F4A62A; --amber-tint: rgba(244,166,42,0.10);
+    --g900: #0F172A; --g700: #475569; --g500: #64748B; --g300: #E2E8F0; --g100: #F8FAFC;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 32px 80px; background:#fff; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; color:var(--g900); }
+
+  .topbar { display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .back { width:30px; height:30px; border:1px solid var(--g300); border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--g700); }
+  .topbar h1 { font-size:15px; font-weight:700; margin:0; color:var(--g500); }
+
+  /* HERO */
+  .hero { border:1px solid var(--g300); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+  .hero-top { display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .hero-title { font-size:20px; font-weight:800; margin:0 0 3px; }
+  .hero-vin { font-size:11px; color:var(--g500); font-family:ui-monospace,monospace; }
+  .hero-meta { display:flex; gap:22px; flex-wrap:wrap; }
+  .hero-meta-item .l { font-size:9px; color:var(--g500); text-transform:uppercase; letter-spacing:.04em; }
+  .hero-meta-item .v { font-size:13px; font-weight:700; margin-top:2px; }
+
+  .pill { display:inline-block; font-size:10px; font-weight:700; padding:4px 10px; border-radius:20px; }
+  .pill-amber { background:var(--amber-tint); color:#92620F; }
+  .pill-primary { background:var(--primary-tint); color:#0891B2; }
+
+  .hero-actions { display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid var(--g100); padding-top:14px; }
+  .btn { font-size:12px; font-weight:600; padding:8px 14px; border-radius:7px; border:none; cursor:pointer; }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-ghost { background:#fff; color:var(--g700); border:1px solid var(--g300); }
+  .btn-ghost:hover { border-color:var(--primary); color:var(--primary); }
+
+  /* STATUS DROPDOWN */
+  .status-wrap { position:relative; display:inline-block; }
+  .status-menu { display:none; position:absolute; top:36px; left:0; background:#fff; border:1px solid var(--g300); border-radius:9px; box-shadow:0 6px 20px rgba(15,23,42,0.10); width:230px; z-index:20; overflow:hidden; }
+  .status-menu.open { display:block; }
+  .status-opt { padding:9px 12px; font-size:11.5px; display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .status-opt:hover { background:var(--g100); }
+  .status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .status-opt.current { background:var(--primary-tint); font-weight:700; color:#0891B2; }
+
+  /* TABS */
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--g300); margin-bottom:18px; }
+  .tab { padding:10px 16px; font-size:12.5px; font-weight:600; color:var(--g500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+
+  .grid2 { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; }
+  .card { border:1px solid var(--g300); border-radius:10px; overflow:hidden; margin-bottom:16px; }
+  .card-head { padding:11px 14px; border-bottom:1px solid var(--g300); display:flex; justify-content:space-between; align-items:center; }
+  .card-head .t { font-size:12.5px; font-weight:700; }
+  .card-head .sub { font-size:10.5px; color:var(--g500); font-weight:400; }
+  .card-body { padding:14px; }
+
+  .fact-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .fact .l { font-size:9.5px; color:var(--g500); text-transform:uppercase; letter-spacing:.03em; }
+  .fact .v { font-size:12.5px; font-weight:600; margin-top:2px; }
+
+  .act-row { display:flex; gap:9px; padding:9px 0; border-bottom:1px solid var(--g100); }
+  .act-row:last-child { border-bottom:none; }
+  .act-dot { width:6px; height:6px; border-radius:50%; background:var(--primary); margin-top:5px; flex-shrink:0; }
+  .act-text { font-size:11px; color:var(--g700); }
+  .act-text b { color:var(--g900); font-weight:600; }
+  .act-time { font-size:9px; color:var(--g500); margin-top:2px; }
+
+  .charge-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--g100); font-size:12px; }
+  .charge-row:last-child { border-bottom:none; }
+  .charge-left .cn { font-weight:600; }
+  .charge-left .cs { font-size:10px; color:var(--g500); }
+  .charge-amt { font-weight:700; }
+  .badge-unbilled { font-size:9px; font-weight:700; color:#92620F; background:var(--amber-tint); padding:2px 7px; border-radius:20px; margin-left:6px; }
+
+  .cr-note { font-size:11px; color:var(--g500); background:var(--g100); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .cr-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--g100); font-size:12px; }
+
+  /* LOG SERVICE MODAL */
+  .overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,0.35); align-items:center; justify-content:center; z-index:50; }
+  .overlay.open { display:flex; }
+  .modal { background:#fff; border-radius:12px; width:360px; padding:20px; box-shadow:0 12px 40px rgba(15,23,42,0.2); }
+  .modal h3 { font-size:14px; margin:0 0 14px; }
+  .modal label { font-size:10.5px; font-weight:700; color:var(--g500); text-transform:uppercase; letter-spacing:.03em; display:block; margin:10px 0 4px; }
+  .modal select, .modal input, .modal textarea { width:100%; border:1px solid var(--g300); border-radius:7px; padding:8px 10px; font-size:12.5px; font-family:inherit; }
+  .modal-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+
+  .note { background:#fff; border:1px dashed var(--primary); border-radius:10px; padding:13px 15px; font-size:11.5px; color:var(--g700); margin-top:20px; }
+  .note b { color:var(--primary); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="back">←</div>
+  <h1>Vehicle Detail</h1>
+</div>
+
+<div class="hero">
+  <div class="hero-top">
+    <div>
+      <div class="hero-title">2015 GMC Sierra</div>
+      <div class="hero-vin">1GT12ZE89FF100119</div>
+    </div>
+    <div class="hero-meta">
+      <div class="hero-meta-item"><div class="l">Status</div><div class="v"><span class="pill pill-amber">On Lot – Pending Repairs</span></div></div>
+      <div class="hero-meta-item"><div class="l">Spot</div><div class="v">A6</div></div>
+      <div class="hero-meta-item"><div class="l">Days on Lot</div><div class="v">46d</div></div>
+    </div>
+  </div>
+
+  <div class="hero-actions">
+    <button class="btn btn-primary" onclick="alert('Runs Outtake checkpoint form')">Run Outtake</button>
+
+    <div class="status-wrap">
+      <button class="btn btn-ghost" onclick="document.getElementById('statusMenu').classList.toggle('open')">Change Status ▾</button>
+      <div class="status-menu" id="statusMenu">
+        <div class="status-opt"><span class="status-dot" style="background:#94A3B8"></span>Pending Arrival</div>
+        <div class="status-opt"><span class="status-dot" style="background:#00B4D8"></span>Checked In</div>
+        <div class="status-opt"><span class="status-dot" style="background:#00B4D8"></span>In Storage</div>
+        <div class="status-opt current"><span class="status-dot" style="background:#F4A62A"></span>On Lot – Pending Repairs</div>
+        <div class="status-opt"><span class="status-dot" style="background:#00B4D8"></span>On Lot – Repairs Complete</div>
+        <div class="status-opt"><span class="status-dot" style="background:#94A3B8"></span>Off Lot</div>
+        <div class="status-opt"><span class="status-dot" style="background:#F4A62A"></span>On Hold</div>
+        <div class="status-opt"><span class="status-dot" style="background:#F4A62A"></span>Pending Release</div>
+        <div class="status-opt"><span class="status-dot" style="background:#00B4D8"></span>Ready for Release</div>
+        <div class="status-opt"><span class="status-dot" style="background:#94A3B8"></span>Released</div>
+      </div>
+    </div>
+
+    <button class="btn btn-ghost">Assign Spot</button>
+    <button class="btn btn-ghost">Print QR</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('logServiceModal').classList.add('open')">Log Service</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="billing">Billing</div>
+  <div class="tab" data-tab="inspections">Inspections</div>
+  <div class="tab" data-tab="activity">Activity</div>
+</div>
+
+<div class="tab-panel active" id="panel-overview">
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <div class="card-head"><span class="t">Vehicle Facts</span></div>
+        <div class="card-body">
+          <div class="fact-grid">
+            <div class="fact"><div class="l">Make / Model</div><div class="v">GMC Sierra</div></div>
+            <div class="fact"><div class="l">Year</div><div class="v">2015</div></div>
+            <div class="fact"><div class="l">Customer</div><div class="v">Test Company</div></div>
+            <div class="fact"><div class="l">Intake Date</div><div class="v">Jun 20, 2026</div></div>
+            <div class="fact"><div class="l">Damage Markers</div><div class="v">3 tagged</div></div>
+            <div class="fact"><div class="l">Intake/Outtake</div><div class="v">Intake only</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="t">Recent Activity</span><span class="sub">last 3</span></div>
+        <div class="card-body">
+          <div class="act-row"><div class="act-dot" style="background:#F4A62A"></div><div><div class="act-text"><b>Status changed</b> to On Lot – Pending Repairs</div><div class="act-time">2d ago</div></div></div>
+          <div class="act-row"><div class="act-dot"></div><div><div class="act-text"><b>Intake completed</b> by Nicole</div><div class="act-time">46d ago</div></div></div>
+          <div class="act-row"><div class="act-dot"></div><div><div class="act-text">Spot <b>A6</b> assigned</div><div class="act-time">46d ago</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-head"><span class="t">Billing Summary</span></div>
+        <div class="card-body">
+          <div class="fact-grid">
+            <div class="fact"><div class="l">Accrued</div><div class="v" style="color:var(--primary)">$460.00</div></div>
+            <div class="fact"><div class="l">Unbilled</div><div class="v">2 charges</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="t">Damage Comparison</span></div>
+        <div class="card-body" style="font-size:11.5px; color:var(--g500);">
+          Intake vs. Outtake comparison unavailable — outtake not yet run.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-billing">
+  <div class="card">
+    <div class="card-head"><span class="t">Charges</span><button class="btn btn-ghost" style="padding:5px 10px;">+ Add Charge</button></div>
+    <div class="card-body">
+      <div class="charge-row">
+        <div class="charge-left"><div class="cn">Storage (46d)</div><div class="cs">Jun 20 – Aug 5, 2026</div></div>
+        <div><span class="charge-amt">$460.00</span></div>
+      </div>
+      <div class="charge-row">
+        <div class="charge-left"><div class="cn">Tow-Lift Request</div><div class="cs">Report cost</div></div>
+        <div><span class="charge-amt">$35.00</span><span class="badge-unbilled">Unbilled</span></div>
+      </div>
+      <div class="charge-row">
+        <div class="charge-left"><div class="cn">Vehicle Exercise</div><div class="cs">Logged Aug 3, 2026</div></div>
+        <div><span class="charge-amt">$20.00</span><span class="badge-unbilled">Unbilled</span></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-primary">Generate Invoice</button>
+</div>
+
+<div class="tab-panel" id="panel-inspections">
+  <div class="cr-note">Condition Reports are an optional, in-depth inspection — separate from the quick Intake/Outtake checkpoints. Run one anytime from here.</div>
+  <div class="card">
+    <div class="card-head"><span class="t">Inspection History</span><button class="btn btn-ghost" style="padding:5px 10px;">Start Condition Report</button></div>
+    <div class="card-body">
+      <div class="cr-row"><span>Standard Report #1 — Jun 8, 2026</span><button class="btn btn-ghost" style="padding:4px 9px;">Download PDF</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-activity">
+  <div class="card">
+    <div class="card-body">
+      <div class="act-row"><div class="act-dot" style="background:#F4A62A"></div><div><div class="act-text"><b>Status changed</b> to On Lot – Pending Repairs</div><div class="act-time">2d ago</div></div></div>
+      <div class="act-row"><div class="act-dot"></div><div><div class="act-text"><b>Damage marker</b> added — Fender Front Left, Dented</div><div class="act-time">46d ago</div></div></div>
+      <div class="act-row"><div class="act-dot"></div><div><div class="act-text"><b>Intake completed</b> by Nicole</div><div class="act-time">46d ago</div></div></div>
+      <div class="act-row"><div class="act-dot"></div><div><div class="act-text">Spot <b>A6</b> assigned</div><div class="act-time">46d ago</div></div></div>
+      <div class="act-row"><div class="act-dot"></div><div><div class="act-text"><b>Vehicle checked in</b></div><div class="act-time">46d ago</div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="note"><b>Log Service, from here:</b> since a vehicle is already selected, this opens directly to service + amount — no vehicle picker needed, unlike the dashboard's version of this action.</div>
+
+<div class="overlay" id="logServiceModal">
+  <div class="modal">
+    <h3>Log Service — 2015 GMC Sierra</h3>
+    <label>Service Type</label>
+    <select><option>Vehicle Exercise — $20.00</option><option>Battery Change — $45.00</option><option>Jump Start — $15.00</option></select>
+    <label>Amount</label>
+    <input type="text" value="$20.00">
+    <label>Date Performed</label>
+    <input type="text" value="Aug 6, 2026">
+    <label>Notes</label>
+    <textarea rows="2" placeholder="Optional"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('logServiceModal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="document.getElementById('logServiceModal').classList.remove('open')">Log Service</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+document.querySelectorAll('.status-opt').forEach(opt => {
+  opt.addEventListener('click', () => document.getElementById('statusMenu').classList.remove('open'));
+});
+</script>
+
+</body>
+</html>

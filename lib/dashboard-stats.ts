@@ -9,14 +9,23 @@ import type { WorkOrderStatus } from '@/lib/work-order-status'
 // value already in hand.
 const ATTENTION_STATUSES = ['on_lot_pending_repairs', 'on_hold', 'pending_release']
 
+// Counted with a real row select rather than { head: true }, and the error is
+// surfaced rather than collapsed into 0 — a silently-failing count renders an
+// empty dashboard that looks like real data, which is worse than an obvious break.
+const NON_OCCUPYING_STATUSES = ['pending_arrival', 'released']
+
 export async function getVehiclesOnLotCount(companyId: string): Promise<number> {
   const supabase = createClient()
-  const { count } = await supabase
+  const { data, error } = await supabase
     .from('storage_vehicles')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('company_id', companyId)
-    .not('work_order_status', 'in', '(pending_arrival,released)')
-  return count ?? 0
+    .not('work_order_status', 'in', `(${NON_OCCUPYING_STATUSES.join(',')})`)
+  if (error) {
+    console.error('[dashboard-stats] getVehiclesOnLotCount failed:', error)
+    throw error
+  }
+  return data?.length ?? 0
 }
 
 // "Arriving today" — there's no dedicated expected-arrival-date field on
@@ -27,23 +36,31 @@ export async function getArrivalsTodayCount(companyId: string): Promise<number> 
   const supabase = createClient()
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
-  const { count } = await supabase
+  const { data, error } = await supabase
     .from('storage_vehicles')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('company_id', companyId)
     .eq('work_order_status', 'pending_arrival')
     .gte('arrived_at', startOfDay.toISOString())
-  return count ?? 0
+  if (error) {
+    console.error('[dashboard-stats] getArrivalsTodayCount failed:', error)
+    throw error
+  }
+  return data?.length ?? 0
 }
 
 export async function getNeedsAttentionCount(companyId: string): Promise<number> {
   const supabase = createClient()
-  const { count } = await supabase
+  const { data, error } = await supabase
     .from('storage_vehicles')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('company_id', companyId)
     .in('work_order_status', ATTENTION_STATUSES)
-  return count ?? 0
+  if (error) {
+    console.error('[dashboard-stats] getNeedsAttentionCount failed:', error)
+    throw error
+  }
+  return data?.length ?? 0
 }
 
 export interface TodaysQueueVehicle {

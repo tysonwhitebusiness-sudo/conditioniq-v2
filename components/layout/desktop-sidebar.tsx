@@ -341,34 +341,38 @@ export default function DesktopSidebar({
             </div>
           </div>
 
-          <button
-            onClick={() => !isInspecting && handleClick({ id: 'account', label: 'Profile', icon: null, type: 'tab', tab: 'account' })}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'none', border: 'none', padding: '8px 0', cursor: 'pointer' }}
-          >
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 16, background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: WHITE }}>
-                {initials}
-              </div>
-              {impersonatedCompany && (
-                <div title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, background: AMBER, border: `2px solid ${WHITE}` }} />
-              )}
-            </div>
-            <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {displayName || user?.email}
-              </p>
-              {impersonatedCompany && (
-                <p style={{ fontSize: 10, fontWeight: 700, color: AMBER, margin: 0 }}>Ghost Mode</p>
-              )}
-            </div>
+          {/* Profile and Sign out are siblings, not nested. A <button> inside a
+              <button> is invalid HTML and threw a hydration error on every load. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 0' }}>
             <button
-              onClick={async (e) => { e.stopPropagation(); await signOut(); router.replace('/login') }}
+              onClick={() => !isInspecting && handleClick({ id: 'account', label: 'Profile', icon: null, type: 'tab', tab: 'account' })}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            >
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 16, background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: WHITE }}>
+                  {initials}
+                </div>
+                {impersonatedCompany && (
+                  <div title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, background: AMBER, border: `2px solid ${WHITE}` }} />
+                )}
+              </div>
+              <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {displayName || user?.email}
+                </p>
+                {impersonatedCompany && (
+                  <p style={{ fontSize: 10, fontWeight: 700, color: AMBER, margin: 0 }}>Ghost Mode</p>
+                )}
+              </div>
+            </button>
+            <button
+              onClick={async () => { await signOut(); router.replace('/login') }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, flexShrink: 0 }}
               title="Sign out"
             >
               <LogOut size={15} color={GRAY_500} />
             </button>
-          </button>
+          </div>
         </div>
       )}
     </div>

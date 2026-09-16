@@ -31,13 +31,21 @@ export function useDashboardData(companyId: string) {
   const [lotSpots, setLotSpots] = useState<LotSpot[]>([])
   const [lotShapes, setLotShapes] = useState<LotShape[]>([])
 
-  const load = useCallback(async () => {
+  // The core stats do not depend on any feature flag, so they are loaded on
+  // their own effect keyed only to companyId. Previously they shared a callback
+  // whose deps included two useFeatureFlag values, each of which starts as null
+  // and resolves to a boolean asynchronously — every resolution rebuilt the
+  // callback, re-ran the effect, and aborted the in-flight request batch. One
+  // aborted promise rejected the whole Promise.all, so no setState ran and every
+  // counter stayed at its initial 0.
+  const loadCore = useCallback(async () => {
     if (!companyId) return
     const cutoff20h = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString()
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { createClient } = await import('@/lib/supabase/client')
 
-    const [vehiclesRes, usage, inspToday, custCount, activity, expiring, arrivals, attention, queue] = await Promise.all([
+    // allSettled, not all — one failing stat must not blank the whole dashboard.
+    const results = await Promise.allSettled([
       getVehiclesOnLotCount(companyId),
       checkUsageState(companyId),
       getInspectionsCompletedTodayCount(companyId),
@@ -55,33 +63,42 @@ export function useDashboardData(companyId: string) {
       getNeedsAttentionCount(companyId),
       getTodaysQueue(companyId),
     ])
-    setVehiclesOnLot(vehiclesRes)
-    setUsageState(usage)
-    setInspectionsToday(inspToday)
-    setCustomerCount(custCount)
-    setEvents(activity)
-    setExpiringCount(expiring.error ? 0 : (expiring.count ?? 0))
-    setArrivalsToday(arrivals)
-    setNeedsAttention(attention)
-    setTodaysQueue(queue)
+    const at = <T,>(i: number, fallback: T): T =>
+      results[i].status === 'fulfilled' ? ((results[i] as PromiseFulfilledResult<T>).value ?? fallback) : fallback
 
-    if (lotMapEnabled) {
-      const [occ, accrual, spots, shapes] = await Promise.all([
-        getLotOccupancy(companyId), getLotDailyAccrual(companyId),
-        getLotSpots(companyId), getLotShapes(companyId),
-      ])
-      setLotOccupancy(occ)
-      setDailyAccrual(accrual)
-      setLotSpots(spots)
-      setLotShapes(shapes)
-    }
-    if (lotBillingEnabled) {
-      const kpis = await getBillingKPIs(companyId)
-      setOverdueCount(kpis.overdueCount)
-    }
-  }, [companyId, lotMapEnabled, lotBillingEnabled])
+    setVehiclesOnLot(at(0, 0))
+    setUsageState(at<any>(1, null))
+    setInspectionsToday(at(2, 0))
+    setCustomerCount(at(3, 0))
+    setEvents(at<CompanyVehicleEvent[]>(4, []))
+    const expiring = at<{ error: unknown; count: number | null } | null>(5, null)
+    setExpiringCount(expiring && !expiring.error ? (expiring.count ?? 0) : 0)
+    setArrivalsToday(at(6, 0))
+    setNeedsAttention(at(7, 0))
+    setTodaysQueue(at<TodaysQueue | null>(8, null))
+  }, [companyId])
 
-  useEffect(() => { load() }, [load])
+  const loadLot = useCallback(async () => {
+    if (!companyId || !lotMapEnabled) return
+    const [occ, accrual, spots, shapes] = await Promise.all([
+      getLotOccupancy(companyId), getLotDailyAccrual(companyId),
+      getLotSpots(companyId), getLotShapes(companyId),
+    ])
+    setLotOccupancy(occ)
+    setDailyAccrual(accrual)
+    setLotSpots(spots)
+    setLotShapes(shapes)
+  }, [companyId, lotMapEnabled])
+
+  const loadBilling = useCallback(async () => {
+    if (!companyId || !lotBillingEnabled) return
+    const kpis = await getBillingKPIs(companyId)
+    setOverdueCount(kpis.overdueCount)
+  }, [companyId, lotBillingEnabled])
+
+  useEffect(() => { loadCore() }, [loadCore])
+  useEffect(() => { loadLot() }, [loadLot])
+  useEffect(() => { loadBilling() }, [loadBilling])
 
   return {
     lotMapEnabled, lotBillingEnabled, dispatchEnabled,

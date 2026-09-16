@@ -27,7 +27,7 @@ export const PLANS: Record<PlanKey, Plan> = {
 // eligiblePlans: which base plans can purchase this add-on
 
 export interface AddOn {
-  key: 'lot_map' | 'white_label' | 'dispatch' | 'lot_billing'
+  key: 'lot_map' | 'white_label' | 'lot_billing'
   name: string
   monthlyCost: number
   annualCost: number
@@ -36,7 +36,6 @@ export interface AddOn {
 }
 
 export const ADD_ONS: AddOn[] = [
-  { key: 'dispatch',    name: 'Dispatch',        monthlyCost: 29, annualCost: 290, description: 'Send-to-driver dispatch board',          eligiblePlans: ['starter'] },
   { key: 'lot_billing', name: 'Lot Billing',     monthlyCost: 49, annualCost: 490, description: 'Per-vehicle storage billing & invoicing', eligiblePlans: ['starter'] },
   { key: 'lot_map',     name: 'Lot Map',         monthlyCost: 59, annualCost: 590, description: 'Visual lot map for single location',       eligiblePlans: ['growth']  },
   { key: 'white_label', name: 'White Label PDF', monthlyCost: 49, annualCost: 490, description: 'White label PDF + custom branding',        eligiblePlans: ['growth']  },

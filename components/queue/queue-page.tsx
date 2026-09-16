@@ -5,13 +5,23 @@ import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StatusBadge, { ScoreBadge } from '@/components/ui/status-badge'
-import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2, Check } from 'lucide-react'
-import { createShareToken, createInspectionRequest } from '@/lib/usage-actions'
+import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2, Check, Copy, Link2 } from 'lucide-react'
+import { createShareToken } from '@/lib/usage-actions'
+import SendLinkSheet from '@/components/dispatch/send-link-sheet'
+import {
+  loadInspectionRows, countByStatus, INSPECTION_STATUSES, INSPECTION_STATUS_LABEL,
+  type InspectionRow, type InspectionStatus,
+} from '@/lib/unified-inspections'
+import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100, DANGER, DANGER_TEXT, DANGER_LIGHT, SUCCESS_LIGHT, SUCCESS_DARK } from '@/lib/design-tokens'
 
-type SubTab = 'queue' | 'in_progress' | 'history'
+export type StatusFilter = 'all' | InspectionStatus
 
 interface Props {
-  initialTab?: SubTab
+  initialFilter?: StatusFilter
+  // Open the send-link sheet on mount, optionally prefilled — the entry point
+  // for "send to inspector" actions elsewhere in the app.
+  openSendSheet?: boolean
+  sendVin?: string
   onStartInspection: (queueItem?: any) => void
   onResumeInspection: (data: any) => void
   onViewReport: (data: any) => void
@@ -76,7 +86,89 @@ function VinRow({ item }: { item: any }) {
 
 // ── Card components ────────────────────────────────────────────────────────
 
-function QueueCard({ item, isDesktop, onStart, onDelete }: { item: any; isDesktop: boolean; onStart: () => void; onDelete: () => void }) {
+function ViaLinkChip() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 8,
+      background: PRIMARY_LIGHT, color: PRIMARY_PILL_TEXT, flexShrink: 0,
+    }}>
+      <Link2 size={9} /> Via link
+    </span>
+  )
+}
+
+function linkTimeLabel(expiresAt: string): string {
+  const ms = new Date(expiresAt).getTime() - Date.now()
+  if (ms <= 0) return `Expired ${formatDate(expiresAt)}`
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.floor((ms % 3_600_000) / 60_000)
+  return h > 0 ? `${h}h ${m}m left` : `${m}m left`
+}
+
+function LinkCard({ item, status, isDesktop, onResend }: {
+  item: any; status: 'sent' | 'expired'; isDesktop: boolean; onResend: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const expired = status === 'expired'
+  const link = typeof window !== 'undefined' ? `${window.location.origin}/inspect/${item.token}` : ''
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {}
+  }
+
+  return (
+    <div style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderLeft: `4px solid ${expired ? DANGER : PRIMARY}`, borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 16 : 12, padding: isDesktop ? '12px 20px' : '12px 16px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <NameRow item={item} />
+          <VinRow item={item} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <Clock size={11} style={{ color: expired ? DANGER_TEXT : GRAY_500, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: expired ? DANGER_TEXT : GRAY_500 }}>
+              Sent {formatDate(item.created_at)} · {linkTimeLabel(item.expires_at)}
+            </span>
+          </div>
+          {item.notes && <p style={{ fontSize: 11, color: GRAY_700, fontStyle: 'italic', margin: '4px 0 0' }}>{item.notes}</p>}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+          <StatusBadge status={status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {expired ? (
+              <button
+                onClick={onResend}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  height: isDesktop ? 32 : 28, padding: isDesktop ? '0 14px' : '0 12px',
+                  borderRadius: 8, border: 'none', cursor: 'pointer',
+                  background: PRIMARY, color: WHITE, fontSize: isDesktop ? 13 : 12, fontWeight: 600,
+                }}
+              >
+                <Send size={11} /> Resend
+              </button>
+            ) : (
+              <button
+                onClick={copy}
+                aria-label="Copy inspection link"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  height: isDesktop ? 32 : 28, padding: isDesktop ? '0 14px' : '0 12px',
+                  borderRadius: 8, cursor: 'pointer', fontSize: isDesktop ? 13 : 12, fontWeight: 600,
+                  border: `1px solid ${copied ? SUCCESS_LIGHT : GRAY_300}`,
+                  background: copied ? SUCCESS_LIGHT : WHITE, color: copied ? SUCCESS_DARK : PRIMARY,
+                }}
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy link'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function QueueCard({ item, isDesktop, onStart, onSend, onDelete }: { item: any; isDesktop: boolean; onStart: () => void; onSend: () => void; onDelete: () => void }) {
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderLeft: '4px solid #94A3B8', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 16 : 12, padding: isDesktop ? '12px 20px' : '12px 16px' }}>
@@ -100,6 +192,19 @@ function QueueCard({ item, isDesktop, onStart, onDelete }: { item: any; isDeskto
               }}
             >
               <Play size={11} fill="#0D1B2A" /> Start
+            </button>
+            <button
+              onClick={onSend}
+              aria-label="Send to inspector"
+              title="Send to inspector"
+              style={{
+                width: 32, height: 32, borderRadius: 8, border: '1px solid #E1E8F0',
+                background: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: PRIMARY,
+                flexShrink: 0,
+              }}
+            >
+              <Send size={14} />
             </button>
             <button
               onClick={onDelete}
@@ -133,7 +238,7 @@ function useExpiryCountdown(lastActiveAt: string | undefined) {
   return ms
 }
 
-function InProgressCard({ item, isDesktop, onResume }: { item: any; isDesktop: boolean; onResume: () => void }) {
+function InProgressCard({ item, isDesktop, viaLink, onResume }: { item: any; isDesktop: boolean; viaLink: boolean; onResume: () => void }) {
   const remainingMs = useExpiryCountdown(item.last_active_at)
   const totalMs     = 24 * 60 * 60 * 1000
   const pctElapsed  = Math.min(100, ((totalMs - remainingMs) / totalMs) * 100)
@@ -149,6 +254,7 @@ function InProgressCard({ item, isDesktop, onResume }: { item: any; isDesktop: b
     <div style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderLeft: `4px solid ${accentColor}`, borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 16 : 12, padding: isDesktop ? '12px 20px' : '12px 16px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {viaLink && <div style={{ marginBottom: 2 }}><ViaLinkChip /></div>}
           <NameRow item={item} />
           <VinRow item={item} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
@@ -179,8 +285,8 @@ function InProgressCard({ item, isDesktop, onResume }: { item: any; isDesktop: b
   )
 }
 
-function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }: {
-  item: any; isDesktop: boolean; onView: () => void; onShare: () => void; onSend: () => void; shareSuccess: boolean
+function HistoryCard({ item, isDesktop, viaLink, onView, onShare, onSend, shareSuccess }: {
+  item: any; isDesktop: boolean; viaLink: boolean; onView: () => void; onShare: () => void; onSend: () => void; shareSuccess: boolean
 }) {
   const usage: string = item.usage_status ?? ''
   const typeLabel = usage === 'checkin' ? 'Check-In' : usage === 'checkout' ? 'Check-Out' : 'Standard'
@@ -204,6 +310,7 @@ function HistoryCard({ item, isDesktop, onView, onShare, onSend, shareSuccess }:
                 <Bot size={9} /> Auto
               </span>
             )}
+            {viaLink && <ViaLinkChip />}
           </div>
           <NameRow item={item} />
           <VinRow item={item} />
@@ -370,43 +477,62 @@ function AddToQueueSheet({ companyId, existingQueueVins, onClose, onAdded }: {
 
 // ── Main page ──────────────────────────────────────────────────────────────
 
-export default function QueuePage({ initialTab = 'queue', onStartInspection, onResumeInspection, onViewReport, hideHeader = false }: Props) {
+type SendSheetState = {
+  open: boolean
+  vin?: string
+  year?: string
+  make?: string
+  model?: string
+  // Set when sending from a queued item: once the link exists, the queued row
+  // is retired so the vehicle moves from "queued" to "sent" instead of both.
+  queueId?: string
+}
+
+const EMPTY_COPY: Record<StatusFilter, { title: string; message: string }> = {
+  all:         { title: 'No inspections yet',      message: 'Check in a vehicle or send a link to an inspector' },
+  queued:      { title: 'Queue is empty',          message: 'Add vehicles to inspect or check one in' },
+  sent:        { title: 'No links waiting',        message: 'Links you send to inspectors appear here until they are used' },
+  in_progress: { title: 'Nothing in progress',     message: 'Start an inspection to see it here' },
+  completed:   { title: 'No completed inspections', message: 'Completed inspections will appear here' },
+  expired:     { title: 'No expired links',        message: 'Links that lapse without being used appear here' },
+}
+
+export default function QueuePage({
+  initialFilter = 'all', openSendSheet = false, sendVin,
+  onStartInspection, onResumeInspection, onViewReport, hideHeader = false,
+}: Props) {
   const { effectiveCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const [tab, setTab] = useState<SubTab>(initialTab)
+  const [filter, setFilter] = useState<StatusFilter>(initialFilter)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [queue, setQueue] = useState<any[]>([])
-  const [inProgress, setInProgress] = useState<any[]>([])
-  const [history, setHistory] = useState<any[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [rows, setRows] = useState<InspectionRow[]>([])
   const [shareSuccessId, setShareSuccessId] = useState<string | null>(null)
-  const [infoMsg, setInfoMsg] = useState<string | null>(null)
   const [showAddToQueue, setShowAddToQueue] = useState(false)
+  const [sendSheet, setSendSheet] = useState<SendSheetState>({ open: openSendSheet, vin: sendVin })
 
   const supabase = createClient()
+  const companyId = effectiveCompany?.id ?? ''
 
   const load = useCallback(async () => {
-    if (!effectiveCompany) return
+    if (!companyId) return
     setLoading(true)
+    setLoadError(null)
     try {
-      const [qRes, ipRes, hRes] = await Promise.all([
-        supabase.from('inspection_queue').select('*').eq('company_id', effectiveCompany.id).eq('status', 'queued').order('created_at', { ascending: false }),
-        supabase.from('vehicle_inspections').select('*').eq('company_id', effectiveCompany.id).eq('status', 'in_progress').order('created_at', { ascending: false }),
-        supabase.from('vehicle_inspections').select('*').eq('company_id', effectiveCompany.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(50),
-      ])
-      setQueue(qRes.data ?? [])
-      setInProgress(ipRes.data ?? [])
-      setHistory(hRes.data ?? [])
+      setRows(await loadInspectionRows(companyId))
+    } catch (e: any) {
+      setLoadError(e?.message ?? 'Could not load inspections')
     } finally {
       setLoading(false)
     }
-  }, [effectiveCompany])
+  }, [companyId])
 
   useEffect(() => { load() }, [load])
 
   const deleteQueueItem = async (id: string) => {
     await supabase.from('inspection_queue').delete().eq('id', id)
-    setQueue(prev => prev.filter(q => q.id !== id))
+    setRows(prev => prev.filter(r => r.key !== `queue:${id}`))
   }
 
   const handleShare = async (inspectionId: string) => {
@@ -419,173 +545,212 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
     } catch {}
   }
 
-  const handleSendLink = async (item: any) => {
-    if (!effectiveCompany) return
-    try {
-      const token = await createInspectionRequest(effectiveCompany.id, { vin: item.vin, year: item.year, make: item.make, model: item.model }, 24)
-      const link = `${window.location.origin}/complete/${token}`
-      await navigator.clipboard.writeText(link)
-      setInfoMsg('Link copied! Share it with the remote inspector.')
-    } catch {}
+  const openSend = (row?: InspectionRow, queueId?: string) => {
+    setSendSheet({
+      open: true,
+      vin: row?.vin ?? undefined,
+      year: row?.year ?? undefined,
+      make: row?.make ?? undefined,
+      model: row?.model ?? undefined,
+      queueId,
+    })
   }
 
-  const filter = (items: any[]) =>
-    !search
-      ? items
-      : items.filter(i =>
-          i.vin?.toLowerCase().includes(search.toLowerCase()) ||
-          i.make?.toLowerCase().includes(search.toLowerCase()) ||
-          i.model?.toLowerCase().includes(search.toLowerCase())
-        )
+  const handleSent = async () => {
+    if (sendSheet.queueId) {
+      await supabase.from('inspection_queue').delete().eq('id', sendSheet.queueId)
+    }
+  }
 
-  const counts = { queue: queue.length, in_progress: inProgress.length, history: history.length }
+  const closeSendSheet = () => {
+    setSendSheet({ open: false })
+    load()
+  }
 
-  const TABS = [
-    { id: 'queue' as SubTab, label: 'Queue' },
-    { id: 'in_progress' as SubTab, label: 'In Progress' },
-    { id: 'history' as SubTab, label: 'History' },
+  const counts = countByStatus(rows)
+  const needle = search.trim().toLowerCase()
+  const visible = rows.filter(r =>
+    (filter === 'all' || r.status === filter) &&
+    (!needle ||
+      r.vin?.toLowerCase().includes(needle) ||
+      r.make?.toLowerCase().includes(needle) ||
+      r.model?.toLowerCase().includes(needle)),
+  )
+
+  const chips: { id: StatusFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'All', count: rows.length },
+    ...INSPECTION_STATUSES.map(s => ({ id: s as StatusFilter, label: INSPECTION_STATUS_LABEL[s], count: counts[s] })),
   ]
 
-  const tabButtons = (
-    <div style={{ display: 'flex', gap: 8 }}>
-      {TABS.map(t => (
-        <button
-          key={t.id}
-          onClick={() => setTab(t.id)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '0 12px',
-            height: isDesktop ? 34 : 30,
-            borderRadius: 20,
-            fontSize: isDesktop ? 13 : 12, fontWeight: 700, cursor: 'pointer',
-            background: tab === t.id
-              ? '#00B4D8'
-              : isDesktop ? '#F0F4F8' : 'rgba(255,255,255,0.1)',
-            color: tab === t.id
-              ? '#0D1B2A'
-              : isDesktop ? '#4A5568' : 'rgba(255,255,255,0.6)',
-            border: isDesktop && tab !== t.id ? '1px solid #E1E8F0' : 'none',
-          }}
-        >
-          {t.label}
-          {counts[t.id] > 0 && (
-            <span style={{
-              fontSize: 10, padding: '1px 6px', borderRadius: 10, fontWeight: 700,
-              background: tab === t.id
-                ? '#0D1B2A'
-                : isDesktop ? '#E1E8F0' : 'rgba(255,255,255,0.2)',
-              color: tab === t.id ? '#FFFFFF' : isDesktop ? '#4A5568' : '#FFFFFF',
-            }}>
-              {counts[t.id]}
-            </span>
-          )}
-        </button>
-      ))}
+  const chipBar = (
+    <div role="tablist" aria-label="Filter inspections by status" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+      {chips.map(c => {
+        const active = filter === c.id
+        return (
+          <button
+            key={c.id}
+            role="tab"
+            aria-selected={active}
+            onClick={() => setFilter(c.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
+              padding: '0 12px', height: isDesktop ? 34 : 30, borderRadius: 20,
+              fontSize: isDesktop ? 13 : 12, fontWeight: 700, cursor: 'pointer',
+              background: active ? PRIMARY : isDesktop ? GRAY_100 : 'rgba(255,255,255,0.1)',
+              color: active ? GRAY_900 : isDesktop ? GRAY_700 : 'rgba(255,255,255,0.6)',
+              border: isDesktop && !active ? `1px solid ${GRAY_300}` : 'none',
+            }}
+          >
+            {c.label}
+            {c.count > 0 && (
+              <span style={{
+                fontSize: 10, padding: '1px 6px', borderRadius: 10, fontWeight: 700,
+                background: active ? GRAY_900 : isDesktop ? GRAY_300 : 'rgba(255,255,255,0.2)',
+                color: active ? WHITE : isDesktop ? GRAY_700 : WHITE,
+              }}>
+                {c.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 
+  const renderRow = (row: InspectionRow) => {
+    const item = row.record
+    switch (row.status) {
+      case 'queued':
+        return (
+          <QueueCard
+            key={row.key} item={item} isDesktop={isDesktop}
+            onStart={() => onStartInspection(item)}
+            onSend={() => openSend(row, item.id)}
+            onDelete={() => deleteQueueItem(item.id)}
+          />
+        )
+      case 'sent':
+      case 'expired':
+        return (
+          <LinkCard
+            key={row.key} item={item} status={row.status} isDesktop={isDesktop}
+            onResend={() => openSend(row)}
+          />
+        )
+      case 'in_progress':
+        return (
+          <InProgressCard
+            key={row.key} item={item} isDesktop={isDesktop} viaLink={row.viaLink}
+            onResume={() => onResumeInspection(item)}
+          />
+        )
+      case 'completed':
+        return (
+          <HistoryCard
+            key={row.key} item={item} isDesktop={isDesktop} viaLink={row.viaLink}
+            onView={() => onViewReport(item)}
+            onShare={() => handleShare(item.id)}
+            onSend={() => openSend(row)}
+            shareSuccess={shareSuccessId === item.id}
+          />
+        )
+    }
+  }
+
+  const empty = EMPTY_COPY[filter]
   const cardList = loading ? (
     <><Skeleton /><Skeleton /><Skeleton /></>
-  ) : tab === 'queue' ? (
-    filter(queue).length === 0 ? (
-      <EmptyState
-        icon={<List size={40} style={{ color: '#E1E8F0' }} />}
-        title="Queue is empty"
-        message="Add vehicles to inspect or check one in"
-        action={
-          <button
-            onClick={() => onStartInspection()}
-            style={{ padding: '12px 24px', borderRadius: 20, fontWeight: 700, fontSize: 14, background: '#00B4D8', color: '#FFFFFF', border: 'none', cursor: 'pointer' }}
-          >
-            Start Inspection
-          </button>
-        }
-      />
-    ) : filter(queue).map(item => (
-      <QueueCard key={item.id} item={item} isDesktop={isDesktop} onStart={() => onStartInspection(item)} onDelete={() => deleteQueueItem(item.id)} />
-    ))
-  ) : tab === 'in_progress' ? (
-    filter(inProgress).length === 0 ? (
-      <EmptyState
-        icon={<Clock size={40} style={{ color: '#E1E8F0' }} />}
-        title="Nothing in progress"
-        message="Start an inspection to see it here"
-      />
-    ) : filter(inProgress).map(item => (
-      <InProgressCard key={item.id} item={item} isDesktop={isDesktop} onResume={() => onResumeInspection(item)} />
-    ))
-  ) : (
-    filter(history).length === 0 ? (
-      <EmptyState
-        icon={<Clock size={40} style={{ color: '#E1E8F0' }} />}
-        title="No completed inspections"
-        message="Completed inspections will appear here"
-      />
-    ) : filter(history).map(item => (
-      <HistoryCard
-        key={item.id}
-        item={item}
-        isDesktop={isDesktop}
-        onView={() => onViewReport(item)}
-        onShare={() => handleShare(item.id)}
-        onSend={() => handleSendLink(item)}
-        shareSuccess={shareSuccessId === item.id}
-      />
-    ))
-  )
+  ) : loadError ? (
+    <EmptyState
+      icon={<X size={40} style={{ color: DANGER }} />}
+      title="Could not load inspections"
+      message={loadError}
+      action={
+        <button onClick={load} style={{ padding: '12px 24px', borderRadius: 20, fontWeight: 700, fontSize: 14, background: PRIMARY, color: WHITE, border: 'none', cursor: 'pointer' }}>
+          Try again
+        </button>
+      }
+    />
+  ) : visible.length === 0 ? (
+    <EmptyState
+      icon={filter === 'queued' ? <List size={40} style={{ color: GRAY_300 }} /> : filter === 'sent' || filter === 'expired' ? <Link2 size={40} style={{ color: GRAY_300 }} /> : <Clock size={40} style={{ color: GRAY_300 }} />}
+      title={needle ? 'No matches' : empty.title}
+      message={needle ? `Nothing matches "${search.trim()}"` : empty.message}
+      action={!needle && (filter === 'queued' || filter === 'all') ? (
+        <button
+          onClick={() => onStartInspection()}
+          style={{ padding: '12px 24px', borderRadius: 20, fontWeight: 700, fontSize: 14, background: PRIMARY, color: WHITE, border: 'none', cursor: 'pointer' }}
+        >
+          Start Inspection
+        </button>
+      ) : undefined}
+    />
+  ) : visible.map(renderRow)
+
+  const showQueueActions = filter === 'all' || filter === 'queued'
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#F0F4F8',
+      minHeight: '100vh', background: GRAY_100,
       paddingBottom: isDesktop ? 0 : 'calc(64px + env(safe-area-inset-bottom, 0px))',
     }}>
 
       {/* Mobile header — hidden when parent provides its own header (e.g. standalone /inspections page) */}
       {!isDesktop && !hideHeader && (
         <div style={{ background: '#0D1B2A', padding: '48px 16px 16px' }}>
-          <h1 style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 20, margin: '0 0 8px' }}>Inspections</h1>
-          {tabButtons}
+          <h1 style={{ color: WHITE, fontWeight: 700, fontSize: 20, margin: '0 0 8px' }}>Inspections</h1>
+          {chipBar}
         </div>
       )}
       {!isDesktop && hideHeader && (
         <div style={{ background: '#0D1B2A', padding: '8px 16px 14px' }}>
-          {tabButtons}
+          {chipBar}
         </div>
       )}
 
-      {/* Content area */}
       <div style={{
         maxWidth: isDesktop ? 1200 : undefined,
         margin: isDesktop ? '0 auto' : undefined,
         padding: isDesktop ? 24 : '16px 16px 0',
       }}>
 
-        {/* Desktop tab pills */}
-        {isDesktop && <div style={{ marginBottom: 12 }}>{tabButtons}</div>}
+        {isDesktop && <div style={{ marginBottom: 12 }}>{chipBar}</div>}
 
-        {/* Search + action buttons */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+        {/* Search + actions */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px', position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: GRAY_500 }} />
             <input
+              id="inspections-search"
+              aria-label="Search inspections"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search VIN or vehicle..."
               style={{
                 width: '100%', paddingLeft: 36, paddingRight: 16, height: 40, borderRadius: 10,
-                background: '#FFFFFF', border: '1px solid #E1E8F0', color: '#0D1B2A',
-                fontSize: 14, outline: 'none', fontFamily: 'inherit',
+                background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_900,
+                fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
               }}
             />
           </div>
-          {tab === 'queue' && (
+          <button
+            onClick={() => openSend()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
+              height: 40, borderRadius: 10, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: WHITE, border: `1px solid ${GRAY_300}`, color: PRIMARY, fontSize: 13, fontWeight: 600,
+            }}
+          >
+            <Send size={14} /> Send Link
+          </button>
+          {showQueueActions && (
             <>
               <button
                 onClick={() => setShowAddToQueue(true)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
                   height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
-                  background: '#1B2D40', color: '#FFFFFF', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                  background: '#1B2D40', color: WHITE, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
                 }}
               >
                 <Plus size={14} /> Add to Queue
@@ -595,7 +760,7 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
                   height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
-                  background: '#00B4D8', color: '#FFFFFF', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                  background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
                 }}
               >
                 <Plus size={14} /> Check-In
@@ -604,42 +769,32 @@ export default function QueuePage({ initialTab = 'queue', onStartInspection, onR
           )}
         </div>
 
-        {/* Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {cardList}
         </div>
       </div>
 
-      {infoMsg && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.55)' }} onClick={() => setInfoMsg(null)} />
-          <div style={{ position: 'relative', background: '#FFF', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 24px 48px rgba(13,27,42,0.2)' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: '0 0 12px' }}>Link Copied</h3>
-            <p style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, margin: '0 0 24px' }}>{infoMsg}</p>
-            <button onClick={() => setInfoMsg(null)} style={{ width: '100%', height: 44, borderRadius: 10, border: 'none', background: '#0D1B2A', color: '#FFF', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>OK</button>
-          </div>
-        </div>
-      )}
-
       {showAddToQueue && effectiveCompany && (
         <AddToQueueSheet
           companyId={effectiveCompany.id}
-          existingQueueVins={new Set(queue.map((q: any) => q.vin).filter(Boolean))}
+          existingQueueVins={new Set(rows.filter(r => r.source === 'queue').map(r => r.vin).filter(Boolean) as string[])}
           onClose={() => setShowAddToQueue(false)}
-          onAdded={items => {
-            setQueue(prev => [
-              ...items.map(v => ({
-                id: crypto.randomUUID(),
-                company_id: effectiveCompany.id,
-                vin: v.vin, year: v.year ?? '', make: v.make ?? '', model: v.model ?? '',
-                status: 'queued', created_at: new Date().toISOString(),
-              })),
-              ...prev,
-            ])
+          onAdded={() => {
             setShowAddToQueue(false)
+            load()
           }}
         />
       )}
+
+      <SendLinkSheet
+        isOpen={sendSheet.open}
+        onClose={closeSendSheet}
+        onSent={handleSent}
+        prefilledVin={sendSheet.vin}
+        prefilledYear={sendSheet.year}
+        prefilledMake={sendSheet.make}
+        prefilledModel={sendSheet.model}
+      />
     </div>
   )
 }

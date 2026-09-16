@@ -3,6 +3,11 @@
 import { createAdminClient } from './supabase/admin'
 import { logVehicleEvent } from './vehicle-events-actions'
 import { authorizeCompanyAccess } from './inspection-auth'
+import { toLegacyColumns, resolveVehicleMasterId } from './work-order-status'
+
+// A dispatch link lives for 48 hours. Single source for the expiry so every
+// "send a link" entry point in the app produces the same kind of link.
+const DISPATCH_LINK_TTL_MS = 48 * 60 * 60 * 1000
 
 export async function createDispatchAction({
   companyId,
@@ -40,7 +45,7 @@ export async function createDispatchAction({
       location_id: locationId || null,
       token,
       status: 'pending',
-      expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + DISPATCH_LINK_TTL_MS).toISOString(),
     })
 
   if (dispatchError) {
@@ -79,16 +84,27 @@ export async function createDispatchAction({
       .maybeSingle()
 
     if (!existing) {
+      // vehicle_master_id is NOT NULL with no default. This insert previously
+      // omitted it, so it failed on every dispatch for a VIN not already in
+      // inventory — the link still sent, but the vehicle was never added.
+      const yearText = resolvedYear ? String(resolvedYear) : null
+      const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vin, {
+        year: yearText, make: resolvedMake, model: resolvedModel,
+      })
+      // A dispatched vehicle has not been inspected or checked in yet.
+      const legacy = toLegacyColumns('pending_arrival')
       const { data: newVeh, error: vehicleErr } = await supabase
         .from('storage_vehicles')
         .insert({
           company_id: companyId,
+          vehicle_master_id: vehicleMasterId,
           vin,
-          year: resolvedYear,
+          year: yearText,
           make: resolvedMake,
           model: resolvedModel,
-          status: 'active',
-          lifecycle_status: 'on_lot',
+          work_order_status: 'pending_arrival',
+          status: legacy.status,
+          lifecycle_status: legacy.lifecycle_status,
           arrived_at: new Date().toISOString(),
         })
         .select('id')

@@ -361,20 +361,44 @@ export async function initiateInspectionRequest({
       .update({ used_at: new Date().toISOString(), report_id: inspection.id })
       .eq('id', requestId)
 
+    // Mirrors the storage sync in initiateInspection above. This path was missed
+    // when vehicle_master shipped: it wrote only the legacy status column (so the
+    // vehicle's work_order_status never moved), matched released visits too (so
+    // maybeSingle errored for any VIN seen before), and inserted without the
+    // NOT NULL vehicle_master_id — a failure the swallowed promise hid.
     if (vinKey) {
       const now = new Date().toISOString()
       const { data: existingVeh } = await supabase
         .from('storage_vehicles')
-        .select('id, status')
+        .select('id, work_order_status')
         .eq('company_id', companyId)
         .eq('vin', vinKey)
+        .neq('work_order_status', 'released')
         .maybeSingle()
       if (existingVeh) {
-        if (existingVeh.status === 'active') {
-          await supabase.from('storage_vehicles').update({ status: 'pending_inspection', updated_at: now }).eq('id', existingVeh.id)
+        const patch: Record<string, any> = { latest_inspection_id: inspection.id, updated_at: now }
+        if (existingVeh.work_order_status === 'pending_arrival') {
+          const legacy = toLegacyColumns('checked_in')
+          patch.work_order_status = 'checked_in'
+          patch.status = legacy.status
+          patch.lifecycle_status = legacy.lifecycle_status
         }
+        const { error: patchErr } = await supabase.from('storage_vehicles').update(patch).eq('id', existingVeh.id)
+        if (patchErr) console.error('[initiateInspectionRequest] vehicle update error', patchErr)
       } else {
-        await supabase.from('storage_vehicles').insert({ company_id: companyId, vin: vinKey, status: 'pending_inspection', arrived_at: now }).then(() => {}, () => {})
+        try {
+          const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vinKey)
+          const legacy = toLegacyColumns('checked_in')
+          const { error: insertErr } = await supabase.from('storage_vehicles').insert({
+            company_id: companyId, vehicle_master_id: vehicleMasterId, vin: vinKey,
+            work_order_status: 'checked_in', status: legacy.status, lifecycle_status: legacy.lifecycle_status,
+            arrived_at: now, latest_inspection_id: inspection.id,
+          })
+          if (insertErr) console.error('[initiateInspectionRequest] vehicle insert error', insertErr)
+        } catch (e) {
+          // Inventory sync must never block a remote inspector from starting.
+          console.error('[initiateInspectionRequest] vehicle master resolution error', e)
+        }
       }
     }
 

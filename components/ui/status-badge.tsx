@@ -10,6 +10,8 @@ const CONFIGS: Record<string, { label: string; bg: string; text: string }> = {
   pending_arrival:  { label: 'Pending Arrival', bg: '#F3F4F6', text: '#374151' },
   in_progress: { label: 'In Progress', bg: '#FEF3C7', text: '#92400E' },
   completed:   { label: 'Completed',   bg: '#D1FAE5', text: '#065F46' },
+  sent:        { label: 'Sent',        bg: '#E0F7FC', text: '#0097B2' },
+  expired:     { label: 'Expired',     bg: '#FEE2E2', text: '#991B1B' },
   failed:      { label: 'Failed',      bg: '#FEE2E2', text: '#991B1B' },
   pending:     { label: 'Pending',     bg: '#E0F7FC', text: '#0097B2' },
 }

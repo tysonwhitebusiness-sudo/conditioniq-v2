@@ -17,7 +17,6 @@ interface Props {
   days: number | null
   isDesktop: boolean
   canDispatch: boolean
-  dispatchEnabled: boolean | null | undefined
   onBack: () => void
   onStartIntake: () => void
   onRunOuttake: () => void
@@ -30,7 +29,7 @@ interface Props {
 
 export default function VehicleHero({
   vehicleId, userId, vin, vehicleTitle, workOrderStatus, spotLabel, days, isDesktop,
-  canDispatch, dispatchEnabled, onBack, onStartIntake, onRunOuttake, onPrintQR,
+  canDispatch, onBack, onStartIntake, onRunOuttake, onPrintQR,
   onAssignSpot, onLogService, onDispatch, onStatusChanged,
 }: Props) {
   const pillStyle = getStatusPillStyle(workOrderStatus)
@@ -93,9 +92,9 @@ export default function VehicleHero({
         <button onClick={onPrintQR} style={ghostBtnStyle}>
           <QrCode size={14} />Print QR
         </button>
-        {canDispatch && dispatchEnabled !== false && (
+        {canDispatch && (
           <button onClick={onDispatch} style={ghostBtnStyle}>
-            <Send size={14} />Dispatch
+            <Send size={14} />Send to Inspector
           </button>
         )}
       </div>

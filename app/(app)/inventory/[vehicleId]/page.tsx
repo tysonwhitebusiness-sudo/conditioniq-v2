@@ -17,6 +17,7 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 import VehicleHero from '@/components/inventory/vehicle-hero'
 import AssignSpotModal from '@/components/inventory/assign-spot-modal'
 import SetTemplateModal from '@/components/inventory/set-template-modal'
+import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import EmptyState from '@/components/ui/empty-state'
 import DamageComparisonView from '@/components/checkpoint/damage-comparison'
 import {
@@ -228,7 +229,6 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const lotMapEnabled = useFeatureFlag('lot_map')
-  const dispatchEnabled = useFeatureFlag('dispatch')
   const companyId = effectiveCompany?.id ?? ''
   const isFMC = effectiveCompany?.account_type === 'fmc'
 
@@ -311,6 +311,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [spotLabel, setSpotLabel] = useState<string | null>(null)
   const [showAssignSpot, setShowAssignSpot] = useState(false)
+  const [showSendLink, setShowSendLink] = useState(false)
   const [pendingCheckpointDir, setPendingCheckpointDir] = useState<'intake' | 'outtake' | null>(null)
 
   // Wizard
@@ -778,14 +779,13 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         days={days}
         isDesktop={isDesktop}
         canDispatch={canDispatch}
-        dispatchEnabled={dispatchEnabled}
         onBack={() => router.push('/vehicles')}
         onStartIntake={() => goToCheckpoint('intake')}
         onRunOuttake={() => goToCheckpoint('outtake')}
         onPrintQR={() => router.push(`/inventory/${params.vehicleId}/print-qr`)}
         onAssignSpot={() => setShowAssignSpot(true)}
         onLogService={() => { setAddChargeTab('service'); setShowAddCharge(true) }}
-        onDispatch={() => router.push(dispatchEnabled ? `/storage/dispatch?vin=${vehicle.vin}` : '/storage/dispatch')}
+        onDispatch={() => setShowSendLink(true)}
         onStatusChanged={fetchVehicle}
       />
 
@@ -1837,6 +1837,15 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
           onAssigned={() => { setShowAssignSpot(false); loadSpotLabel() }}
         />
       )}
+
+      <SendLinkSheet
+        isOpen={showSendLink}
+        onClose={() => setShowSendLink(false)}
+        prefilledVin={vehicle?.vin ?? undefined}
+        prefilledYear={vehicle?.year ? String(vehicle.year) : undefined}
+        prefilledMake={vehicle?.make ?? undefined}
+        prefilledModel={vehicle?.model ?? undefined}
+      />
 
       <BottomNav />
     </div>

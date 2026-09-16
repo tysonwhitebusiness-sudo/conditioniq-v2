@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import { Car, Send, ChevronRight, Loader2, ArrowLeft } from 'lucide-react'
 
 type Step = 'menu' | 'start'
@@ -18,7 +17,6 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
   const router = useRouter()
   const { effectiveCompany, user } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const dispatchEnabled = useFeatureFlag('dispatch')
 
   const [step, setStep] = useState<Step>('menu')
   const [vin, setVin] = useState('')
@@ -47,9 +45,9 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
     else { setYear(''); setMake(''); setModel('') }
   }, [cleanVin])
 
-  // When dispatch is disabled skip the menu and show VIN form directly
-  const showMenu = !!dispatchEnabled && step === 'menu'
-  const showVinForm = !dispatchEnabled || step === 'start'
+  // Sending to a remote inspector is available on every plan, so the menu always shows.
+  const showMenu = step === 'menu'
+  const showVinForm = step === 'start'
 
   const reset = () => {
     setStep('menu')
@@ -134,7 +132,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
 
   const handleDispatch = () => {
     close()
-    router.push('/storage/dispatch')
+    router.push('/inspections?send=1')
   }
 
   if (!open) return null
@@ -168,7 +166,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
 
         <div style={{ padding: '20px 20px 4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            {showVinForm && !!dispatchEnabled ? (
+            {showVinForm ? (
               <button onClick={() => setStep('menu')}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00B4D8', fontSize: 13, fontFamily: 'inherit', fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <ArrowLeft size={14} /> Back
@@ -178,7 +176,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
             <div style={{ width: 48 }} />
           </div>
 
-          {/* Two-option menu — Growth+ only */}
+          {/* Two-option menu */}
           {showMenu && (
             <>
               <button onClick={() => setStep('start')}
@@ -199,7 +197,7 @@ export default function StartInspectionSheet({ open, onClose }: Props) {
                   <Send size={20} color="#FFFFFF" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Dispatch</p>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: '#0D1B2A', margin: 0 }}>Send to Inspector</p>
                   <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Send to a remote inspector</p>
                 </div>
                 <ChevronRight size={18} color="#CBD5E1" />

@@ -52,7 +52,6 @@ export default function DesktopSidebar({
   const lotMapEnabled = useFeatureFlag('lot_map')
   const lotBillingEnabled = useFeatureFlag('lot_billing')
   const whiteLabelEnabled = useFeatureFlag('white_label')
-  const dispatchEnabled = useFeatureFlag('dispatch')
   const settingsOpen = pathname.startsWith('/settings')
   const reportsUsed = effectiveCompany?.reports_used ?? 0
   const reportsTotal = effectiveCompany?.reports_included ?? 10
@@ -79,14 +78,12 @@ export default function DesktopSidebar({
     { id: 'vehicles',     label: 'Vehicles',          icon: <Car size={18} />,           type: 'route', route: '/vehicles' },
     { id: 'customers',    label: 'Customers',         icon: <Users size={18} />,         type: 'route' as const, route: '/customers' },
     { id: 'inspections',  label: 'Inspections',       icon: <ClipboardList size={18} />, type: 'route' as const, route: '/inspections' },
-    { id: 'dispatch',     label: 'Dispatch',           icon: <Send size={18} />,          type: 'route' as const, route: '/storage/dispatch' },
     ...(isFMC ? [{ id: 'locations', label: 'Locations', icon: <MapPin size={18} />, type: 'route' as const, route: '/storage/locations' }] : []),
     { id: 'lot',         label: 'Lot',               icon: <LayoutGrid size={18} />, type: 'route' as const, route: '/lot' },
     { id: 'lot-billing', label: 'Lot Billing',       icon: <DollarSign size={18} />, type: 'route' as const, route: '/lot-billing' },
   ]
 
   const itemLocked: Record<string, boolean> = {
-    dispatch:    dispatchEnabled === false,
     lot:         lotMapEnabled === false,
     'lot-billing': lotBillingEnabled === false,
   }

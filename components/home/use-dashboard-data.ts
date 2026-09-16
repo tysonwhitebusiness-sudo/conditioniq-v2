@@ -14,7 +14,6 @@ import { getCompanyVehicleEvents, type CompanyVehicleEvent } from '@/lib/vehicle
 export function useDashboardData(companyId: string) {
   const lotMapEnabled = useFeatureFlag('lot_map')
   const lotBillingEnabled = useFeatureFlag('lot_billing')
-  const dispatchEnabled = useFeatureFlag('dispatch')
 
   const [vehiclesOnLot, setVehiclesOnLot] = useState(0)
   const [usageState, setUsageState] = useState<any>(null)
@@ -101,7 +100,7 @@ export function useDashboardData(companyId: string) {
   useEffect(() => { loadBilling() }, [loadBilling])
 
   return {
-    lotMapEnabled, lotBillingEnabled, dispatchEnabled,
+    lotMapEnabled, lotBillingEnabled,
     vehiclesOnLot, usageState, lotOccupancy, dailyAccrual, overdueCount,
     inspectionsToday, customerCount, events, expiringCount,
     arrivalsToday, needsAttention, todaysQueue, lotSpots, lotShapes,

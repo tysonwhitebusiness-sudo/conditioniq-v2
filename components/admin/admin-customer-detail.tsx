@@ -31,13 +31,11 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
-  { key: 'send_to_inspector', label: 'Send to Inspector' },
   { key: 'locations',         label: 'Locations'          },
   { key: 'team_members',      label: 'Team Members'        },
   { key: 'lot_map',           label: 'Lot Map'             },
   { key: 'lot_billing',       label: 'Lot Billing'         },
   { key: 'white_label',       label: 'White Label PDF'     },
-  { key: 'dispatch',          label: 'Dispatch'            },
   { key: 'reporting_export',  label: 'Reporting & Export'  },
   { key: 'multi_location',    label: 'Multi-Location'      },
   { key: 'fmc_account',       label: 'FMC Account'         },

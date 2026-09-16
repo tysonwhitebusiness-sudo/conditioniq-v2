@@ -14,13 +14,16 @@ export interface SendLinkSheetProps {
   prefilledYear?: string
   prefilledMake?: string
   prefilledModel?: string
+  // Fired once a link is created, so a caller can refresh or retire the item
+  // the link was sent for (e.g. a queued inspection becoming a sent one).
+  onSent?: (token: string) => void
 }
 
 type Phase = 'form' | 'generated'
 
 export default function SendLinkSheet({
   isOpen, onClose,
-  prefilledVin, prefilledYear, prefilledMake, prefilledModel,
+  prefilledVin, prefilledYear, prefilledMake, prefilledModel, onSent,
 }: SendLinkSheetProps) {
   const { effectiveCompany } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
@@ -124,6 +127,7 @@ export default function SendLinkSheet({
       setGeneratedLink(link)
       setGeneratedVin(cleanVin)
       setPhase('generated')
+      onSent?.(token)
     } catch (e: any) {
       setGenError(e.message ?? 'Failed to generate link')
     } finally { setGenerating(false) }

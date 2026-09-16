@@ -16,11 +16,10 @@ import InspectionWizard from '@/components/inspection-wizard/inspection-wizard'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
 import DesktopSidebar from '@/components/layout/desktop-sidebar'
 import DesktopTopBar from '@/components/layout/desktop-topbar'
-import SendToInspectorSheet from '@/components/ui/send-to-inspector-sheet'
+import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import { checkUsageState, initiateInspection } from '@/lib/usage-actions'
 import { getDeviceId } from '@/lib/device-id'
 import { checkAndAutoCompleteExpired } from '@/lib/auto-complete'
-import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import type { UsageState } from '@/lib/usage-actions'
 
 type AppStep = 'browse' | 'inspecting' | 'completed'
@@ -39,7 +38,6 @@ export default function VehicleInspectionApp() {
   const router = useRouter()
   const { user, effectiveCompany, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const dispatchEnabled = useFeatureFlag('dispatch')
   const searchParams = useSearchParams()
   const [navTab, setNavTab] = useState<NavTab>((searchParams.get('tab') as NavTab) ?? 'home')
   const [appStep, setAppStep] = useState<AppStep>('browse')
@@ -188,8 +186,8 @@ export default function VehicleInspectionApp() {
           onViewReport={() => { setLockedInspection(null); handleViewReport(lockedInspection) }}
         />
       )}
-      <SendToInspectorSheet
-        open={showSendSheet}
+      <SendLinkSheet
+        isOpen={showSendSheet}
         onClose={() => setShowSendSheet(false)}
       />
       {errorMsg && (
@@ -319,7 +317,7 @@ export default function VehicleInspectionApp() {
       {navTab === 'queue' && (
         <QueuePage
           key="queue"
-          initialTab="queue"
+          initialFilter="queued"
           onStartInspection={handleStartInspection}
           onResumeInspection={handleResumeInspection}
           onViewReport={handleViewReport}
@@ -328,7 +326,7 @@ export default function VehicleInspectionApp() {
       {navTab === 'history' && (
         <QueuePage
           key="history"
-          initialTab="history"
+          initialFilter="completed"
           onStartInspection={handleStartInspection}
           onResumeInspection={handleResumeInspection}
           onViewReport={handleViewReport}
@@ -361,7 +359,7 @@ export default function VehicleInspectionApp() {
           onClose={() => setShowActionSheet(false)}
           onStartInspection={() => handleStartInspection()}
           onSendToInspector={handleSendToInspector}
-          showDispatch={!!dispatchEnabled}
+          showDispatch
         />
         {sharedModals}
       </div>

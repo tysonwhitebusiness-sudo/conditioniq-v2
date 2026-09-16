@@ -11,7 +11,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/vehicles': 'Vehicles',
   '/inventory': 'Vehicle Detail',
   '/storage/inventory': 'Vehicle Inventory',
-  '/storage/dispatch': 'Dispatch',
   '/storage/locations': 'Locations',
   '/fleet': 'Fleet Dashboard',
   '/fleet/dispatch': 'Fleet Dispatch',

@@ -24,6 +24,17 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      // Dispatch merged into Inspections: a sent link is now a row with status
+      // "sent" rather than a separate page. 301 so bookmarks and search update.
+      {
+        source: '/storage/dispatch',
+        destination: '/inspections?status=sent',
+        statusCode: 301,
+      },
+    ]
+  },
   webpack: (config) => {
     config.resolve.alias.canvas = false
     config.resolve.alias.encoding = false

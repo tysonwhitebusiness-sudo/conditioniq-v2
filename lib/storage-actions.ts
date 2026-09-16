@@ -299,24 +299,6 @@ export async function toggleLocationActive(id: string, active: boolean): Promise
   await supabase.from('fmc_locations').update({ active }).eq('id', id)
 }
 
-// ── Dispatch / inspection_requests ───────────────────────────────────────────
-
-export async function getActiveDispatches(companyId: string) {
-  const supabase = createClient()
-  const { data } = await supabase
-    .from('inspection_requests')
-    .select('id, vin, notes, token, expires_at, used_at, created_at')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
-  return data ?? []
-}
-
-export function dispatchStatus(row: { expires_at: string; used_at: string | null }) {
-  if (row.used_at) return 'completed'
-  if (new Date(row.expires_at) < new Date()) return 'expired'
-  return 'awaiting'
-}
-
 // ── FMC Overview ─────────────────────────────────────────────────────────────
 
 export async function getFMCOverviewStats(companyId: string) {

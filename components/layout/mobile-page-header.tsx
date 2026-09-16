@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings, Lock, Send, DollarSign } from 'lucide-react'
+import { Car, CreditCard, Palette, Users, Shield, User, LogOut, ChevronLeft, Settings, Lock, DollarSign } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -12,7 +12,6 @@ export default function MobilePageHeader() {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
   const whiteLabelEnabled = useFeatureFlag('white_label')
-  const dispatchEnabled = useFeatureFlag('dispatch')
   const lotBillingEnabled = useFeatureFlag('lot_billing')
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -136,12 +135,6 @@ export default function MobilePageHeader() {
               <button onClick={() => nav('/settings/billing')} style={itemStyle}>
                 {iconBox('#E0F7FC', <CreditCard size={15} color="#0097B2" />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>Billing & Plan</span>
-              </button>
-
-              <button onClick={() => nav('/storage/dispatch')} style={itemStyle}>
-                {iconBox(dispatchEnabled === false ? '#F3F4F6' : '#E0F7FC', <Send size={15} color={dispatchEnabled === false ? '#6B7280' : '#0097B2'} />)}
-                <span style={{ fontSize: 14, fontWeight: 500, color: dispatchEnabled === false ? '#6B7280' : '#111827', flex: 1 }}>Dispatch</span>
-                {dispatchEnabled === false && <Lock size={13} color="#D1D5DB" style={{ flexShrink: 0 }} />}
               </button>
 
               <button onClick={() => nav('/lot-billing')} style={itemStyle}>

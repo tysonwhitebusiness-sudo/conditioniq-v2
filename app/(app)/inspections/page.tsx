@@ -2,7 +2,22 @@
 
 import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import QueuePage from '@/components/queue/queue-page'
+import QueuePage, { type StatusFilter } from '@/components/queue/queue-page'
+import { INSPECTION_STATUSES } from '@/lib/unified-inspections'
+
+// Old ?tab= values from before Inspections and Dispatch merged. Kept so existing
+// links and bookmarks still land on the right slice.
+const LEGACY_TAB: Record<string, StatusFilter> = {
+  queue: 'queued',
+  in_progress: 'in_progress',
+  history: 'completed',
+}
+
+function parseFilter(status: string | null, tab: string | null): StatusFilter {
+  if (status && (INSPECTION_STATUSES as string[]).includes(status)) return status as StatusFilter
+  if (tab && LEGACY_TAB[tab]) return LEGACY_TAB[tab]
+  return 'all'
+}
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
@@ -11,7 +26,11 @@ import { fetchFullInspectionAction, getReportSignedUrlAction } from '@/lib/inspe
 function InspectionsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const tab = (searchParams.get('tab') ?? 'queue') as 'queue' | 'in_progress' | 'history'
+  const initialFilter = parseFilter(searchParams.get('status'), searchParams.get('tab'))
+  // ?send=1 opens the send-link sheet; ?send=<VIN> opens it prefilled.
+  const send = searchParams.get('send')
+  const openSendSheet = send !== null
+  const sendVin = send && send.length === 17 ? send : undefined
 
   const handleStartInspection = () => {
     router.push('/vehicles')
@@ -52,7 +71,9 @@ function InspectionsContent() {
     <>
       <MobilePageHeader />
       <QueuePage
-        initialTab={tab}
+        initialFilter={initialFilter}
+        openSendSheet={openSendSheet}
+        sendVin={sendVin}
         hideHeader
         onStartInspection={handleStartInspection}
         onResumeInspection={handleResumeInspection}

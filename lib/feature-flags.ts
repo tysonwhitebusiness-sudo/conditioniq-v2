@@ -3,12 +3,10 @@
 import { createClient } from '@/lib/supabase/server'
 
 export type FeatureKey =
-  | 'send_to_inspector'
   | 'locations'
   | 'team_members'
   | 'lot_map'
   | 'white_label'
-  | 'dispatch'
   | 'lot_billing'
   | 'reporting_export'
   | 'multi_location'
@@ -35,10 +33,8 @@ function flag(key: FeatureKey, enabled: boolean): FeatureFlag {
 export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> {
   // Build tier-based defaults when no DB row exists for a flag
   const buildDefaults = (tier: string): FeatureFlags => ({
-    send_to_inspector: flag('send_to_inspector', true),
     locations:         flag('locations',         true),
     team_members:      flag('team_members',      true),
-    dispatch:          flag('dispatch',          GROWTH_PLUS.has(tier)),
     lot_billing:       flag('lot_billing',       GROWTH_PLUS.has(tier)),
     lot_map:           flag('lot_map',           PRO_PLUS.has(tier)),
     white_label:       flag('white_label',       PRO_PLUS.has(tier)),

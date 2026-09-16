@@ -120,10 +120,9 @@ function SpotBadge({ label }: { label: string | null | undefined }) {
 
 // ── Expanded Row ──────────────────────────────────────────────────────────────
 
-function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckIn, onAssignSpot, onAddCharge }: {
+function ExpandedRow({ vehicle, spotLabel, onDispatch, onCheckIn, onAssignSpot, onAddCharge }: {
   vehicle: any
   spotLabel: string | null
-  dispatchEnabled: boolean | null | undefined
   onDispatch: () => void
   onCheckIn: () => void
   onAssignSpot: () => void
@@ -169,8 +168,8 @@ function ExpandedRow({ vehicle, spotLabel, dispatchEnabled, onDispatch, onCheckI
         {isPendingArrival ? (
           <button onClick={onCheckIn} style={actionBtnStyle}>Check In</button>
         ) : (
-          <button onClick={onDispatch} disabled={dispatchEnabled === false} style={{ ...actionBtnStyle, opacity: dispatchEnabled === false ? 0.5 : 1 }}>
-            {dispatchEnabled === false && <Lock size={11} color={GRAY_700} />}Send to Inspector
+          <button onClick={onDispatch} style={actionBtnStyle}>
+            Send to Inspector
           </button>
         )}
       </div>
@@ -729,7 +728,6 @@ export default function VehiclesPage() {
 
   // Bulk billing
   const lotMapEnabled = useFeatureFlag('lot_map')
-  const dispatchEnabled = useFeatureFlag('dispatch')
   const reportingExportEnabled = useFeatureFlag('reporting_export')
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
   const [showBulkBilling, setShowBulkBilling] = useState(false)
@@ -1233,8 +1231,7 @@ export default function VehiclesPage() {
                           <ExpandedRow
                             vehicle={v}
                             spotLabel={spotLabels[v.id] ?? null}
-                            dispatchEnabled={dispatchEnabled}
-                            onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
+                            onDispatch={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })}
                             onCheckIn={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
                             onAssignSpot={() => router.push('/lot')}
                             onAddCharge={() => router.push(`/inventory/${v.id}`)}
@@ -1290,8 +1287,7 @@ export default function VehiclesPage() {
                     <ExpandedRow
                       vehicle={v}
                       spotLabel={spotLabels[v.id] ?? null}
-                      dispatchEnabled={dispatchEnabled}
-                      onDispatch={() => dispatchEnabled !== false ? setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model }) : router.push('/storage/dispatch')}
+                      onDispatch={() => setDispatchSheet({ open: true, vin: v.vin, year: v.year, make: v.make, model: v.model })}
                       onCheckIn={() => router.push(`/inventory/${v.id}/checkpoint/intake`)}
                       onAssignSpot={() => router.push('/lot')}
                       onAddCharge={() => router.push(`/inventory/${v.id}`)}
@@ -1316,7 +1312,7 @@ export default function VehiclesPage() {
       {showAddExisting && (
         <AddExistingVehicleSlideOver companyId={companyId} userId={user?.id ?? ''} isFMC={isFMC} locations={locations} onClose={() => setShowAddExisting(false)}
           onAdded={() => { setShowAddExisting(false); loadVehicles() }}
-          onAddAndDispatch={vin => { setShowAddExisting(false); if (dispatchEnabled === false) { router.push('/storage/dispatch') } else { setDispatchSheet({ open: true, vin }) } }} />
+          onAddAndDispatch={vin => { setShowAddExisting(false); setDispatchSheet({ open: true, vin }) }} />
       )}
       {showCSV && <CSVImportModal companyId={companyId} existingVins={existingVins} onClose={() => setShowCSV(false)} onImported={loadVehicles} />}
       {openKebab && <div onClick={() => setOpenKebab(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}

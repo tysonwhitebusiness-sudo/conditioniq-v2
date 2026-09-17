@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { releaseInspectionOnlyVehicles } from '@/lib/inspection-vehicle'
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('Authorization')
@@ -29,6 +30,13 @@ export async function GET(request: Request) {
     .from('vehicle_inspections')
     .update({ usage_status: 'abandoned', status: 'abandoned' })
     .in('id', ids)
+
+  // Inspection-only accounts' vehicle records close out with the inspection.
+  try {
+    await releaseInspectionOnlyVehicles(supabase, ids)
+  } catch (e) {
+    console.error('[cron] release inspection-only vehicles failed', e)
+  }
 
   return NextResponse.json({ abandoned: ids.length })
 }

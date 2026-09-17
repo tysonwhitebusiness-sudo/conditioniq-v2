@@ -52,6 +52,10 @@ export interface DamageMarker {
   model_asset_id: string | null
   asset_type: DamageMarkerAssetType | null
   view: DamageMarkerView | null
+  // Phase 9: set on pins placed during a full inspection (null for intake,
+  // outtake and manual pins), and an optional close-up photo's storage path.
+  inspection_id?: string | null
+  photo_path?: string | null
   area?: DamageAreaCode
   type?: DamageTypeCode
   severity?: DamageSeverityCode
@@ -103,10 +107,13 @@ export async function getDamageMarkersForVehicle(
   filter?: { modelAssetId?: string; view?: DamageMarkerView },
 ): Promise<DamageMarker[]> {
   const supabase = createClient()
+  // Vehicle-level pins only. Pins from a full inspection belong to that
+  // inspection's report and are read through lib/damage-server-actions.
   let query = supabase
     .from('damage_markers')
     .select(MARKER_SELECT)
     .eq('vehicle_id', vehicleId)
+    .is('inspection_id', null)
   if (filter?.modelAssetId) query = query.eq('model_asset_id', filter.modelAssetId)
   if (filter?.view) query = query.eq('view', filter.view)
   const { data, error } = await query.order('created_at', { ascending: false })

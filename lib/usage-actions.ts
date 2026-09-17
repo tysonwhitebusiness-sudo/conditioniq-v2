@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { captureHighSeverityError } from '@/lib/sentry'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 import { authorizeInspectionAccess } from './inspection-auth'
-import { toLegacyColumns, resolveVehicleMasterId } from './work-order-status'
+import { attachInspectionVehicle, releaseInspectionOnlyVehicles } from './inspection-vehicle'
 import { computeUsageState, type UsageState } from './usage-state'
 
 export type { UsageState } from './usage-state'
@@ -56,12 +56,18 @@ export async function initiateInspection({
   inspectorId,
   initialData,
   deviceId,
+  vehicleId,
+  bodyClass,
 }: {
   companyId: string
   inspectorId: string
   initialData?: Record<string, any>
   deviceId?: string
-}): Promise<{ inspectionId: string; isOverage: boolean }> {
+  // A vehicle picked from inventory. Without it, initialData.vin is used.
+  vehicleId?: string
+  // VIN-decoded body class, so a new vehicle gets its body type for the damage picker.
+  bodyClass?: string
+}): Promise<{ inspectionId: string; vehicleId: string | null; isOverage: boolean }> {
   const supabase = createClient()
 
   const usageState = await computeUsageState(supabase, companyId)
@@ -89,43 +95,25 @@ export async function initiateInspection({
 
   if (error || !inspection) throw new Error(error?.message ?? 'Failed to create inspection')
 
-  // Sync to storage — never blocks the inspection flow
-  if (initialData?.vin) {
-    const vinKey = initialData.vin.trim()
-    const { data: existingVeh } = await supabase
-      .from('storage_vehicles')
-      .select('id, work_order_status')
-      .eq('company_id', companyId)
-      .eq('vin', vinKey)
-      .neq('work_order_status', 'released')
-      .maybeSingle()
-    if (existingVeh) {
-      const patch: Record<string, any> = { latest_inspection_id: inspection.id, updated_at: new Date().toISOString() }
-      if (existingVeh.work_order_status === 'pending_arrival') {
-        const legacy = toLegacyColumns('checked_in')
-        patch.work_order_status = 'checked_in'
-        patch.status = legacy.status
-        patch.lifecycle_status = legacy.lifecycle_status
-      }
-      supabase.from('storage_vehicles').update(patch).eq('id', existingVeh.id).then(() => {})
-    } else {
-      resolveVehicleMasterId(supabase, companyId, vinKey, {
-        year: initialData.year, make: initialData.make, model: initialData.model,
-      }).then(vehicleMasterId => {
-        const legacy = toLegacyColumns('checked_in')
-        supabase.from('storage_vehicles').insert({
-          company_id: companyId, vehicle_master_id: vehicleMasterId, vin: vinKey,
-          year: initialData.year ?? null, make: initialData.make ?? null, model: initialData.model ?? null,
-          work_order_status: 'checked_in', status: legacy.status, lifecycle_status: legacy.lifecycle_status,
-          arrived_at: new Date().toISOString(), latest_inspection_id: inspection.id,
-        }).select('id').single().then(({ data: newVeh }) => {
-          if (newVeh) logVehicleEvent({ companyId, vehicleId: newVeh.id, eventType: 'intake', description: 'Vehicle added to inventory', metadata: { source: 'inspection_start', inspection_id: inspection.id, vin: vinKey } })
-        })
+  // The vehicle is resolved before the inspection opens and the start waits for
+  // it: the damage picker pins to this vehicle. If it cannot be resolved, the
+  // just-created inspection is removed rather than left without its vehicle.
+  let resolvedVehicleId: string | null = null
+  if (vehicleId || initialData?.vin) {
+    try {
+      resolvedVehicleId = await attachInspectionVehicle(supabase, {
+        companyId, inspectionId: inspection.id, vehicleId,
+        vin: initialData?.vin, year: initialData?.year, make: initialData?.make, model: initialData?.model,
+        bodyClass,
       })
+    } catch (e: any) {
+      await supabase.from('vehicle_inspections').delete().eq('id', inspection.id)
+      captureHighSeverityError(e, { flow: 'initiateInspection.attachVehicle', companyId })
+      throw new Error('Could not set up the vehicle for this inspection: ' + (e?.message ?? 'unknown error'))
     }
   }
 
-  return { inspectionId: inspection.id, isOverage }
+  return { inspectionId: inspection.id, vehicleId: resolvedVehicleId, isOverage }
 }
 
 export async function completeInspection(inspectionId: string, score?: number | null): Promise<void> {
@@ -149,6 +137,7 @@ export async function completeInspection(inspectionId: string, score?: number | 
     if (!transitioned?.length) return
 
     if (companyId) await stampOverage(supabase, companyId, inspectionId)
+    await releaseInspectionOnlyVehicles(supabase, [inspectionId])
   } catch (err) {
     captureHighSeverityError(err, { flow: 'completeInspection', inspectionId })
     throw err
@@ -165,6 +154,8 @@ export async function abandonInspection(inspectionId: string): Promise<void> {
     .from('vehicle_inspections')
     .update({ usage_status: 'abandoned', status: 'abandoned' })
     .eq('id', inspectionId)
+  await releaseInspectionOnlyVehicles(supabase, [inspectionId])
+    .catch(e => captureHighSeverityError(e, { flow: 'abandonInspection.release', inspectionId }))
 }
 
 export async function getFMCRequestByToken(token: string) {
@@ -348,39 +339,15 @@ export async function initiateInspectionRequest({
     // vehicle's work_order_status never moved), matched released visits too (so
     // maybeSingle errored for any VIN seen before), and inserted without the
     // NOT NULL vehicle_master_id — a failure the swallowed promise hid.
+    // Same vehicle resolution as a signed-in start. A link without a VIN gets its
+    // vehicle once the inspector enters one (attachInspectionVehicleByVin).
     if (vinKey) {
-      const now = new Date().toISOString()
-      const { data: existingVeh } = await supabase
-        .from('storage_vehicles')
-        .select('id, work_order_status')
-        .eq('company_id', companyId)
-        .eq('vin', vinKey)
-        .neq('work_order_status', 'released')
-        .maybeSingle()
-      if (existingVeh) {
-        const patch: Record<string, any> = { latest_inspection_id: inspection.id, updated_at: now }
-        if (existingVeh.work_order_status === 'pending_arrival') {
-          const legacy = toLegacyColumns('checked_in')
-          patch.work_order_status = 'checked_in'
-          patch.status = legacy.status
-          patch.lifecycle_status = legacy.lifecycle_status
-        }
-        const { error: patchErr } = await supabase.from('storage_vehicles').update(patch).eq('id', existingVeh.id)
-        if (patchErr) console.error('[initiateInspectionRequest] vehicle update error', patchErr)
-      } else {
-        try {
-          const vehicleMasterId = await resolveVehicleMasterId(supabase, companyId, vinKey)
-          const legacy = toLegacyColumns('checked_in')
-          const { error: insertErr } = await supabase.from('storage_vehicles').insert({
-            company_id: companyId, vehicle_master_id: vehicleMasterId, vin: vinKey,
-            work_order_status: 'checked_in', status: legacy.status, lifecycle_status: legacy.lifecycle_status,
-            arrived_at: now, latest_inspection_id: inspection.id,
-          })
-          if (insertErr) console.error('[initiateInspectionRequest] vehicle insert error', insertErr)
-        } catch (e) {
-          // Inventory sync must never block a remote inspector from starting.
-          console.error('[initiateInspectionRequest] vehicle master resolution error', e)
-        }
+      try {
+        await attachInspectionVehicle(supabase, { companyId, inspectionId: inspection.id, vin: vinKey })
+      } catch (e) {
+        // A remote inspector is never blocked from starting; the damage step
+        // retries the attach once the VIN is confirmed.
+        captureHighSeverityError(e, { flow: 'initiateInspectionRequest.attachVehicle', companyId })
       }
     }
 

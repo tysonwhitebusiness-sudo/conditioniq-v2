@@ -1,4 +1,29 @@
 import type { ScoreResult } from './vehicle-score'
+import type { ReportDamagePin } from './damage-server-actions'
+import type { ReportDamageViewWithSize } from './pdf-report'
+
+// Pins placed on the damage diagram, and each 2D view's proportions so pins can
+// be drawn at their exact spot. A report without pins, or one the viewer cannot
+// load them for (e.g. a shared link), renders without the damage map.
+async function loadDamageMap(inspectionData: Record<string, any>): Promise<{ damagePins: ReportDamagePin[]; damageViews: ReportDamageViewWithSize[] }> {
+  const id = (inspectionData.inspectionId ?? inspectionData.id) as string | undefined
+  if (!id) return { damagePins: [], damageViews: [] }
+  try {
+    const { getInspectionReportDamage } = await import('./damage-server-actions')
+    const { pins, views } = await getInspectionReportDamage(id)
+    const damageViews = await Promise.all(views.map(v => new Promise<ReportDamageViewWithSize>(resolve => {
+      const image = new window.Image()
+      image.crossOrigin = 'anonymous'
+      image.onload = () => resolve({ ...v, aspect: image.naturalWidth ? image.naturalHeight / image.naturalWidth : 0.6 })
+      image.onerror = () => resolve({ ...v, aspect: 0.6 })
+      image.src = v.imageUrl
+    })))
+    return { damagePins: pins, damageViews }
+  } catch (e) {
+    console.error('[pdf] damage map unavailable', e)
+    return { damagePins: [], damageViews: [] }
+  }
+}
 
 export async function generateInspectionPDF(
   inspectionData: Record<string, any>,
@@ -31,8 +56,10 @@ export async function generateInspectionPDF(
     } catch { /* non-fatal */ }
   }
 
+  const { damagePins, damageViews } = await loadDamageMap(inspectionData)
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const element = React.createElement(InspectionReport, { inspectionData, scoreResult, signatureUrl, logoUrl, companyName, brandHeaderColor, brandAccentColor }) as any
+  const element = React.createElement(InspectionReport, { inspectionData, scoreResult, signatureUrl, logoUrl, companyName, brandHeaderColor, brandAccentColor, damagePins, damageViews }) as any
   const blob = await pdf(element).toBlob()
 
   const inspectionId = inspectionData.inspectionId as string | undefined

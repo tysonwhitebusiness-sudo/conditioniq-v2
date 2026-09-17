@@ -30,16 +30,32 @@ export async function upsertVehicleToInventory(
   const locationId = inspectionData.vehicleInfo?.locationId ?? null
   const vinKey = vin || `UNKNOWN_${Date.now()}`
 
-  const { data: existing } = await supabase
-    .from('storage_vehicles')
-    .select('id, checkin_inspection_id, checkout_inspection_id, work_order_status, year, make, model')
-    .eq('company_id', companyId)
-    .eq('vin', vinKey)
-    .neq('work_order_status', 'released')
+  const VEHICLE_SELECT = 'id, checkin_inspection_id, checkout_inspection_id, work_order_status, year, make, model'
+  // An inspection started from a vehicle carries it; use that record rather than
+  // matching by VIN, which would miss a released inspection-only record and
+  // create a duplicate visit.
+  const { data: linked } = await supabase
+    .from('vehicle_inspections')
+    .select('vehicle_id')
+    .eq('id', inspectionId)
     .maybeSingle()
+  const { data: existing } = linked?.vehicle_id
+    ? await supabase.from('storage_vehicles').select(VEHICLE_SELECT).eq('id', linked.vehicle_id).eq('company_id', companyId).maybeSingle()
+    : await supabase.from('storage_vehicles').select(VEHICLE_SELECT).eq('company_id', companyId).eq('vin', vinKey).neq('work_order_status', 'released').maybeSingle()
 
   const now = new Date().toISOString()
   const isInitiation = score === null
+
+  // Already closed out (an inspection-only account's record, released when the
+  // inspection completed): record the result, never reopen it.
+  if (existing && existing.work_order_status === 'released') {
+    await supabase.from('storage_vehicles').update({
+      updated_at: now,
+      year: year || existing.year, make: make || existing.make, model: model || existing.model,
+      ...(isInitiation ? {} : { latest_inspection_id: inspectionId, latest_score: score }),
+    }).eq('id', existing.id)
+    return existing.id
+  }
 
   if (existing) {
     const updates: Record<string, any> = {

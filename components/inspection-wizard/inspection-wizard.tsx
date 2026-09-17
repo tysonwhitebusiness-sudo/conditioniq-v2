@@ -314,6 +314,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
             onNext={() => goNext('exterior_data', data.exterior_data)}
             onBack={goBack}
             inspectionId={inspectionId}
+            vehicleInfo={data.vehicleInfo}
           />
         )}
         {currentStep === 'interior' && (

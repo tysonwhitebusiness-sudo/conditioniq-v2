@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Minus, Plus, Camera, Trash2, Loader2 } from 'lucide-react'
 import DamageTaggerToggle from '@/components/damage/damage-tagger-toggle'
+import { vehicleDamageStore } from '@/lib/damage-store'
 import CameraCapture from '@/components/ui/camera-capture'
 import SectionCard from '@/components/ui/section-card'
 import {
@@ -89,6 +90,11 @@ export default function CheckpointForm({
   const [sequenceActive, setSequenceActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const damageStore = useMemo(
+    () => vehicleDamageStore({ vehicleId, companyId, vehicleTemplate, source: direction, createdBy: inspectorId }),
+    [vehicleId, companyId, vehicleTemplate, direction, inspectorId],
+  )
 
   const damageRef = useRef<HTMLDivElement>(null)
   const photosRef = useRef<HTMLDivElement>(null)
@@ -266,13 +272,10 @@ export default function CheckpointForm({
         <div ref={damageRef}>
           <SectionCard title="Damage">
             <DamageTaggerToggle
-              vehicleId={vehicleId}
-              companyId={companyId}
+              store={damageStore}
               vehicleTemplate={vehicleTemplate}
               modelAsset2dId={modelAsset2dId}
               modelAsset3dId={modelAsset3dId}
-              source={direction}
-              createdBy={inspectorId}
             />
             <button
               type="button"

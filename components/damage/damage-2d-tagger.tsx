@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getVehicle2dAssetViews, type VehicleAssetViews } from '@/lib/vehicle-model-assets'
-import { getDamageMarkersForVehicle, composeDamageLabel } from '@/lib/damage-actions'
-import type { DamageMarker, DamageMarkerSource, DamageMarkerView, VehicleTemplate } from '@/lib/damage-actions'
+import { composeDamageLabel } from '@/lib/damage-actions'
+import type { DamageMarkerView, VehicleTemplate } from '@/lib/damage-actions'
+import type { DamageStore, DamageMarkerWithPhoto } from '@/lib/damage-store'
 import { PRIMARY, GRAY_900, GRAY_500, GRAY_300, DANGER, WHITE } from '@/lib/design-tokens'
 import DamageTagger from './damage-tagger'
 
@@ -19,12 +20,10 @@ import DamageTagger from './damage-tagger'
 // remap math, since each view is its own independent coordinate space.
 
 export interface Damage2DTaggerProps {
-  vehicleId: string
-  companyId: string
+  store: DamageStore
   vehicleTemplate: VehicleTemplate
   modelAsset2dId: string
-  source: DamageMarkerSource
-  createdBy?: string
+  editable?: boolean
 }
 
 type ActiveTab = DamageMarkerView | 'all'
@@ -37,7 +36,7 @@ const VIEW_TABS: { id: DamageMarkerView; label: string }[] = [
 ]
 
 export default function Damage2DTagger({
-  vehicleId, companyId, vehicleTemplate, modelAsset2dId, source, createdBy,
+  store, vehicleTemplate, modelAsset2dId, editable = true,
 }: Damage2DTaggerProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('top')
   const [urls, setUrls] = useState<VehicleAssetViews | null>(null)
@@ -75,15 +74,13 @@ export default function Damage2DTagger({
       ) : !urls ? (
         <p style={{ fontSize: 13, color: DANGER, margin: 0 }}>Could not load the diagram for this vehicle.</p>
       ) : activeTab === 'all' ? (
-        <DamageAllView vehicleId={vehicleId} modelAssetId={modelAsset2dId} urls={urls} />
+        <DamageAllView store={store} modelAssetId={modelAsset2dId} urls={urls} />
       ) : (
         <DamageTagger
           key={activeTab}
-          vehicleId={vehicleId}
-          companyId={companyId}
+          store={store}
+          editable={editable}
           vehicleTemplate={vehicleTemplate}
-          source={source}
-          createdBy={createdBy}
           backgroundImageUrl={urls[activeTab]}
           view={activeTab}
           modelAssetId={modelAsset2dId}
@@ -98,19 +95,20 @@ export default function Damage2DTagger({
 // markers at their unmodified view-relative percentage position. Not
 // tappable: no onClick anywhere in this tree, pins are hover-only (title).
 function DamageAllView({
-  vehicleId, modelAssetId, urls,
-}: { vehicleId: string; modelAssetId: string; urls: VehicleAssetViews }) {
-  const [markers, setMarkers] = useState<DamageMarker[]>([])
+  store, modelAssetId, urls,
+}: { store: DamageStore; modelAssetId: string; urls: VehicleAssetViews }) {
+  const [markers, setMarkers] = useState<DamageMarkerWithPhoto[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getDamageMarkersForVehicle(vehicleId, { modelAssetId }).then(result => {
+    store.listMarkers({ modelAssetId }).then(result => {
       if (!cancelled) { setMarkers(result); setLoading(false) }
-    })
+    }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [vehicleId, modelAssetId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.key, modelAssetId])
 
   const byView = (v: DamageMarkerView) => markers.filter(m => m.view === v)
 
@@ -126,7 +124,7 @@ function DamageAllView({
   )
 }
 
-function AllQuadrant({ label, url, markers }: { label: string; url: string; markers: DamageMarker[] }) {
+function AllQuadrant({ label, url, markers }: { label: string; url: string; markers: DamageMarkerWithPhoto[] }) {
   return (
     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: `1px solid ${GRAY_300}` }}>
       <img src={url} alt={label} draggable={false} style={{ width: 200, height: 'auto', display: 'block', userSelect: 'none' }} />

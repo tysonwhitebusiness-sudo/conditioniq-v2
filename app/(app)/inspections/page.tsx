@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QueuePage, { type StatusFilter } from '@/components/queue/queue-page'
 import { INSPECTION_STATUSES } from '@/lib/unified-inspections'
@@ -22,6 +22,9 @@ import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
 import { fetchFullInspectionAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
+import { useAuth } from '@/contexts/auth-context'
+import StartInspectionSheet, { type InspectionStartSelection } from '@/components/inspections/start-inspection-sheet'
+import { setPendingInspectionStart } from '@/lib/pending-inspection-start'
 
 function InspectionsContent() {
   const router = useRouter()
@@ -32,8 +35,22 @@ function InspectionsContent() {
   const openSendSheet = send !== null
   const sendVin = send && send.length === 17 ? send : undefined
 
-  const handleStartInspection = () => {
-    router.push('/vehicles')
+  const { effectiveCompany } = useAuth()
+  const [showStartSheet, setShowStartSheet] = useState(false)
+
+  // Inspections run in the home shell, which owns the wizard. The chosen vehicle
+  // is handed over through session storage rather than the URL.
+  const beginInspection = (selection: InspectionStartSelection) => {
+    setPendingInspectionStart(selection)
+    router.push('/?start=1')
+  }
+
+  const handleStartInspection = (queueItem?: any) => {
+    if (queueItem?.vin) {
+      beginInspection({ vin: queueItem.vin, year: queueItem.year, make: queueItem.make, model: queueItem.model })
+      return
+    }
+    setShowStartSheet(true)
   }
 
   const handleResumeInspection = async (item: any) => {
@@ -80,6 +97,12 @@ function InspectionsContent() {
         onViewReport={handleViewReport}
       />
       <BottomNav />
+      <StartInspectionSheet
+        isOpen={showStartSheet}
+        companyId={effectiveCompany?.id ?? ''}
+        onClose={() => setShowStartSheet(false)}
+        onSelect={selection => { setShowStartSheet(false); beginInspection(selection) }}
+      />
     </>
   )
 }

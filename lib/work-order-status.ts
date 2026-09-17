@@ -149,18 +149,30 @@ export async function resolveVehicleMasterId(
     bodyClass?: string | null
   },
 ): Promise<string> {
-  const { data: existing } = await supabase
-    .from('vehicle_master')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('vin', vin)
-    .maybeSingle()
-  if (existing) return existing.id
-
   // vehicleTemplate (manually set, e.g. via the Add Vehicle form) wins over the
   // VIN-decoded body class when both are available — it's the same authoritative
   // signal DamageTagger and lot-sizing already treat as the source of truth.
   const category = seed?.vehicleTemplate ?? normalizeBodyClass(seed?.bodyClass) ?? null
+
+  const { data: existing } = await supabase
+    .from('vehicle_master')
+    .select('id, vehicle_template, make, model')
+    .eq('company_id', companyId)
+    .eq('vin', vin)
+    .maybeSingle()
+  if (existing) {
+    // A vehicle first seen without a body type gets one the next time a decode or
+    // a manual pick supplies it, so the damage picker stops asking for it.
+    if (!existing.vehicle_template && category) {
+      const assets = await resolveVehicleModelAssets(supabase, category, existing.make ?? seed?.make, existing.model ?? seed?.model)
+      await supabase.from('vehicle_master').update({
+        vehicle_template: category,
+        model_asset_2d_id: assets.modelAsset2dId,
+        model_asset_3d_id: assets.modelAsset3dId,
+      }).eq('id', existing.id)
+    }
+    return existing.id
+  }
   const { modelAsset2dId, modelAsset3dId } = await resolveVehicleModelAssets(
     supabase, category, seed?.make, seed?.model,
   )
@@ -174,7 +186,10 @@ export async function resolveVehicleMasterId(
       make: seed?.make ?? null,
       model: seed?.model ?? null,
       size_class: seed?.sizeClass ?? null,
-      vehicle_template: seed?.vehicleTemplate ?? null,
+      // The decoded body class is stored too, not only used to pick the diagram:
+      // leaving it null made every intake stop to ask for a body type the VIN
+      // had already given.
+      vehicle_template: category,
       model_asset_2d_id: modelAsset2dId,
       model_asset_3d_id: modelAsset3dId,
     })

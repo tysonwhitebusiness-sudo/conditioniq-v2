@@ -4,20 +4,21 @@ import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import * as THREE from 'three'
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useGLTF, OrbitControls } from '@react-three/drei'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Camera } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getVehicle3dAssetUrl } from '@/lib/vehicle-model-assets'
 import {
   getDamageAreaCodes, getDamageTypeCodes, getDamageSeverityCodes,
-  getDamageMarkersForVehicle, createDamageMarker, deleteDamageMarker,
   composeDamageLabel,
 } from '@/lib/damage-actions'
 import type {
-  DamageAreaCode, DamageTypeCode, DamageSeverityCode, DamageMarker,
-  DamageMarkerSource, VehicleTemplate,
+  DamageAreaCode, DamageTypeCode, DamageSeverityCode,
+  VehicleTemplate,
 } from '@/lib/damage-actions'
 import { PRIMARY, PRIMARY_LIGHT, AMBER, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100, DANGER, WHITE } from '@/lib/design-tokens'
 import DamagePickerSheet, { type PickerStep } from './damage-picker-sheet'
+import DamageMarkerDetail from './damage-marker-detail'
+import type { DamageStore, DamageMarkerWithPhoto } from '@/lib/damage-store'
 
 // Phase 11 (3D Damage Picker): a standalone GLB viewer + raycast tap-to-tag,
 // fully separate from the 2D system (components/damage/damage-tagger.tsx /
@@ -38,12 +39,10 @@ export type RecolorTheme = 'white' | 'black' | 'blue'
 const THEME_COLORS: Record<RecolorTheme, string> = { white: WHITE, black: GRAY_900, blue: PRIMARY }
 
 export interface Damage3DTaggerProps {
-  vehicleId: string
-  companyId: string
+  store: DamageStore
   vehicleTemplate: VehicleTemplate
   modelAsset3dId: string
-  source: DamageMarkerSource
-  createdBy?: string
+  editable?: boolean
   recolorTheme?: RecolorTheme
 }
 
@@ -54,7 +53,7 @@ function clamp100(n: number): number {
 }
 
 export default function Damage3DTagger({
-  vehicleId, companyId, vehicleTemplate, modelAsset3dId, source, createdBy,
+  store, vehicleTemplate, modelAsset3dId, editable = true,
   recolorTheme = 'white',
 }: Damage3DTaggerProps) {
   const [url, setUrl] = useState<string | null>(null)
@@ -64,8 +63,9 @@ export default function Damage3DTagger({
   const [areaCodes, setAreaCodes] = useState<DamageAreaCode[]>([])
   const [typeCodes, setTypeCodes] = useState<DamageTypeCode[]>([])
   const [severityCodes, setSeverityCodes] = useState<DamageSeverityCode[]>([])
-  const [markers, setMarkers] = useState<DamageMarker[]>([])
+  const [markers, setMarkers] = useState<DamageMarkerWithPhoto[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
 
   const [pendingPin, setPendingPin] = useState<NormalizedPoint | null>(null)
@@ -89,19 +89,22 @@ export default function Damage3DTagger({
       getDamageAreaCodes(),
       getDamageTypeCodes(),
       getDamageSeverityCodes(),
-      getDamageMarkersForVehicle(vehicleId, { modelAssetId: modelAsset3dId }),
+      store.listMarkers({ modelAssetId: modelAsset3dId }),
     ]).then(([areas, types, severities, existing]) => {
       if (cancelled) return
       setAreaCodes(areas)
       setTypeCodes(types)
       setSeverityCodes(severities)
       setMarkers(existing)
+    }).catch(e => {
+      if (!cancelled) setSaveError(e?.message ?? 'Could not load damage pins')
     })
     return () => { cancelled = true }
-  }, [vehicleId, modelAsset3dId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.key, modelAsset3dId])
 
   const handleTap = (point: NormalizedPoint) => {
-    if (saving || pickerStep) return
+    if (!editable || saving || pickerStep) return
     setSelectedMarkerId(null)
     setPendingPin(point)
     setPickedArea(null)
@@ -127,28 +130,46 @@ export default function Damage3DTagger({
   const pickSeverity = async (severity: DamageSeverityCode) => {
     if (!pendingPin || !pickedArea || !pickedType) return
     setSaving(true)
-    const created = await createDamageMarker(companyId, {
-      vehicleId, source, vehicleTemplate,
-      areaCodeId: pickedArea.id,
-      typeCodeId: pickedType.id,
-      severityCodeId: severity.id,
-      xPosition: pendingPin.x,
-      yPosition: pendingPin.y,
-      zPosition: pendingPin.z,
-      createdBy,
-      modelAssetId: modelAsset3dId,
-      assetType: '3d',
-    })
-    setSaving(false)
-    if (created) setMarkers(prev => [created, ...prev])
-    cancelPicker()
+    setSaveError(null)
+    try {
+      const created = await store.createMarker({
+        areaCodeId: pickedArea.id,
+        typeCodeId: pickedType.id,
+        severityCodeId: severity.id,
+        xPosition: pendingPin.x,
+        yPosition: pendingPin.y,
+        zPosition: pendingPin.z,
+        modelAssetId: modelAsset3dId,
+        assetType: '3d',
+      })
+      if (created) {
+        setMarkers(prev => [created, ...prev])
+        setSelectedMarkerId(created.id)
+      } else {
+        setSaveError('The damage pin was not saved. Try again.')
+      }
+    } catch (e: any) {
+      setSaveError(e?.message ?? 'The damage pin was not saved. Try again.')
+    } finally {
+      setSaving(false)
+      cancelPicker()
+    }
   }
 
   const removeMarker = async (id: string) => {
+    const previous = markers
     setSelectedMarkerId(null)
     setMarkers(prev => prev.filter(m => m.id !== id))
-    await deleteDamageMarker(id)
+    try {
+      await store.deleteMarker(id)
+    } catch (e: any) {
+      setMarkers(previous)
+      setSaveError(e?.message ?? 'Could not remove the damage pin')
+    }
   }
+
+  const updatePhoto = (id: string, photoUrl: string | null, photoPath: string | null) =>
+    setMarkers(prev => prev.map(m => (m.id === id ? { ...m, photo_url: photoUrl, photo_path: photoPath } : m)))
 
   const selectedMarker = markers.find(m => m.id === selectedMarkerId) ?? null
 
@@ -188,22 +209,18 @@ export default function Damage3DTagger({
         )}
       </div>
 
-      {/* ── Selected-marker popover — composed label + remove ── */}
+      {saveError && <p role="alert" style={{ fontSize: 12, color: DANGER, margin: 0 }}>{saveError}</p>}
+
+      {/* ── Selected pin: label, optional photo, remove ── */}
       {selectedMarker && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-          padding: '10px 14px', background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 10,
-        }}>
-          <span style={{ fontSize: 13, color: GRAY_900, fontWeight: 600 }}>
-            {composeDamageLabel(selectedMarker.area, selectedMarker.type, selectedMarker.severity)}
-          </span>
-          <button
-            onClick={() => removeMarker(selectedMarker.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: DANGER, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 4 }}
-          >
-            <Trash2 size={13} /> Remove
-          </button>
-        </div>
+        <DamageMarkerDetail
+          key={selectedMarker.id}
+          marker={selectedMarker}
+          store={store}
+          editable={editable}
+          onRemove={removeMarker}
+          onPhotoChange={updatePhoto}
+        />
       )}
 
       {/* ── Marker list ── */}
@@ -224,6 +241,7 @@ export default function Damage3DTagger({
               <span style={{ fontSize: 13, color: GRAY_700, flex: 1 }}>
                 {composeDamageLabel(m.area, m.type, m.severity)}
               </span>
+              {m.photo_url && <Camera size={13} color={GRAY_500} aria-label="Has photo" />}
             </div>
           ))}
         </div>
@@ -253,7 +271,7 @@ export default function Damage3DTagger({
 interface SceneProps {
   url: string
   recolorTheme: RecolorTheme
-  markers: DamageMarker[]
+  markers: DamageMarkerWithPhoto[]
   pendingPin: NormalizedPoint | null
   disabled: boolean
   onTap: (point: NormalizedPoint) => void

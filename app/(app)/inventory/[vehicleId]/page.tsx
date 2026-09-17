@@ -539,6 +539,7 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
         companyId: effectiveCompany.id,
         inspectorId: user.id,
         initialData: { vin: vehicle.vin, year: vehicle.year, make: vehicle.make, model: vehicle.model },
+        vehicleId: vehicle.id,
         deviceId: getDeviceId(),
       })
       setShowUsageModal(false)

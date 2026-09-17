@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Eye, Camera } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import DamageEntry from './damage-entry'
+import InspectionDamagePicker from './inspection-damage-picker'
 import VoiceInput from '@/components/ui/voice-input'
 import StepOpener from './step-opener'
 
@@ -29,6 +30,8 @@ interface Props {
   onNext: () => void
   onBack: () => void
   inspectionId: string
+  // Step 1's answers: the damage diagram needs the VIN and decoded body class.
+  vehicleInfo?: Record<string, any>
 }
 
 function ConditionPill({ label, selected, onSelect }: { label: string; selected: boolean; onSelect: () => void }) {
@@ -114,7 +117,7 @@ function PhotoSlotCard({ label, value, onTap, failed }: { label: string; value?:
   )
 }
 
-export default function StepExterior({ data, onChange, onNext, onBack, inspectionId }: Props) {
+export default function StepExterior({ data, onChange, onNext, onBack, inspectionId, vehicleInfo = {} }: Props) {
   const [cameraStartKey, setCameraStartKey] = useState<string | null>(null)
   const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set())
 
@@ -236,9 +239,16 @@ export default function StepExterior({ data, onChange, onNext, onBack, inspectio
           </div>
         </div>
 
-        {/* Damage */}
+        {/* Damage: pins on the 2D/3D diagram. Inspections that already have
+            entries in the older list keep using it. */}
         <div style={{ marginBottom: 20 }}>
-          <DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="exterior" inspectionId={inspectionId} />
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', marginBottom: 12 }}>Exterior Damage</h3>
+          <InspectionDamagePicker
+            inspectionId={inspectionId}
+            vehicleInfo={vehicleInfo}
+            hasLegacyDamages={(data.damages ?? []).length > 0}
+            fallback={<DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="exterior" inspectionId={inspectionId} />}
+          />
         </div>
 
         {/* Exterior notes */}

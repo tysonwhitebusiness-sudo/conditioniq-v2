@@ -1,27 +1,28 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import {
   getDamageAreaCodes, getDamageTypeCodes, getDamageSeverityCodes,
-  getDamageMarkersForVehicle, createDamageMarker, deleteDamageMarker,
   composeDamageLabel,
 } from '@/lib/damage-actions'
 import type {
-  DamageAreaCode, DamageTypeCode, DamageSeverityCode, DamageMarker,
-  DamageMarkerSource, VehicleTemplate, DamageMarkerAssetType, DamageMarkerView,
+  DamageAreaCode, DamageTypeCode, DamageSeverityCode,
+  VehicleTemplate, DamageMarkerAssetType, DamageMarkerView,
 } from '@/lib/damage-actions'
+import type { DamageStore, DamageMarkerWithPhoto } from '@/lib/damage-store'
 import DamagePickerSheet, { type PickerStep } from './damage-picker-sheet'
+import DamageMarkerDetail from './damage-marker-detail'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface DamageTaggerProps {
-  vehicleId: string
-  companyId: string
+  // Where pins are read and saved: the vehicle (intake/outtake) or one inspection.
+  store: DamageStore
   vehicleTemplate: VehicleTemplate
-  source: DamageMarkerSource
-  createdBy?: string
-  onMarkersChange?: (markers: DamageMarker[]) => void
+  // False once an inspection is submitted: pins show but cannot change.
+  editable?: boolean
+  onMarkersChange?: (markers: DamageMarkerWithPhoto[]) => void
   // Phase 10: when set, renders this image as the tap surface instead of the
   // placeholder, and scopes marker load/save to this specific view of this
   // specific model asset. All optional so the pre-Phase-10 placeholder mode
@@ -41,7 +42,7 @@ const TEMPLATE_LABEL: Record<VehicleTemplate, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DamageTagger({
-  vehicleId, companyId, vehicleTemplate, source, createdBy, onMarkersChange,
+  store, vehicleTemplate, editable = true, onMarkersChange,
   backgroundImageUrl, view, modelAssetId, assetType,
 }: DamageTaggerProps) {
   const surfaceRef = useRef<HTMLDivElement>(null)
@@ -49,9 +50,10 @@ export default function DamageTagger({
   const [areaCodes, setAreaCodes] = useState<DamageAreaCode[]>([])
   const [typeCodes, setTypeCodes] = useState<DamageTypeCode[]>([])
   const [severityCodes, setSeverityCodes] = useState<DamageSeverityCode[]>([])
-  const [markers, setMarkers] = useState<DamageMarker[]>([])
+  const [markers, setMarkers] = useState<DamageMarkerWithPhoto[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const [pendingPin, setPendingPin] = useState<PendingPin>(null)
   const [pickerStep, setPickerStep] = useState<PickerStep>(null)
@@ -66,7 +68,7 @@ export default function DamageTagger({
       getDamageAreaCodes(),
       getDamageTypeCodes(),
       getDamageSeverityCodes(),
-      getDamageMarkersForVehicle(vehicleId, modelAssetId ? { modelAssetId, view } : undefined),
+      store.listMarkers(modelAssetId ? { modelAssetId, view } : undefined),
     ]).then(([areas, types, severities, existingMarkers]) => {
       if (cancelled) return
       setAreaCodes(areas)
@@ -74,9 +76,14 @@ export default function DamageTagger({
       setSeverityCodes(severities)
       setMarkers(existingMarkers)
       setLoading(false)
+    }).catch(e => {
+      if (cancelled) return
+      setSaveError(e?.message ?? 'Could not load damage pins')
+      setLoading(false)
     })
     return () => { cancelled = true }
-  }, [vehicleId, modelAssetId, view])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.key, modelAssetId, view])
 
   useEffect(() => { onMarkersChange?.(markers) }, [markers, onMarkersChange])
 
@@ -84,7 +91,7 @@ export default function DamageTagger({
   // cpt() helper exactly, so this stays consistent with the Lot Map's own
   // tap-to-place system rather than reinventing the math. ──────────────────────
   const handleSurfaceClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (saving || pickerStep) return
+    if (!editable || saving || pickerStep) return
     const target = e.target as HTMLElement
     if (target.closest('[data-pin]')) return
     const rect = surfaceRef.current!.getBoundingClientRect()
@@ -115,26 +122,45 @@ export default function DamageTagger({
   const pickSeverity = async (severity: DamageSeverityCode) => {
     if (!pendingPin || !pickedArea || !pickedType) return
     setSaving(true)
-    const created = await createDamageMarker(companyId, {
-      vehicleId, source, vehicleTemplate,
-      areaCodeId: pickedArea.id,
-      typeCodeId: pickedType.id,
-      severityCodeId: severity.id,
-      xPosition: pendingPin.x,
-      yPosition: pendingPin.y,
-      createdBy,
-      modelAssetId, assetType, view,
-    })
-    setSaving(false)
-    if (created) setMarkers(prev => [created, ...prev])
-    cancelPicker()
+    setSaveError(null)
+    try {
+      const created = await store.createMarker({
+        areaCodeId: pickedArea.id,
+        typeCodeId: pickedType.id,
+        severityCodeId: severity.id,
+        xPosition: pendingPin.x,
+        yPosition: pendingPin.y,
+        modelAssetId, assetType, view,
+      })
+      if (created) {
+        setMarkers(prev => [created, ...prev])
+        // Open the new pin so its optional photo is one tap away.
+        setSelectedMarkerId(created.id)
+      } else {
+        setSaveError('The damage pin was not saved. Try again.')
+      }
+    } catch (e: any) {
+      setSaveError(e?.message ?? 'The damage pin was not saved. Try again.')
+    } finally {
+      setSaving(false)
+      cancelPicker()
+    }
   }
 
   const removeMarker = async (id: string) => {
+    const previous = markers
     setSelectedMarkerId(null)
     setMarkers(prev => prev.filter(m => m.id !== id))
-    await deleteDamageMarker(id)
+    try {
+      await store.deleteMarker(id)
+    } catch (e: any) {
+      setMarkers(previous)
+      setSaveError(e?.message ?? 'Could not remove the damage pin')
+    }
   }
+
+  const updatePhoto = (id: string, photoUrl: string | null, photoPath: string | null) =>
+    setMarkers(prev => prev.map(m => (m.id === id ? { ...m, photo_url: photoUrl, photo_path: photoPath } : m)))
 
   const selectedMarker = markers.find(m => m.id === selectedMarkerId) ?? null
 
@@ -153,7 +179,7 @@ export default function DamageTagger({
           width: '100%',
           ...(backgroundImageUrl ? {} : { aspectRatio: '4 / 3', background: '#F5F8FA', border: '2px dashed #CBD5E1' }),
           borderRadius: 12,
-          cursor: pickerStep ? 'default' : 'crosshair',
+          cursor: !editable || pickerStep ? 'default' : 'crosshair',
           overflow: 'hidden',
           userSelect: 'none',
         }}
@@ -211,23 +237,18 @@ export default function DamageTagger({
       </div>
 
       {loading && <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>Loading damage codes…</p>}
+      {saveError && <p role="alert" style={{ fontSize: 12, color: '#B91C1C', margin: 0 }}>{saveError}</p>}
 
-      {/* ── Selected-marker popover — composed label + remove ── */}
+      {/* ── Selected pin: label, optional photo, remove ── */}
       {selectedMarker && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-          padding: '10px 14px', background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 10,
-        }}>
-          <span style={{ fontSize: 13, color: '#0D1B2A', fontWeight: 600 }}>
-            {composeDamageLabel(selectedMarker.area, selectedMarker.type, selectedMarker.severity)}
-          </span>
-          <button
-            onClick={() => removeMarker(selectedMarker.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 4 }}
-          >
-            <Trash2 size={13} /> Remove
-          </button>
-        </div>
+        <DamageMarkerDetail
+          key={selectedMarker.id}
+          marker={selectedMarker}
+          store={store}
+          editable={editable}
+          onRemove={removeMarker}
+          onPhotoChange={updatePhoto}
+        />
       )}
 
       {/* ── Marker list ── */}
@@ -248,6 +269,7 @@ export default function DamageTagger({
               <span style={{ fontSize: 13, color: '#374151', flex: 1 }}>
                 {composeDamageLabel(m.area, m.type, m.severity)}
               </span>
+              {m.photo_url && <Camera size={13} color="#94A3B8" aria-label="Has photo" />}
             </div>
           ))}
         </div>

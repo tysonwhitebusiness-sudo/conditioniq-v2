@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import type { DamageMarkerSource, VehicleTemplate } from '@/lib/damage-actions'
+import type { VehicleTemplate } from '@/lib/damage-actions'
+import type { DamageStore } from '@/lib/damage-store'
 import { PRIMARY, WHITE, GRAY_100, GRAY_700, GRAY_500 } from '@/lib/design-tokens'
 import Damage2DTagger from './damage-2d-tagger'
 import Damage3DTagger from './damage-3d-tagger'
@@ -25,17 +26,17 @@ function readStoredMode(): DamageTaggerMode | null {
 }
 
 export interface DamageTaggerToggleProps {
-  vehicleId: string
-  companyId: string
+  // Where pins are read and saved (lib/damage-store): the vehicle for intake and
+  // outtake, one inspection for the full inspection.
+  store: DamageStore
   vehicleTemplate: VehicleTemplate
   modelAsset2dId?: string | null
   modelAsset3dId?: string | null
-  source: DamageMarkerSource
-  createdBy?: string
+  editable?: boolean
 }
 
 export default function DamageTaggerToggle({
-  vehicleId, companyId, vehicleTemplate, modelAsset2dId, modelAsset3dId, source, createdBy,
+  store, vehicleTemplate, modelAsset2dId, modelAsset3dId, editable = true,
 }: DamageTaggerToggleProps) {
   const has2d = !!modelAsset2dId
   const has3d = !!modelAsset3dId
@@ -83,24 +84,20 @@ export default function DamageTaggerToggle({
       {mode === '2d' ? (
         has2d ? (
           <Damage2DTagger
-            vehicleId={vehicleId}
-            companyId={companyId}
+            store={store}
+            editable={editable}
             vehicleTemplate={vehicleTemplate}
             modelAsset2dId={modelAsset2dId!}
-            source={source}
-            createdBy={createdBy}
           />
         ) : (
           <Unavailable />
         )
       ) : has3d ? (
         <Damage3DTagger
-          vehicleId={vehicleId}
-          companyId={companyId}
+          store={store}
+          editable={editable}
           vehicleTemplate={vehicleTemplate}
           modelAsset3dId={modelAsset3dId!}
-          source={source}
-          createdBy={createdBy}
         />
       ) : (
         <Unavailable />

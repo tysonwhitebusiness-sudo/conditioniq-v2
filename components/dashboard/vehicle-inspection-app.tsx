@@ -17,6 +17,8 @@ import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
 import DesktopSidebar from '@/components/layout/desktop-sidebar'
 import DesktopTopBar from '@/components/layout/desktop-topbar'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
+import StartInspectionSheet, { type InspectionStartSelection } from '@/components/inspections/start-inspection-sheet'
+import { takePendingInspectionStart } from '@/lib/pending-inspection-start'
 import { checkUsageState, initiateInspection } from '@/lib/usage-actions'
 import { getDeviceId } from '@/lib/device-id'
 import type { UsageState } from '@/lib/usage-actions'
@@ -68,6 +70,7 @@ export default function VehicleInspectionApp() {
   const [wizardStep, setWizardStep] = useState(1)
   const [showSendSheet, setShowSendSheet] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [showStartSheet, setShowStartSheet] = useState(false)
 
   const saveSession = useCallback((id: string, data: Record<string, any>) => {
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ inspectionId: id, data })) } catch {}
@@ -81,8 +84,10 @@ export default function VehicleInspectionApp() {
     if (!effectiveCompany || !user) return
     setStartingInspection(true)
     try {
+      // The VIN is settled before the inspection opens (picked or entered on the
+      // start sheet), so step 1 shows it locked.
       const initialData = queueItem
-        ? { vehicleInfo: { vin: queueItem.vin, year: queueItem.year, make: queueItem.make, model: queueItem.model } }
+        ? { vehicleInfo: { vin: queueItem.vin, year: queueItem.year, make: queueItem.make, model: queueItem.model, _vinLocked: !!queueItem.vin } }
         : {}
       const deviceId = getDeviceId()
       const { inspectionId } = await initiateInspection({
@@ -91,6 +96,8 @@ export default function VehicleInspectionApp() {
         initialData: queueItem
           ? { vin: queueItem.vin, year: queueItem.year, make: queueItem.make, model: queueItem.model }
           : undefined,
+        vehicleId: queueItem?.vehicleId,
+        bodyClass: queueItem?.bodyClass ?? undefined,
         deviceId,
       })
       setCurrentInspectionId(inspectionId)
@@ -105,16 +112,23 @@ export default function VehicleInspectionApp() {
     }
   }, [effectiveCompany, user, saveSession])
 
+  // Every full inspection starts from a vehicle: without one, the start sheet
+  // asks for it first (pick from inventory, or enter a VIN).
   const handleStartInspection = useCallback(async (queueItem?: any) => {
     if (!effectiveCompany || !user) return
-    setPendingQueueItem(queueItem ?? null)
+    if (!queueItem?.vin) {
+      setShowStartSheet(true)
+      return
+    }
+    setPendingQueueItem(queueItem)
     const state = await checkUsageState(effectiveCompany.id)
     setUsageState(state)
     setShowUsageModal(true)
   }, [effectiveCompany, user, doStartInspection])
 
-  // The Pay Per Use bottom nav has no lot screen to add a vehicle from; its center
-  // button links here with ?start=1 to open the start flow directly.
+  // ?start=1 opens the start flow: from the Pay Per Use bottom nav (no lot screen
+  // to add a vehicle from), or from the /inspections page after a vehicle was
+  // chosen there, in which case the choice is waiting in session storage.
   const startParam = searchParams.get('start')
   const startHandled = useRef(false)
   useEffect(() => {
@@ -122,7 +136,7 @@ export default function VehicleInspectionApp() {
     if (startHandled.current || !effectiveCompany || !user) return
     startHandled.current = true
     router.replace('/')
-    handleStartInspection()
+    handleStartInspection(takePendingInspectionStart() ?? undefined)
   }, [startParam, effectiveCompany, user, router, handleStartInspection])
 
   const handleResumeInspection = useCallback(async (data: any) => {
@@ -209,6 +223,12 @@ export default function VehicleInspectionApp() {
       <SendLinkSheet
         isOpen={showSendSheet}
         onClose={() => setShowSendSheet(false)}
+      />
+      <StartInspectionSheet
+        isOpen={showStartSheet}
+        companyId={effectiveCompany?.id ?? ''}
+        onClose={() => setShowStartSheet(false)}
+        onSelect={(selection: InspectionStartSelection) => { setShowStartSheet(false); handleStartInspection(selection) }}
       />
       {errorMsg && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>

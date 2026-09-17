@@ -5,6 +5,9 @@ import {
   Svg, Circle, Rect,
 } from '@react-pdf/renderer'
 import type { ScoreResult } from './vehicle-score'
+import type { ReportDamagePin, ReportDamageView } from './damage-server-actions'
+
+export type ReportDamageViewWithSize = ReportDamageView & { aspect: number }
 
 // ── Design tokens ──────────────────────────────────────────────────────────
 const C = {
@@ -379,6 +382,74 @@ function PhotoGrid({ photos }: { photos: Array<{ url: string; caption: string }>
   )
 }
 
+// ── Damage map: 2D diagram views with numbered pins, and the pin table ───────
+const PINS_ON_MAP_PAGE = 12
+const PINS_PER_PAGE = 26
+
+// Severity codes: 1 up to 1 in, 2 1-3 in, 3 3-6 in, 4 6-12 in, 5 over 12 in,
+// 6 missing/major damage.
+function sevColorFor(code: number | null): string {
+  if (code == null) return C.gray400
+  if (code <= 2) return C.yellow
+  if (code <= 4) return '#F97316'
+  return C.red
+}
+
+function PinBadge({ n, size = 12 }: { n: number; size?: number }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: C.red, borderWidth: 1, borderColor: C.white, borderStyle: 'solid', alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: C.white, fontSize: size * 0.55, fontFamily: 'Helvetica-Bold' }}>{n}</Text>
+    </View>
+  )
+}
+
+function DamageDiagram({ view, pins }: { view: ReportDamageViewWithSize; pins: ReportDamagePin[] }) {
+  const height = Math.round(COL2_W * view.aspect)
+  const badge = 12
+  return (
+    <View style={{ width: COL2_W, marginBottom: 10 }}>
+      <View style={{ width: COL2_W, height, position: 'relative', borderWidth: 1, borderColor: C.gray200, borderStyle: 'solid', borderRadius: 6 }}>
+        <Image src={view.imageUrl} style={{ width: COL2_W - 2, height: height - 2 }} />
+        {pins.map(p => (
+          <View key={p.number} style={{ position: 'absolute', left: (p.x / 100) * (COL2_W - 2) - badge / 2, top: (p.y / 100) * (height - 2) - badge / 2 }}>
+            <PinBadge n={p.number} size={badge} />
+          </View>
+        ))}
+      </View>
+      <Text style={{ color: C.gray400, fontSize: 7, textAlign: 'center', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{view.view} view</Text>
+    </View>
+  )
+}
+
+function PinTable({ pins, photos }: { pins: ReportDamagePin[]; photos: (url: string | undefined) => string }) {
+  return (
+    <View style={{ marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: C.midnight, padding: '5px 8px', borderRadius: 4 }}>
+        {[['#', 0.5], ['AREA', 2], ['DAMAGE', 2], ['SEVERITY', 1.5], ['DIAGRAM', 1], ['PHOTO', 1]].map(([h, f]) => (
+          <Text key={h as string} style={{ color: C.white, fontFamily: 'Helvetica-Bold', fontSize: 7, flex: f as number }}>{h}</Text>
+        ))}
+      </View>
+      {pins.map((p, i) => (
+        <View key={p.number} wrap={false} style={{ flexDirection: 'row', alignItems: 'center', padding: '4px 8px', backgroundColor: i % 2 === 0 ? C.gray100 : C.white }}>
+          <View style={{ flex: 0.5 }}><PinBadge n={p.number} /></View>
+          <Text style={{ color: C.midnight, fontSize: 8, flex: 2 }}>{p.area ?? '—'}</Text>
+          <Text style={{ color: C.midnight, fontSize: 8, flex: 2 }}>{p.type ?? '—'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1.5, gap: 4 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sevColorFor(p.severityCode) }} />
+            <Text style={{ color: C.gray600, fontSize: 8 }}>{p.severity ?? '—'}</Text>
+          </View>
+          <Text style={{ color: C.gray600, fontSize: 8, flex: 1 }}>{p.assetType === '3d' ? '3D' : p.view ? fmt(p.view) : '—'}</Text>
+          <View style={{ flex: 1 }}>
+            {p.photoUrl
+              ? <Image src={photos(p.photoUrl)} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 3 }} />
+              : <Text style={{ color: C.gray400, fontSize: 8 }}>—</Text>}
+          </View>
+        </View>
+      ))}
+    </View>
+  )
+}
+
 function CertificationSeal() {
   return (
     <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center' }}>
@@ -438,9 +509,13 @@ interface ReportProps {
   companyName?: string | null
   brandHeaderColor?: string | null
   brandAccentColor?: string | null
+  // Pins placed on the damage diagram during the inspection, and the 2D views
+  // they sit on (loaded by pdf-generator).
+  damagePins?: ReportDamagePin[]
+  damageViews?: ReportDamageViewWithSize[]
 }
 
-export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {}, logoUrl, companyName, brandHeaderColor, brandAccentColor }: ReportProps) {
+export default function InspectionReport({ inspectionData, scoreResult, signatureUrl, photos = {}, logoUrl, companyName, brandHeaderColor, brandAccentColor, damagePins = [], damageViews = [] }: ReportProps) {
   const vi   = inspectionData.vehicleInfo ?? {}
   const bol  = inspectionData.bol_data ?? {}
   const keys = inspectionData.keys_data ?? {}
@@ -498,9 +573,18 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
   ].filter(p => p.url)
 
   const hasExtOverflow  = extPhotos.length >= 4
-  const totalPages      = hasExtOverflow ? 8 : 7
-  const pgInterior      = hasExtOverflow ? 6 : 5
-  const pgEngine        = hasExtOverflow ? 7 : 6
+  // Damage map page, plus continuation pages when there are more pins than fit.
+  const hasDamageMap    = damagePins.length > 0
+  const pinPages: ReportDamagePin[][] = []
+  if (hasDamageMap) {
+    const rest = damagePins.slice(PINS_ON_MAP_PAGE)
+    for (let i = 0; i < rest.length; i += PINS_PER_PAGE) pinPages.push(rest.slice(i, i + PINS_PER_PAGE))
+  }
+  const damagePageCount = hasDamageMap ? 1 + pinPages.length : 0
+  const pgDamage        = hasExtOverflow ? 6 : 5
+  const pgInterior      = (hasExtOverflow ? 6 : 5) + damagePageCount
+  const pgEngine        = pgInterior + 1
+  const totalPages      = pgEngine + 1
   const pgCert          = totalPages
 
   const base = { vin, date, totalPages, logoUrl, companyName, brandHeaderColor, brandAccentColor }
@@ -598,7 +682,7 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
             <Text style={{ color: C.gray400, fontSize: 8, marginTop: 2 }}>function tests</Text>
           </View>
           <View style={{ flex: 1, backgroundColor: C.gray100, borderRadius: 8, padding: '10px 16px', alignItems: 'center' }}>
-            <Text style={{ color: C.amber, fontFamily: 'Helvetica-Bold', fontSize: 20 }}>{extDamages.length + intDamages.length}</Text>
+            <Text style={{ color: C.amber, fontFamily: 'Helvetica-Bold', fontSize: 20 }}>{extDamages.length + intDamages.length + damagePins.length}</Text>
             <Text style={{ color: C.gray400, fontSize: 8, marginTop: 2 }}>damage items</Text>
           </View>
         </View>
@@ -772,7 +856,9 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
           <View style={{ flex: 1 }}>
             {extDamages.length > 0
               ? <><Text style={{ color: C.midnight, fontFamily: 'Helvetica-Bold', fontSize: 9, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Damage</Text><DamageTable items={extDamages} /></>
-              : <AlertCard type="success" text="No exterior damage reported" />
+              : hasDamageMap
+                ? <AlertCard type="warning" text={`${damagePins.length} damage ${damagePins.length === 1 ? 'pin' : 'pins'} marked. See the damage map on page ${pgDamage}.`} />
+                : <AlertCard type="success" text="No exterior damage reported" />
             }
             {ext.exteriorNotes && (
               <View style={{ marginTop: 8 }}>
@@ -798,6 +884,30 @@ export default function InspectionReport({ inspectionData, scoreResult, signatur
           <PhotoGrid photos={extPhotos.slice(2)} />
         </ReportPage>
       )}
+
+      {/* ══ DAMAGE MAP (when pins were placed) ════════════════════════════ */}
+      {hasDamageMap && (
+        <ReportPage {...base} pageNum={pgDamage}>
+          <SectionHeader label="DAMAGE MAP" />
+          {damageViews.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginBottom: 6 }}>
+              {damageViews.slice(0, 4).map(v => (
+                <DamageDiagram key={`${v.modelAssetId}:${v.view}`} view={v} pins={damagePins.filter(p => p.assetType === '2d' && p.view === v.view && p.modelAssetId === v.modelAssetId)} />
+              ))}
+            </View>
+          )}
+          {damagePins.some(p => p.assetType === '3d') && (
+            <Text style={{ color: C.gray400, fontSize: 7, marginBottom: 6 }}>Pins marked 3D were placed on the 3D model and are listed below.</Text>
+          )}
+          <PinTable pins={damagePins.slice(0, PINS_ON_MAP_PAGE)} photos={img} />
+        </ReportPage>
+      )}
+      {pinPages.map((pagePins, i) => (
+        <ReportPage key={`pins-${i}`} {...base} pageNum={pgDamage + 1 + i}>
+          <SectionHeader label="DAMAGE PINS (CONTINUED)" />
+          <PinTable pins={pagePins} photos={img} />
+        </ReportPage>
+      ))}
 
       {/* ══ PAGE 6 (or 5): INTERIOR ════════════════════════════════════════ */}
       <ReportPage {...base} pageNum={pgInterior}>

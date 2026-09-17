@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { CheckCircle, AlertTriangle, ChevronRight, WifiOff, Car, FileText, Key, Settings, ClipboardList, Eye, Wrench } from 'lucide-react'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
 import { getQualityIssues } from '@/lib/quality-check'
 import { useAuth } from '@/contexts/auth-context'
 import SignaturePad from '@/components/ui/signature-pad'
 import StepOpener from './step-opener'
+import { listInspectionMarkers } from '@/lib/damage-server-actions'
 
 type StepId = 'vehicle-info' | 'bol' | 'keys' | 'function' | 'documentation' | 'exterior' | 'interior' | 'engine' | 'review'
 
@@ -99,6 +100,12 @@ export default function StepReview({ inspectionId, inspectionData, onComplete, o
   const gradeColor = GRADE_COLORS[scoreResult.grade] ?? '#94A3B8'
   const canSubmit = !!signature && !hasBlocking && !submitting
 
+  // Pins placed on the damage diagram live in their own table, not in step data.
+  const [pinCount, setPinCount] = useState(0)
+  useEffect(() => {
+    listInspectionMarkers(inspectionId).then(pins => setPinCount(pins.length)).catch(() => setPinCount(0))
+  }, [inspectionId])
+
   const tests = inspectionData.vehicle_function_data?.tests ?? {}
   const passCount = Object.values(tests).filter(v => v === 'pass').length
   const failCount = Object.values(tests).filter(v => v === 'fail').length
@@ -183,7 +190,7 @@ export default function StepReview({ inspectionId, inspectionData, onComplete, o
           {[
             { label: 'Pass', value: passCount, color: '#10B981' },
             { label: 'Fail', value: failCount, color: '#EF4444' },
-            { label: 'Damage', value: allDamages.length, color: '#F59E0B' },
+            { label: 'Damage', value: allDamages.length + pinCount, color: '#F59E0B' },
             { label: 'Steps', value: 8, color: '#00B4D8' },
           ].map(stat => (
             <div key={stat.label} style={{ background: '#FFFFFF', border: '1px solid #E1E8F0', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
@@ -213,7 +220,10 @@ export default function StepReview({ inspectionId, inspectionData, onComplete, o
                 </div>
                 <div style={{ textAlign: 'left' }}>
                   <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', marginBottom: 2 }}>{section.label}</p>
-                  <p style={{ fontSize: 12, color: '#94A3B8' }}>{sectionSummary(section.id, inspectionData)}</p>
+                  <p style={{ fontSize: 12, color: '#94A3B8' }}>
+                    {sectionSummary(section.id, inspectionData)}
+                    {section.id === 'exterior' && pinCount > 0 ? ` · ${pinCount} damage ${pinCount === 1 ? 'pin' : 'pins'}` : ''}
+                  </p>
                 </div>
               </div>
               <ChevronRight size={18} color="#94A3B8" />

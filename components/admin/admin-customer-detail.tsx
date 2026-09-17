@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getCompanyById, updateCompanyBilling, getCompanyInspections } from '@/lib/admin-actions'
+import { getCompanyById, updateCompanyBilling, getCompanyInspections, getCompanyUsage } from '@/lib/admin-actions'
+import type { UsageState } from '@/lib/usage-state'
 import { getFeatureFlags, upsertFeatureFlag } from '@/lib/feature-flags'
 import type { FeatureFlags, FeatureKey } from '@/lib/feature-flags'
-import { getPlan, getDefaultMemberCap, ADD_ONS, type PlanKey } from '@/lib/pricing'
+import { getPlan, getDefaultMemberCap, normalizePlanKey, effectiveMonthlyPrice, effectiveAnnualPrice, PUBLIC_PLAN_ORDER } from '@/lib/pricing'
 import { getPlanChangeRequests, updatePlanChangeRequestStatus } from '@/lib/billing-actions'
 import type { PlanChangeRequest } from '@/lib/billing-actions'
 import {
@@ -17,12 +18,17 @@ import type { Company } from '@/contexts/auth-context'
 import { ArrowLeft, Ghost, Plus, Lock, LayoutGrid, Clock } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
-  demo:           { bg: '#F0F4F8', color: '#94A3B8' },
-  starter:        { bg: '#E0F7FC', color: '#0097B2' },
-  growth:         { bg: '#D1FAE5', color: '#065F46' },
-  pro:            { bg: '#EDE9FE', color: '#5B21B6' },
-  enterprise:     { bg: '#FEF3C7', color: '#92400E' },
-  legacy_starter: { bg: '#FFF0E8', color: '#C2410C' },
+  demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  operations: { bg: '#E0F7FC', color: '#0097B2' },
+  pro:        { bg: '#EDE9FE', color: '#5B21B6' },
+  enterprise: { bg: '#FEF3C7', color: '#92400E' },
+}
+
+// Empty input means "use the plan default" (null in the database).
+function parseOptionalNumber(raw: string): number | null {
+  if (raw.trim() === '') return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,7 +52,7 @@ const CORE_FLAG_DEFS: { key: FeatureKey; label: string }[] = [
 // not just an admin-toggled-off feature) — other flags use a neutral lock color.
 const RESTRICTED_FLAG_KEYS = new Set<FeatureKey>(['multi_location', 'fmc_account', 'api_access'])
 
-const TIERS = ['demo', 'legacy_starter', 'starter', 'growth', 'pro', 'enterprise']
+const TIERS = PUBLIC_PLAN_ORDER
 
 const ACTION_LABELS: Record<AdminActionType, string> = {
   flag_toggled: 'Feature Flag',
@@ -107,6 +113,8 @@ export default function AdminCustomerDetail() {
   const [editBilling, setEditBilling] = useState<Record<string, unknown> | null>(null)
   const [planRequests, setPlanRequests] = useState<PlanChangeRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
+  const [usage, setUsage] = useState<UsageState | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -114,18 +122,21 @@ export default function AdminCustomerDetail() {
     const c = await getCompanyById(companyId)
     setCompany(c as Record<string, unknown>)
     setEditBilling({
-      reports_used: c.reports_used,
-      reports_included: c.reports_included,
-      subscription_tier: c.subscription_tier,
+      reports_included: c.reports_included ?? null,
+      subscription_tier: normalizePlanKey(c.subscription_tier),
       billing_interval: (c as Record<string, unknown>).billing_interval ?? 'monthly',
+      price_override_monthly: c.price_override_monthly ?? null,
+      price_override_annual: c.price_override_annual ?? null,
     })
-    const [ins, n, f, reqs, act] = await Promise.all([
+    const [ins, n, f, reqs, act, u] = await Promise.all([
       getCompanyInspections(companyId),
       getAccountNotes(companyId),
       getFeatureFlags(companyId),
       getPlanChangeRequests(companyId),
       getAccountActivityLog(companyId),
+      getCompanyUsage(companyId),
     ])
+    setUsage(u)
     setInspections(ins as Record<string, unknown>[])
     setNotes(n)
     setFlags(f)
@@ -140,17 +151,22 @@ export default function AdminCustomerDetail() {
   const saveBilling = async () => {
     if (!company || !editBilling) return
     setSaving(true)
-    const legacy_pricing = editBilling.subscription_tier === 'legacy_starter'
-    const payload = { ...editBilling, legacy_pricing } as Parameters<typeof updateCompanyBilling>[1]
-    await updateCompanyBilling(companyId, payload)
+    setSaveError(null)
+    try {
+      await updateCompanyBilling(companyId, editBilling as Parameters<typeof updateCompanyBilling>[1])
+    } catch (e: any) {
+      setSaveError(e?.message ?? 'Could not save billing changes')
+      setSaving(false)
+      return
+    }
 
     const companyName = company.name as string
-    const oldTier = company.subscription_tier as string
+    const oldTier = normalizePlanKey(company.subscription_tier as string)
     const newTier = editBilling.subscription_tier as string
-    const oldUsed = company.reports_used as number
-    const newUsed = editBilling.reports_used as number
-    const oldIncluded = company.reports_included as number
-    const newIncluded = editBilling.reports_included as number
+    const oldIncluded = (company.reports_included as number | null) ?? null
+    const newIncluded = (editBilling.reports_included as number | null) ?? null
+    const oldPrice = (company.price_override_monthly as number | null) ?? null
+    const newPrice = (editBilling.price_override_monthly as number | null) ?? null
 
     if (newTier !== oldTier) {
       await logAdminActivity({
@@ -159,16 +175,24 @@ export default function AdminCustomerDetail() {
         metadata: { oldTier, newTier },
       })
     }
-    if (newUsed !== oldUsed || newIncluded !== oldIncluded) {
+    if (newIncluded !== oldIncluded) {
       await logAdminActivity({
         accountId: companyId, actorId: user?.id ?? null, actionType: 'report_limit_adjusted',
-        description: `Report limits adjusted for ${companyName} (used ${oldUsed}→${newUsed}, included ${oldIncluded}→${newIncluded})`,
-        metadata: { oldUsed, newUsed, oldIncluded, newIncluded },
+        description: `Included reports for ${companyName}: ${oldIncluded ?? 'plan default'} → ${newIncluded ?? 'plan default'}`,
+        metadata: { oldIncluded, newIncluded },
+      })
+    }
+    if (newPrice !== oldPrice) {
+      await logAdminActivity({
+        accountId: companyId, actorId: user?.id ?? null, actionType: 'plan_changed',
+        description: `Held monthly price for ${companyName}: ${oldPrice ?? 'list price'} → ${newPrice ?? 'list price'}`,
+        metadata: { oldPrice, newPrice },
       })
     }
 
-    const updated = { ...editBilling, legacy_pricing }
-    setCompany(prev => prev ? { ...prev, ...updated } : prev)
+    // Reload rather than patching local state: saving may also have started a
+    // demo trial clock, which only the server sets.
+    await load()
     setSaving(false)
     getAccountActivityLog(companyId).then(setActivity)
   }
@@ -223,18 +247,23 @@ export default function AdminCustomerDetail() {
     )
   }
 
-  const currentTier = (editBilling?.subscription_tier as string) ?? 'starter'
+  const currentTier = normalizePlanKey(editBilling?.subscription_tier as string)
   const currentInterval = (editBilling?.billing_interval as string) ?? 'monthly'
   const currentPlan = getPlan(currentTier)
-  const isLegacyBilling = currentTier === 'legacy_starter'
-  const planAddOns = ADD_ONS.filter(a => a.eligiblePlans.includes(currentTier as PlanKey))
-  const isAddOnEligible = !isLegacyBilling && planAddOns.length > 0
   const planCap = getDefaultMemberCap(currentTier)
-  const planCostDisplay = currentTier === 'enterprise' ? 'Custom'
-    : currentTier === 'demo' ? 'Free'
-    : currentInterval === 'annual'
-      ? `$${currentPlan.annualCost.toLocaleString()}/yr`
-      : `$${currentPlan.monthlyCost}/mo`
+  const billingFields = {
+    subscription_tier: currentTier,
+    price_override_monthly: (editBilling?.price_override_monthly as number | null) ?? null,
+    price_override_annual: (editBilling?.price_override_annual as number | null) ?? null,
+  }
+  const hasHeldPrice = billingFields.price_override_monthly != null || billingFields.price_override_annual != null
+  const effectivePrice = currentInterval === 'annual' ? effectiveAnnualPrice(billingFields) : effectiveMonthlyPrice(billingFields)
+  const planCostDisplay = currentTier === 'demo' ? 'Free'
+    : effectivePrice === null ? 'Custom'
+    : `$${effectivePrice.toLocaleString()}/${currentInterval === 'annual' ? 'yr' : 'mo'}`
+  const companyPlanKey = normalizePlanKey(company.subscription_tier as string)
+  const companyHasHeldPrice = company.price_override_monthly != null || company.price_override_annual != null
+  const trialEnds = company.trial_expires_at ? new Date(company.trial_expires_at as string) : null
 
   return (
     <div style={{ padding: 24, maxWidth: 800 }}>
@@ -249,12 +278,17 @@ export default function AdminCustomerDetail() {
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', margin: 0 }}>{company.name as string}</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: (PLAN_COLORS[company.subscription_tier as string] ?? PLAN_COLORS.starter).bg, color: (PLAN_COLORS[company.subscription_tier as string] ?? PLAN_COLORS.starter).color }}>
-            {(company.subscription_tier as string ?? 'starter').toUpperCase()}
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: PLAN_COLORS[companyPlanKey].bg, color: PLAN_COLORS[companyPlanKey].color }}>
+            {companyPlanKey.toUpperCase()}
           </span>
-          {(company.legacy_pricing as boolean) && (
+          {companyHasHeldPrice && (
             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', border: '1px solid #FED7AA' }}>
-              LEGACY PRICING
+              HELD PRICE
+            </span>
+          )}
+          {companyPlanKey === 'demo' && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: usage?.demo.expired ? '#FEE2E2' : '#E0F7FC', color: usage?.demo.expired ? '#991B1B' : '#0097B2' }}>
+              {trialEnds ? `${usage?.demo.expired ? 'DEMO ENDED' : 'DEMO ENDS'} ${trialEnds.toLocaleDateString()}` : 'NO TRIAL END SET'}
             </span>
           )}
           <span style={{ fontSize: 12, color: '#94A3B8' }}>{Math.floor((Date.now() - new Date(company.created_at as string).getTime()) / 86400000)} days old</span>
@@ -275,17 +309,53 @@ export default function AdminCustomerDetail() {
         <SectionCard>
           <SH>Billing Controls</SH>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          {/* Usage this cycle — derived from generated reports and vehicle arrivals/releases, not editable */}
+          {usage && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px' }}>
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>
+                  Reports {usage.demo.isDemo ? 'this trial' : 'this cycle'}
+                </p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: usage.isOverage ? '#F4A62A' : '#F1F5F9', margin: 0 }}>
+                  {usage.used} / {usage.included === null ? '∞' : usage.included}
+                </p>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px' }}>
+                <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>Peak vehicles this cycle</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: usage.vehicles.isOverage ? '#F4A62A' : '#F1F5F9', margin: 0 }}>
+                  {usage.vehicles.used} / {usage.vehicles.included === null ? '∞' : usage.vehicles.included}
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#94A3B8', marginLeft: 6 }}>({usage.vehicles.current} now)</span>
+                </p>
+              </div>
+              <p style={{ gridColumn: '1 / -1', fontSize: 11, color: '#94A3B8', margin: 0 }}>
+                Cycle {new Date(usage.cycle.start).toLocaleDateString()} to {new Date(usage.cycle.end).toLocaleDateString()}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
-              <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Reports Used</label>
-              <input type="number" value={(editBilling?.reports_used as number) ?? 0}
-                onChange={e => setEditBilling(b => ({ ...b!, reports_used: parseInt(e.target.value) }))}
+              <label htmlFor="billing-reports-included" style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Reports included</label>
+              <input id="billing-reports-included" type="number" min={0}
+                placeholder={currentPlan.reportsIncluded === null ? 'Unlimited' : `${currentPlan.reportsIncluded} (plan)`}
+                value={(editBilling?.reports_included as number | null) ?? ''}
+                onChange={e => setEditBilling(b => ({ ...b!, reports_included: parseOptionalNumber(e.target.value) }))}
                 style={{ width: '100%', height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#0D1B2A', color: '#F1F5F9' }} />
             </div>
             <div>
-              <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Reports Included</label>
-              <input type="number" value={(editBilling?.reports_included as number) ?? 30}
-                onChange={e => setEditBilling(b => ({ ...b!, reports_included: parseInt(e.target.value) }))}
+              <label htmlFor="billing-held-monthly" style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Held monthly price</label>
+              <input id="billing-held-monthly" type="number" min={0} step="0.01"
+                placeholder={currentPlan.monthlyCost === null ? 'Custom' : `$${currentPlan.monthlyCost} (list)`}
+                value={(editBilling?.price_override_monthly as number | null) ?? ''}
+                onChange={e => setEditBilling(b => ({ ...b!, price_override_monthly: parseOptionalNumber(e.target.value) }))}
+                style={{ width: '100%', height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#0D1B2A', color: '#F1F5F9' }} />
+            </div>
+            <div>
+              <label htmlFor="billing-held-annual" style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Held annual price</label>
+              <input id="billing-held-annual" type="number" min={0} step="0.01"
+                placeholder={currentPlan.annualCost === null ? 'Custom' : `$${currentPlan.annualCost} (list)`}
+                value={(editBilling?.price_override_annual as number | null) ?? ''}
+                onChange={e => setEditBilling(b => ({ ...b!, price_override_annual: parseOptionalNumber(e.target.value) }))}
                 style={{ width: '100%', height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 10px', fontSize: 13, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#0D1B2A', color: '#F1F5F9' }} />
             </div>
           </div>
@@ -293,10 +363,10 @@ export default function AdminCustomerDetail() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Plan</label>
-              <select value={(editBilling?.subscription_tier as string) ?? 'starter'}
+              <select value={currentTier}
                 onChange={e => setEditBilling(b => ({ ...b!, subscription_tier: e.target.value }))}
                 style={{ width: '100%', height: 38, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 10px', fontSize: 13, background: '#0D1B2A', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
-                {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                {TIERS.map(t => <option key={t} value={t}>{getPlan(t).name}</option>)}
               </select>
             </div>
             <div>
@@ -316,15 +386,27 @@ export default function AdminCustomerDetail() {
               <span style={{ fontSize: 12, fontWeight: 700, color: '#F1F5F9' }}>{planCostDisplay}</span>
               {currentTier !== 'enterprise' && currentTier !== 'demo' && (
                 <span style={{ fontSize: 11, color: '#94A3B8' }}>
-                  +${currentPlan.additionalReportCost}/report overage · {currentPlan.reportsIncluded} included
+                  {currentPlan.reportsIncluded} reports + ${currentPlan.additionalReportCost}/report · {currentPlan.vehiclesIncluded} vehicles + ${currentPlan.additionalVehicleCost}/vehicle
                 </span>
               )}
             </div>
           </div>
 
-          {isLegacyBilling && (
+          {hasHeldPrice && (
             <div style={{ background: '#FFF0E8', borderRadius: 8, padding: '7px 12px', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, color: '#C2410C', fontWeight: 600 }}>Legacy pricing applies — original rates locked for this account.</span>
+              <span style={{ fontSize: 12, color: '#C2410C', fontWeight: 600 }}>Held price: this account pays less than the {currentPlan.name} list price. Overage still applies at plan rates.</span>
+            </div>
+          )}
+
+          {currentTier === 'demo' && normalizePlanKey(company.subscription_tier as string) !== 'demo' && (
+            <div style={{ background: 'rgba(0,180,216,0.1)', borderRadius: 8, padding: '7px 12px', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: '#7DD3E8', fontWeight: 600 }}>Saving starts a 14-day demo. After 14 days or 5 reports, new inspections are blocked with an upgrade message.</span>
+            </div>
+          )}
+
+          {saveError && (
+            <div role="alert" style={{ background: '#FEE2E2', borderRadius: 8, padding: '7px 12px', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: '#991B1B', fontWeight: 600 }}>{saveError}</span>
             </div>
           )}
 
@@ -385,33 +467,6 @@ export default function AdminCustomerDetail() {
             )
           })}
         </SectionCard>
-
-        {/* Add-Ons */}
-        {isAddOnEligible && (
-          <SectionCard>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Add-Ons</p>
-            {!flags ? (
-              <p style={{ fontSize: 13, color: '#94A3B8', margin: '12px 0 0' }}>Loading...</p>
-            ) : planAddOns.map(addon => {
-              const flagKey = addon.key as FeatureKey
-              const flag = flags[flagKey]
-              const isOn = flag?.enabled ?? false
-              const price = currentInterval === 'annual'
-                ? `$${addon.annualCost}/yr`
-                : `$${addon.monthlyCost}/mo`
-              return (
-                <div key={addon.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div>
-                    <span style={{ fontSize: 14, color: '#F1F5F9' }}>{addon.name}</span>
-                    <span style={{ fontSize: 12, color: '#94A3B8', marginLeft: 8 }}>{price}</span>
-                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '2px 0 0' }}>{addon.description}</p>
-                  </div>
-                  <Toggle checked={isOn} onChange={v => handleFlagToggle(flagKey, v)} />
-                </div>
-              )
-            })}
-          </SectionCard>
-        )}
 
         {/* Plan Change Requests */}
         <SectionCard>

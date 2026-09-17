@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getFeatureFlags } from '@/lib/feature-flags'
+import { computeUsageState } from '@/lib/usage-state'
 
 export interface UsageLogEntry {
   id: string
@@ -27,10 +28,10 @@ export interface PlanChangeRequest {
 export async function getBillingPageData(companyId: string) {
   const supabase = createClient()
 
-  const [companyRes, flags, pendingRes, usageRes] = await Promise.all([
+  const [companyRes, flags, pendingRes, usageRes, usage] = await Promise.all([
     supabase
       .from('companies')
-      .select('reports_used, reports_included, subscription_tier, legacy_pricing, billing_interval, billing_cycle_start')
+      .select('*')
       .eq('id', companyId)
       .single(),
     getFeatureFlags(companyId),
@@ -46,6 +47,7 @@ export async function getBillingPageData(companyId: string) {
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(50),
+    computeUsageState(supabase, companyId),
   ])
 
   return {
@@ -53,6 +55,7 @@ export async function getBillingPageData(companyId: string) {
     flags,
     hasPendingRequest: (pendingRes.data?.length ?? 0) > 0,
     usageLog: (usageRes.data ?? []) as UsageLogEntry[],
+    usage,
   }
 }
 

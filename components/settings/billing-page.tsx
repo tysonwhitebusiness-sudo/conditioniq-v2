@@ -5,7 +5,10 @@ import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
-import { getPlan, ADD_ONS, type PlanKey } from '@/lib/pricing'
+import {
+  getPlan, normalizePlanKey, calcOverage, effectiveMonthlyPrice, effectiveAnnualPrice, hasPriceOverride,
+  planHighlights, PLANS, PUBLIC_PLAN_ORDER,
+} from '@/lib/pricing'
 import {
   getBillingPageData, submitPlanChangeRequest,
   type UsageLogEntry,
@@ -15,24 +18,15 @@ import { Check, ChevronDown, ChevronUp, X, Loader2, AlertTriangle } from 'lucide
 // ── Plan config ────────────────────────────────────────────────────────────────
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
-  demo:           { bg: '#F0F4F8', color: '#94A3B8' },
-  starter:        { bg: '#E0F7FC', color: '#0097B2' },
-  growth:         { bg: '#D1FAE5', color: '#065F46' },
-  pro:            { bg: '#EDE9FE', color: '#5B21B6' },
-  enterprise:     { bg: '#FEF3C7', color: '#92400E' },
-  legacy_starter: { bg: '#FFF0E8', color: '#C2410C' },
+  demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  operations: { bg: '#E0F7FC', color: '#0097B2' },
+  pro:        { bg: '#EDE9FE', color: '#5B21B6' },
+  enterprise: { bg: '#FEF3C7', color: '#92400E' },
 }
 
-const PLAN_FEATURES: Record<string, string[]> = {
-  demo:           ['10 reports/mo', 'Up to 1 user', 'Core inspection workflow', 'PDF reports'],
-  legacy_starter: ['15 reports/mo', 'Up to 3 users', 'Grandfathered rates locked', 'Send-to-inspector links', 'PDF reports'],
-  starter:        ['30 reports/mo', 'Up to 3 users', 'Core inspection workflow', 'PDF reports', 'Add-ons available'],
-  growth:         ['75 reports/mo', 'Up to 5 users', 'All Starter features', 'Dispatch board', 'Lot billing', 'Add-ons available'],
-  pro:            ['300 reports/mo', 'Unlimited users', 'All Growth features', 'Lot map', 'White label PDF', 'Reporting & export'],
-  enterprise:     ['Unlimited reports', 'Unlimited users', 'All Pro features', 'Multi-location', 'API access', 'Dedicated support'],
-}
-
-const AVAILABLE_PLANS = ['Starter', 'Growth', 'Pro', 'Enterprise', 'Custom']
+// Plan names come from lib/pricing, so the request form cannot offer a plan that
+// no longer exists.
+const AVAILABLE_PLANS = [...PUBLIC_PLAN_ORDER.filter(k => k !== 'demo').map(k => PLANS[k].name), 'Custom']
 
 const REQUEST_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   pending:   { bg: '#FEF3C7', color: '#92400E' },
@@ -46,12 +40,47 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function nextCycleDate(cycleStart: string | null | undefined): string {
-  if (!cycleStart) return 'Resets monthly'
-  const start = new Date(cycleStart)
-  const next = new Date(start)
-  next.setMonth(next.getMonth() + 1)
-  return `Resets ${next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+function resetLabel(cycleEnd: string | null | undefined): string {
+  if (!cycleEnd) return 'Resets monthly'
+  return `Resets ${new Date(cycleEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+}
+
+function Meter({ label, used, included, unit, rate, over, cost, note }: {
+  label: string; used: number; included: number | null; unit: string
+  rate: number; over: number; cost: number; note?: string
+}) {
+  const pct = included === null ? 0 : Math.min(100, included > 0 ? (used / included) * 100 : 100)
+  const near = included !== null && pct >= 80
+  const barColor = pct >= 100 ? '#EF4444' : near ? '#F4A62A' : '#00B4D8'
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', margin: 0 }}>{label}</p>
+        <p style={{ margin: 0 }}>
+          <span style={{ fontSize: 24, fontWeight: 800, color: '#0D1B2A' }}>{used}</span>
+          <span style={{ fontSize: 14, color: '#94A3B8', marginLeft: 6 }}>{included === null ? 'unlimited' : `/ ${included}`}</span>
+        </p>
+      </div>
+      {included !== null && (
+        <div style={{ height: 8, background: '#F0F4F8', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ height: 8, width: `${pct}%`, background: barColor, borderRadius: 4, transition: 'width 400ms ease' }} />
+        </div>
+      )}
+      {note && <p style={{ fontSize: 12, color: '#94A3B8', margin: '6px 0 0' }}>{note}</p>}
+      {over > 0 ? (
+        <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: '10px 14px', marginTop: 10 }}>
+          <p style={{ fontSize: 13, color: '#B45309', margin: 0 }}>
+            {over} {unit}{over !== 1 ? 's' : ''} over the allowance × ${rate.toFixed(2)} = <strong>${cost.toFixed(2)}</strong> this cycle
+          </p>
+        </div>
+      ) : near ? (
+        <div role="status" style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 10, padding: '8px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={14} color="#D97706" style={{ flexShrink: 0 }} />
+          <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>You have used {Math.round(pct)}% of this allowance.</p>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -245,30 +274,25 @@ export default function BillingPage() {
 
 
   const company = billingData?.company
-  const flags = billingData?.flags
   const usageLog = billingData?.usageLog ?? []
   const hasPendingRequest = billingData?.hasPendingRequest ?? false
 
-  const tier = (company?.subscription_tier ?? effectiveCompany?.subscription_tier ?? 'starter') as PlanKey
+  const usage = billingData?.usage
+  const tier = normalizePlanKey(company?.subscription_tier ?? effectiveCompany?.subscription_tier)
   const plan = getPlan(tier)
-  const isLegacy = company?.legacy_pricing ?? false
+  const planFields = company ?? effectiveCompany ?? { subscription_tier: tier }
+  const heldPrice = hasPriceOverride(planFields)
   const billingInterval = (company?.billing_interval ?? 'monthly') as 'monthly' | 'annual'
-  const reportsUsed = company?.reports_used ?? effectiveCompany?.reports_used ?? 0
-  const reportsIncluded = company?.reports_included ?? effectiveCompany?.reports_included ?? plan.reportsIncluded
-  const usagePct = Math.min(100, reportsIncluded > 0 ? (reportsUsed / reportsIncluded) * 100 : 100)
-  const barColor = usagePct >= 100 ? '#EF4444' : usagePct >= 80 ? '#F4A62A' : '#00B4D8'
-  const overage = Math.max(0, reportsUsed - reportsIncluded)
-  const overageCost = overage * plan.additionalReportCost
-  const planColor = PLAN_COLORS[tier] ?? PLAN_COLORS.starter
-  const features = PLAN_FEATURES[tier] ?? PLAN_FEATURES.starter
-  const planAddOns = ADD_ONS.filter(a => a.eligiblePlans.includes(tier))
-  const isAddOnEligible = !isLegacy && planAddOns.length > 0
+  const planColor = PLAN_COLORS[tier]
+  const features = planHighlights(plan)
+  const overage = usage
+    ? calcOverage(planFields, { reportsUsed: usage.used, peakVehicles: usage.vehicles.used })
+    : null
 
-  const priceDisplay = tier === 'enterprise' ? 'Custom'
-    : tier === 'demo' ? 'Free'
-    : billingInterval === 'annual'
-      ? `$${plan.annualCost.toLocaleString()}/yr`
-      : `$${plan.monthlyCost}/mo`
+  const price = billingInterval === 'annual' ? effectiveAnnualPrice(planFields) : effectiveMonthlyPrice(planFields)
+  const priceDisplay = tier === 'demo' ? 'Free'
+    : price === null ? 'Custom'
+    : `$${price.toLocaleString()}/${billingInterval === 'annual' ? 'yr' : 'mo'}`
 
   return (
     <>
@@ -298,16 +322,19 @@ export default function BillingPage() {
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: planColor.bg, color: planColor.color }}>
                       {plan.name.toUpperCase()}
                     </span>
-                    {isLegacy && (
+                    {heldPrice && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', border: '1px solid #FED7AA' }}>
-                        LEGACY PRICING
+                        GRANDFATHERED PRICE
                       </span>
                     )}
                   </div>
-                  <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 14px' }}>
-                    {reportsIncluded} reports/mo · {plan.maxUsers === null ? 'Unlimited' : `Up to ${plan.maxUsers}`} users
-                    {tier !== 'enterprise' && tier !== 'demo' && ` · $${plan.additionalReportCost}/report overage`}
-                  </p>
+                  {usage?.demo.isDemo && usage.demo.expiresAt && (
+                    <p style={{ fontSize: 13, fontWeight: 600, color: usage.demo.expired ? '#B91C1C' : '#0097B2', margin: '0 0 10px' }}>
+                      {usage.demo.expired
+                        ? `Your demo ended ${formatDate(usage.demo.expiresAt)}.`
+                        : `Your demo runs until ${formatDate(usage.demo.expiresAt)}.`}
+                    </p>
+                  )}
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {features.map(f => (
                       <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#374151' }}>
@@ -328,28 +355,29 @@ export default function BillingPage() {
 
             {/* ── 2. Usage ── */}
             <Card>
-              <SectionLabel>Usage This Cycle</SectionLabel>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div>
-                  <span style={{ fontSize: 32, fontWeight: 800, color: '#0D1B2A' }}>{reportsUsed}</span>
-                  <span style={{ fontSize: 16, color: '#94A3B8', marginLeft: 6 }}>/ {reportsIncluded} reports</span>
-                </div>
-                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{nextCycleDate(company?.billing_cycle_start)}</p>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                <SectionLabel>{usage?.demo.isDemo ? 'Demo Usage' : 'Usage This Cycle'}</SectionLabel>
+                {!usage?.demo.isDemo && <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{resetLabel(usage?.cycle.end)}</p>}
               </div>
 
-              <div style={{ height: 8, background: '#F0F4F8', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
-                <div style={{ height: 8, width: `${usagePct}%`, background: barColor, borderRadius: 4, transition: 'width 400ms ease' }} />
-              </div>
-
-              {overage > 0 && (
-                <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: '#92400E', margin: '0 0 2px' }}>
-                    {overage} report{overage !== 1 ? 's' : ''} over limit
-                  </p>
-                  <p style={{ fontSize: 13, color: '#B45309', margin: 0 }}>
-                    {overage} × ${plan.additionalReportCost.toFixed(2)}/report = <strong>${overageCost.toFixed(2)}</strong> additional this month
-                  </p>
-                </div>
+              {usage && overage ? (
+                <>
+                  <Meter
+                    label="Reports" unit="report"
+                    used={usage.used} included={usage.included}
+                    rate={overage.reports.rate} over={overage.reports.over} cost={overage.reports.cost}
+                  />
+                  {!usage.demo.isDemo && (
+                    <Meter
+                      label="Vehicles on lot" unit="vehicle"
+                      used={usage.vehicles.used} included={usage.vehicles.included}
+                      rate={overage.vehicles.rate} over={overage.vehicles.over} cost={overage.vehicles.cost}
+                      note={`Billed on the most vehicles on your lot at one time this cycle. ${usage.vehicles.current} on the lot now.`}
+                    />
+                  )}
+                </>
+              ) : (
+                <p style={{ fontSize: 13, color: '#94A3B8', margin: '0 0 14px' }}>Usage is unavailable right now.</p>
               )}
 
               {/* Usage log */}
@@ -359,36 +387,7 @@ export default function BillingPage() {
               </div>
             </Card>
 
-            {/* ── 3. Add-Ons ── */}
-            {isAddOnEligible && flags && (
-              <Card>
-                <SectionLabel>Add-Ons</SectionLabel>
-                <div>
-                  {planAddOns.map((addon, i) => {
-                    const isActive = flags[addon.key]?.enabled ?? false
-                    const price = billingInterval === 'annual'
-                      ? `$${addon.annualCost}/yr`
-                      : `$${addon.monthlyCost}/mo`
-                    return (
-                      <div key={addon.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderTop: i === 0 ? 'none' : '1px solid #F0F4F8', gap: 12 }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: '0 0 2px' }}>{addon.name}</p>
-                          <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{addon.description} · {price}</p>
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, flexShrink: 0, background: isActive ? '#D1FAE5' : '#F0F4F8', color: isActive ? '#065F46' : '#94A3B8' }}>
-                          {isActive ? 'Active' : 'Not Active'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-                <p style={{ fontSize: 12, color: '#CBD5E1', margin: '12px 0 0' }}>
-                  To manage add-ons, contact the Condition IQ team.
-                </p>
-              </Card>
-            )}
-
-            {/* ── 4. Need Something Different ── */}
+            {/* ── 3. Need Something Different ── */}
             <Card>
               <SectionLabel>Need Something Different?</SectionLabel>
               <p style={{ fontSize: 14, color: '#4A5568', margin: '0 0 16px', lineHeight: 1.6 }}>

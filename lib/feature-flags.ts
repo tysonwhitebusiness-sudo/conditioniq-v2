@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { normalizePlanKey, PLANS, type PlanKey } from '@/lib/pricing'
 
 export type FeatureKey =
   | 'locations'
@@ -21,30 +22,36 @@ export interface FeatureFlag {
 
 export type FeatureFlags = Record<FeatureKey, FeatureFlag>
 
-// Tier sets for deriving plan-default flag values
-const GROWTH_PLUS    = new Set(['growth', 'pro', 'enterprise'])
-const PRO_PLUS       = new Set(['pro', 'enterprise'])
-const ENTERPRISE_ONLY = new Set(['enterprise'])
-
 function flag(key: FeatureKey, enabled: boolean): FeatureFlag {
   return { feature_key: key, enabled, config: {} }
 }
 
-export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> {
-  // Build tier-based defaults when no DB row exists for a flag
-  const buildDefaults = (tier: string): FeatureFlags => ({
-    locations:         flag('locations',         true),
-    team_members:      flag('team_members',      true),
-    lot_billing:       flag('lot_billing',       GROWTH_PLUS.has(tier)),
-    lot_map:           flag('lot_map',           PRO_PLUS.has(tier)),
-    white_label:       flag('white_label',       PRO_PLUS.has(tier)),
-    reporting_export:  flag('reporting_export',  PRO_PLUS.has(tier)),
-    multi_location:    flag('multi_location',    ENTERPRISE_ONLY.has(tier)),
-    fmc_account:       flag('fmc_account',       ENTERPRISE_ONLY.has(tier)),
-    api_access:        flag('api_access',        ENTERPRISE_ONLY.has(tier)),
-  })
+// Plan defaults. Gating is by scale, not capability: every plan gets the full
+// lot platform, including a demo. White label follows the plan (off for demo),
+// and multi-location, FMC and API access remain Enterprise-only.
+//
+// The tier is normalized first, so retired names (starter, legacy_starter,
+// growth) resolve to Operations instead of falling through every set and
+// silently losing all features, as they did before.
+function buildDefaults(plan: PlanKey | null): FeatureFlags {
+  const hasPlatform = plan !== null
+  const enterprise = plan === 'enterprise'
+  return {
+    locations:        flag('locations',        true),
+    team_members:     flag('team_members',     true),
+    lot_billing:      flag('lot_billing',      hasPlatform),
+    lot_map:          flag('lot_map',          hasPlatform),
+    reporting_export: flag('reporting_export', hasPlatform),
+    white_label:      flag('white_label',      plan !== null && PLANS[plan].whiteLabel),
+    multi_location:   flag('multi_location',   enterprise),
+    fmc_account:      flag('fmc_account',      enterprise),
+    api_access:       flag('api_access',       enterprise),
+  }
+}
 
-  if (!companyId) return buildDefaults('')
+export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> {
+  // No company (signed out, or a profile not attached to one): nothing to gate on.
+  if (!companyId) return buildDefaults(null)
 
   const supabase = createClient()
   const [{ data: flagData }, { data: company }] = await Promise.all([
@@ -52,8 +59,9 @@ export async function getFeatureFlags(companyId: string): Promise<FeatureFlags> 
     supabase.from('companies').select('subscription_tier').eq('id', companyId).single(),
   ])
 
-  const tier = (company?.subscription_tier ?? '') as string
-  const flags = buildDefaults(tier)
+  // A company row that cannot be read gets no platform defaults, matching the
+  // no-company case, rather than being assumed to be on a paid plan.
+  const flags = buildDefaults(company ? normalizePlanKey(company.subscription_tier) : null)
 
   // Per-company DB rows override tier defaults
   for (const row of (flagData ?? [])) {

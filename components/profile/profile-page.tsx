@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { Shield, LogOut, ChevronRight, CreditCard, Users } from 'lucide-react'
+import { usePlanUsage } from '@/hooks/use-plan-usage'
+import { getPlan } from '@/lib/pricing'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -13,11 +15,13 @@ export default function ProfilePage() {
   const name = userProfile?.full_name ?? user?.email ?? 'User'
   const initials = name.slice(0, 2).toUpperCase()
   const role = userProfile?.role ?? 'inspector'
-  const used = effectiveCompany?.reports_used ?? 0
-  const included = effectiveCompany?.reports_included ?? 0
-  const isUnlimited = included >= 9999
-  const usagePct = isUnlimited ? 8 : Math.min(100, included > 0 ? (used / included) * 100 : 0)
+  const usage = usePlanUsage(effectiveCompany?.id)
+  const used = usage?.used ?? 0
+  const included = usage?.included ?? null
+  const isUnlimited = included === null
+  const usagePct = isUnlimited ? 8 : Math.min(100, usage?.percentUsed ?? 0)
   const barColor = usagePct >= 100 ? '#EF4444' : usagePct >= 80 ? '#F59E0B' : '#00B4D8'
+  const planName = usage?.planName ?? getPlan(effectiveCompany?.subscription_tier).name
 
   return (
     <div className={isDesktop ? 'min-h-screen' : 'min-h-screen pb-24'} style={{ background: '#F0F4F8' }}>
@@ -80,7 +84,7 @@ export default function ProfilePage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm" style={{ color: '#4A5568' }}>Plan</span>
                   <span className="text-sm font-bold" style={{ color: '#0D1B2A' }}>
-                    {(effectiveCompany?.subscription_tier ?? 'starter').toUpperCase()}
+                    {planName.toUpperCase()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between mb-2">

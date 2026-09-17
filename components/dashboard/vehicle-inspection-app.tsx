@@ -19,7 +19,6 @@ import DesktopTopBar from '@/components/layout/desktop-topbar'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import { checkUsageState, initiateInspection } from '@/lib/usage-actions'
 import { getDeviceId } from '@/lib/device-id'
-import { checkAndAutoCompleteExpired } from '@/lib/auto-complete'
 import type { UsageState } from '@/lib/usage-actions'
 
 type AppStep = 'browse' | 'inspecting' | 'completed'
@@ -54,12 +53,6 @@ export default function VehicleInspectionApp() {
   const [wizardStep, setWizardStep] = useState(1)
   const [showSendSheet, setShowSendSheet] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (effectiveCompany?.id) {
-      checkAndAutoCompleteExpired(effectiveCompany.id).catch(() => {})
-    }
-  }, [effectiveCompany?.id])
 
   const saveSession = useCallback((id: string, data: Record<string, any>) => {
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ inspectionId: id, data })) } catch {}

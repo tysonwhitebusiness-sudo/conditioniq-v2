@@ -31,6 +31,7 @@ import { getSpotPinColor, WORK_ORDER_STATUS_LABEL, WORK_ORDER_STATUSES, type Wor
 import { defaultSizeClassForTemplate } from '@/lib/work-order-status'
 import { createCheckpoint } from '@/lib/checkpoint-actions'
 import { uploadCheckpointPhoto } from '@/lib/checkpoint-server-actions'
+import { checkUsageState } from '@/lib/usage-actions'
 import CameraCapture from '@/components/ui/camera-capture'
 import AddVehicleChoice from '@/components/inventory/add-vehicle-choice'
 import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_TEXT, DANGER_LIGHT, DANGER_BORDER, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK, WARN, WARN_LIGHT, WARN_DARK, AMBER_DARK, PURPLE_LIGHT, PURPLE_DARK, INFO_LIGHT, INFO_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
@@ -285,6 +286,13 @@ function AddExistingVehicleSlideOver({ companyId, userId, isFMC, locations, onCl
     if (!cleanVin || dupeVehicleId || !status || !allPhotosReady) return
     setSaving(true)
     setSaveError(null)
+    // Checked before anything is written: the vehicle is created before its
+    // photos upload, so refusing only at upload would leave a vehicle with no
+    // condition record behind.
+    try {
+      const { blockReason } = await checkUsageState(companyId)
+      if (blockReason) { setSaveError(blockReason); setSaving(false); return }
+    } catch { /* fall through; the upload action enforces the rule server-side */ }
     try {
       const vehicleId = await addVehicleToSystem(companyId, {
         vin: cleanVin, year, make, model,

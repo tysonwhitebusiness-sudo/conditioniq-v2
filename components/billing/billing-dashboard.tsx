@@ -3,7 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
-import { getPlan, calcEstimatedMonthly, calcOverageCost } from '@/lib/pricing'
+import {
+  getPlan, calcOverage, effectiveMonthlyPrice, hasPriceOverride, planHighlights, formatPlanPrice,
+  PLANS, PUBLIC_PLAN_ORDER,
+} from '@/lib/pricing'
 import { checkUsageState } from '@/lib/usage-actions'
 import { submitUpgradeRequest } from '@/lib/contact-actions'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
@@ -69,11 +72,13 @@ export default function BillingDashboard() {
   }
 
   const plan = getPlan(effectiveCompany.subscription_tier)
-  const estimated = calcEstimatedMonthly(plan, usageState.used)
-  const overageCost = calcOverageCost(plan, usageState.used)
-  const cycleStart = new Date(effectiveCompany.billing_cycle_start)
-  const nextCycle = new Date(cycleStart)
-  nextCycle.setMonth(nextCycle.getMonth() + 1)
+  const basePrice = effectiveMonthlyPrice(effectiveCompany)
+  const heldPrice = hasPriceOverride(effectiveCompany)
+  const overage = calcOverage(effectiveCompany, { reportsUsed: usageState.used, peakVehicles: usageState.vehicles.used })
+  const estimated = basePrice === null ? null : basePrice + overage.total
+  // The cycle rolls on each account's own billing day; usage-state derives it.
+  const nextCycle = new Date(usageState.cycle.end)
+  const vehicles = usageState.vehicles
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 p-4">
@@ -87,10 +92,17 @@ export default function BillingDashboard() {
             <h2 className="text-lg font-bold text-gray-900">{plan.name}</h2>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-[#1e3a5f]">${plan.monthlyCost}<span className="text-sm font-normal text-gray-400">/mo</span></p>
+            <p className="text-2xl font-bold text-[#1e3a5f]">
+              {basePrice === null ? 'Custom' : <>${basePrice}<span className="text-sm font-normal text-gray-400">/mo</span></>}
+            </p>
+            {heldPrice && <p className="text-xs text-gray-400">Grandfathered price</p>}
           </div>
         </div>
-        <p className="text-sm text-gray-500">{plan.reportsIncluded} reports included · ${plan.additionalReportCost.toFixed(2)}/overage report</p>
+        <ul className="space-y-1">
+          {planHighlights(plan).map(line => (
+            <li key={line} className="text-sm text-gray-500 flex gap-2 items-start"><Check size={14} className="text-green-500 flex-shrink-0 mt-0.5" />{line}</li>
+          ))}
+        </ul>
         <button
           onClick={() => setShowUpgradeModal(true)}
           className="flex items-center gap-2 text-sm text-[#dc5010] font-medium"
@@ -99,47 +111,79 @@ export default function BillingDashboard() {
         </button>
       </div>
 
-      {/* Usage Meter */}
-      <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-3">
-        <p className="text-xs text-gray-400 uppercase tracking-wide">Usage This Cycle</p>
-        <div className="flex items-end justify-between">
-          <p className="text-3xl font-bold text-gray-900">{usageState.used}</p>
-          <p className="text-sm text-gray-500">of {usageState.included} included</p>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-3">
-          <div
-            className={`h-3 rounded-full transition-all ${usageState.percentUsed >= 100 ? 'bg-orange-500' : usageState.percentUsed >= 80 ? 'bg-yellow-400' : 'bg-[#1e3a5f]'}`}
-            style={{ width: `${Math.min(100, usageState.percentUsed)}%` }}
-          />
-        </div>
-        {usageState.isOverage && (
-          <p className="text-sm text-orange-600 font-medium">
-            {usageState.used - usageState.included} overage report{usageState.used - usageState.included !== 1 ? 's' : ''} billed at ${plan.additionalReportCost.toFixed(2)}/each
-          </p>
+      {/* Usage Meters */}
+      <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-4">
+        <p className="text-xs text-gray-400 uppercase tracking-wide">
+          {usageState.demo.isDemo ? 'Demo Usage' : `Usage This Cycle · ${new Date(usageState.cycle.start).toLocaleDateString()} to ${nextCycle.toLocaleDateString()}`}
+        </p>
+        {[
+          { label: 'Reports', meter: usageState as { used: number; included: number | null; percentUsed: number; isNearLimit: boolean }, unit: 'report', line: overage.reports },
+          { label: 'Vehicles on lot (peak)', meter: vehicles, unit: 'vehicle', line: overage.vehicles },
+        ].map(({ label, meter, unit, line }) => (
+          <div key={label} className="space-y-2">
+            <div className="flex items-end justify-between">
+              <p className="text-sm font-medium text-gray-700">{label}</p>
+              <p className="text-sm text-gray-500">
+                <span className="text-xl font-bold text-gray-900">{meter.used}</span>
+                {meter.included === null ? ' · unlimited' : ` of ${meter.included} included`}
+              </p>
+            </div>
+            {meter.included !== null && (
+              <div className="w-full bg-gray-100 rounded-full h-3">
+                <div
+                  className={`h-3 rounded-full transition-all ${meter.percentUsed >= 100 ? 'bg-orange-500' : meter.isNearLimit ? 'bg-yellow-400' : 'bg-[#1e3a5f]'}`}
+                  style={{ width: `${Math.min(100, meter.percentUsed)}%` }}
+                />
+              </div>
+            )}
+            {line.over > 0 && (
+              <p className="text-sm text-orange-600 font-medium">
+                {line.over} over the allowance, billed at ${line.rate.toFixed(2)} per {unit}
+              </p>
+            )}
+            {line.over === 0 && meter.isNearLimit && (
+              <p className="text-sm text-yellow-700">You have used {Math.round(meter.percentUsed)}% of your {label.toLowerCase()} allowance.</p>
+            )}
+          </div>
+        ))}
+        {vehicles.included !== null && (
+          <p className="text-xs text-gray-400">Vehicles are billed on the most on your lot at one time this cycle. {vehicles.current} on the lot now.</p>
         )}
       </div>
 
       {/* Estimated Invoice */}
-      <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-3">
-        <p className="text-xs text-gray-400 uppercase tracking-wide">Estimated Next Invoice</p>
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Base ({plan.name})</span>
-            <span>${plan.monthlyCost.toFixed(2)}</span>
-          </div>
-          {overageCost > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Overage ({usageState.used - usageState.included} reports)</span>
-              <span className="text-orange-600">${overageCost.toFixed(2)}</span>
+      {!usageState.demo.isDemo && (
+        <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-3">
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Estimated Next Invoice</p>
+          {estimated === null ? (
+            <p className="text-sm text-gray-500">Enterprise accounts are invoiced on contract terms.</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Base ({plan.name}{heldPrice ? ', grandfathered' : ''})</span>
+                <span>${(basePrice ?? 0).toFixed(2)}</span>
+              </div>
+              {overage.reports.cost > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Report overage ({overage.reports.over} × ${overage.reports.rate.toFixed(2)})</span>
+                  <span className="text-orange-600">${overage.reports.cost.toFixed(2)}</span>
+                </div>
+              )}
+              {overage.vehicles.cost > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Vehicle overage ({overage.vehicles.over} × ${overage.vehicles.rate.toFixed(2)})</span>
+                  <span className="text-orange-600">${overage.vehicles.cost.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="border-t border-gray-100 pt-2 flex justify-between font-semibold">
+                <span>Total so far</span>
+                <span>${estimated.toFixed(2)}</span>
+              </div>
             </div>
           )}
-          <div className="border-t border-gray-100 pt-2 flex justify-between font-semibold">
-            <span>Total</span>
-            <span>${estimated.toFixed(2)}</span>
-          </div>
+          <p className="text-xs text-gray-400">Next billing date: {nextCycle.toLocaleDateString()}</p>
         </div>
-        <p className="text-xs text-gray-400">Next billing date: {nextCycle.toLocaleDateString()}</p>
-      </div>
+      )}
 
       {/* Usage Sparkline */}
       {sparklineData.length > 0 && (
@@ -184,12 +228,8 @@ function UpgradeModal({ onClose, currentPlan, companyId, companyName }: { onClos
   const { userProfile, user } = useAuth()
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const plans = [
-    { key: 'starter',    name: 'Starter',    price: 99,  reports: 30,   overage: 3.50, features: ['30 reports/mo',        '$3.50/overage', 'Core inspection workflow', 'PDF reports']               },
-    { key: 'growth',     name: 'Growth',     price: 199, reports: 75,   overage: 3.00, features: ['75 reports/mo',        '$3.00/overage', 'Dispatch board',           'Lot billing']               },
-    { key: 'pro',        name: 'Pro',        price: 399, reports: 300,  overage: 2.00, features: ['300 reports/mo',       '$2.00/overage', 'Lot map',                  'White label PDF', 'Export'] },
-    { key: 'enterprise', name: 'Enterprise', price: 0,   reports: 9999, overage: 0,    features: ['Unlimited reports',    'Volume pricing', 'Multi-location',           'API access',      'Dedicated support'] },
-  ]
+  // Paid plans only; a demo is set up by hand, not requested from here.
+  const plans = PUBLIC_PLAN_ORDER.filter(k => k !== 'demo').map(k => PLANS[k])
 
   const handleRequest = async (targetPlan: string) => {
     setErrorMsg(null)
@@ -223,10 +263,10 @@ function UpgradeModal({ onClose, currentPlan, companyId, companyName }: { onClos
                   <span className="font-bold text-gray-900">{p.name}</span>
                   {p.key === currentPlan && <span className="ml-2 text-xs bg-[#1e3a5f] text-white px-2 py-0.5 rounded-full">Current</span>}
                 </div>
-                <span className="font-bold text-[#1e3a5f]">{p.price > 0 ? `$${p.price}/mo` : 'Custom'}</span>
+                <span className="font-bold text-[#1e3a5f]">{formatPlanPrice(p)}</span>
               </div>
               <ul className="space-y-1 mb-3">
-                {p.features.map(f => <li key={f} className="text-xs text-gray-500 flex gap-2 items-start"><Check size={12} className="text-green-500 flex-shrink-0 mt-0.5" />{f}</li>)}
+                {planHighlights(p).map(f => <li key={f} className="text-xs text-gray-500 flex gap-2 items-start"><Check size={12} className="text-green-500 flex-shrink-0 mt-0.5" />{f}</li>)}
               </ul>
               {p.key !== currentPlan && (
                 <button

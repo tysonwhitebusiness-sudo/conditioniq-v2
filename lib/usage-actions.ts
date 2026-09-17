@@ -1,50 +1,35 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getPlan } from '@/lib/pricing'
 import { captureHighSeverityError } from '@/lib/sentry'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
 import { authorizeInspectionAccess } from './inspection-auth'
 import { toLegacyColumns, resolveVehicleMasterId } from './work-order-status'
+import { computeUsageState, type UsageState } from './usage-state'
 
-export interface UsageState {
-  used: number
-  included: number
-  remaining: number
-  percentUsed: number
-  isOverage: boolean
-  isNearLimit: boolean
-  overageRate: number
-  planName: string
-  planKey: string
-}
+export type { UsageState } from './usage-state'
 
 export async function checkUsageState(companyId: string): Promise<UsageState> {
-  const supabase = createClient()
-  const { data: company } = await supabase
-    .from('companies')
-    .select('reports_used, reports_included, subscription_tier')
-    .eq('id', companyId)
-    .single()
-
-  const used = company?.reports_used ?? 0
-  const plan = getPlan(company?.subscription_tier)
-  const included = company?.reports_included ?? plan.reportsIncluded
-  const remaining = Math.max(0, included - used)
-  const percentUsed = included > 0 ? (used / included) * 100 : 100
-
-  return {
-    used,
-    included,
-    remaining,
-    percentUsed,
-    isOverage: used >= included,
-    isNearLimit: percentUsed >= 80,
-    overageRate: plan.additionalReportCost,
-    planName: plan.name,
-    planKey: plan.key,
-  }
+  return computeUsageState(createClient(), companyId)
 }
+
+// Records whether a just-completed inspection falls into overage. Usage is
+// derived from generated reports, so nothing is incremented: completing the same
+// inspection twice can no longer count it twice, and concurrent completions can
+// no longer lose a count.
+async function stampOverage(supabase: any, companyId: string, inspectionId: string): Promise<void> {
+  const usage = await computeUsageState(supabase, companyId)
+  const { error } = await supabase
+    .from('vehicle_inspections')
+    .update({ is_overage: usage.isOverage })
+    .eq('id', inspectionId)
+  if (error) throw error
+}
+
+// Only the call that actually moves an inspection to completed goes on to record
+// usage. A retry or duplicate call matches no row and stops. Rows written before
+// usage_status existed have it null, which the filter must still match.
+const NOT_YET_COMPLETED = 'usage_status.is.null,usage_status.neq.completed'
 
 export async function checkExistingInspection(
   companyId: string,
@@ -79,7 +64,10 @@ export async function initiateInspection({
 }): Promise<{ inspectionId: string; isOverage: boolean }> {
   const supabase = createClient()
 
-  const usageState = await checkUsageState(companyId)
+  const usageState = await computeUsageState(supabase, companyId)
+  // An ended demo cannot start new inspections. Enforced here, not only in the
+  // UI, so no entry point can bypass it.
+  if (usageState.blockReason) throw new Error(usageState.blockReason)
   const isOverage = usageState.isOverage
   const now = new Date().toISOString()
 
@@ -150,28 +138,17 @@ export async function completeInspection(inspectionId: string, score?: number | 
     const updates: Record<string, any> = { usage_status: 'completed', status: 'completed' }
     if (score !== undefined) updates.vehicle_score = score
 
-    const { error: updateError } = await supabase
+    const { data: transitioned, error: updateError } = await supabase
       .from('vehicle_inspections')
       .update(updates)
       .eq('id', inspectionId)
+      .or(NOT_YET_COMPLETED)
+      .select('id')
 
     if (updateError) throw updateError
+    if (!transitioned?.length) return
 
-    if (companyId) {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('reports_used, subscription_tier')
-        .eq('id', companyId)
-        .single()
-      const preIncrementUsed = company?.reports_used ?? 0
-      const plan = getPlan(company?.subscription_tier)
-      const isOverage = preIncrementUsed >= plan.reportsIncluded
-      const [{ error: billingError }] = await Promise.all([
-        supabase.from('companies').update({ reports_used: preIncrementUsed + 1 }).eq('id', companyId),
-        supabase.from('vehicle_inspections').update({ is_overage: isOverage }).eq('id', inspectionId),
-      ])
-      if (billingError) throw billingError
-    }
+    if (companyId) await stampOverage(supabase, companyId, inspectionId)
   } catch (err) {
     captureHighSeverityError(err, { flow: 'completeInspection', inspectionId })
     throw err
@@ -228,6 +205,9 @@ export async function initiateFMCInspection({
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
+  const blockReason = (await computeUsageState(supabase, companyId)).blockReason
+  if (blockReason) throw new Error(blockReason)
+
   const { data: inspection, error } = await supabase
     .from('vehicle_inspections')
     .insert({
@@ -269,32 +249,22 @@ export async function completeFMCInspection({
   const supabase = createAdminClient()
   const now = new Date().toISOString()
 
-  await Promise.all([
+  const [{ data: transitioned }] = await Promise.all([
     supabase
       .from('vehicle_inspections')
       .update({ usage_status: 'completed', status: 'completed' })
-      .eq('id', inspectionId),
+      .eq('id', inspectionId)
+      .or(NOT_YET_COMPLETED)
+      .select('id'),
     supabase
       .from('fmc_inspection_requests')
       .update({ status: 'completed' })
       .eq('id', requestId),
   ])
 
-  if (companyId) {
+  if (companyId && transitioned?.length) {
     try {
-      const { data: company } = await supabase
-        .from('companies')
-        .select('reports_used, subscription_tier')
-        .eq('id', companyId)
-        .single()
-      const preIncrementUsed = company?.reports_used ?? 0
-      const plan = getPlan(company?.subscription_tier)
-      const isOverage = preIncrementUsed >= plan.reportsIncluded
-      const [{ error: billingError }] = await Promise.all([
-        supabase.from('companies').update({ reports_used: preIncrementUsed + 1 }).eq('id', companyId),
-        supabase.from('vehicle_inspections').update({ is_overage: isOverage }).eq('id', inspectionId),
-      ])
-      if (billingError) throw billingError
+      await stampOverage(supabase, companyId, inspectionId)
     } catch (err) {
       captureHighSeverityError(err, { flow: 'completeFMCInspection', inspectionId })
       throw err
@@ -335,6 +305,18 @@ export async function initiateInspectionRequest({
   try {
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const supabase = createAdminClient()
+
+    // The remote inspector is not signed in, so the page cannot check this for
+    // itself; the admin client can.
+    // The person holding this link does not own the account, so they get their
+    // own wording rather than the owner's "upgrade your plan" message.
+    const blockReason = (await computeUsageState(supabase, companyId)).blockReason
+    if (blockReason) {
+      return {
+        inspectionId: null,
+        error: 'This link cannot start a new inspection right now. Contact the company that sent it.',
+      }
+    }
 
     const { data: inspection, error } = await supabase
       .from('vehicle_inspections')
@@ -407,26 +389,6 @@ export async function initiateInspectionRequest({
     console.error('[initiateInspectionRequest] unexpected error', e)
     return { inspectionId: null, error: e?.message ?? 'Unknown error starting inspection' }
   }
-}
-
-export async function getMonthlyUsageCount(companyId: string): Promise<number> {
-  const supabase = createClient()
-  const { data: company } = await supabase
-    .from('companies')
-    .select('billing_cycle_start')
-    .eq('id', companyId)
-    .single()
-
-  const cycleStart = company?.billing_cycle_start ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-
-  const { count } = await supabase
-    .from('vehicle_inspections')
-    .select('id', { count: 'exact', head: true })
-    .eq('company_id', companyId)
-    .in('usage_status', ['completed'])
-    .gte('initiated_at', cycleStart)
-
-  return count ?? 0
 }
 
 export async function createShareToken(inspectionId: string): Promise<string> {

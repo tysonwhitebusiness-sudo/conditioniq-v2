@@ -8,6 +8,7 @@ import {
   Warehouse, Truck, Network,
 } from 'lucide-react'
 import { submitContactRequest } from '@/lib/contact-actions'
+import { PLANS, planHighlights, formatPlanPrice, planCrossovers } from '@/lib/pricing'
 
 // ─── CSS ──────────────────────────────────────────────────────────────────
 const CSS = `
@@ -364,7 +365,7 @@ function Hero({ onGetStarted }: { onGetStarted: () => void }) {
                 View Report Preview
               </Link>
             </div>
-            <p className="text-[#94A3B8] text-xs mb-5">No credit card required · 10 free reports · 3 days full access</p>
+            <p className="text-[#94A3B8] text-xs mb-5">No credit card required · {PLANS.demo.reportsIncluded} free reports · {PLANS.demo.trialDays} days full access</p>
             <div className="flex flex-wrap gap-5">
               {['Mobile-first', 'Instant PDF', 'No contracts'].map(t => (
                 <div key={t} className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
@@ -547,11 +548,11 @@ function PlatformWorkflow() {
 function AudienceCards() {
   const cards = [
     {
-      icon: Warehouse, iconColor: '#00B4D8', title: 'Storage Yard Operators', tag: 'Starter · Growth · Pro',
+      icon: Warehouse, iconColor: '#00B4D8', title: 'Storage Yard Operators', tag: 'Operations · Pro',
       features: ['Visual lot map with real-time vehicle status', 'Bulk billing across all vehicles in one run', 'Arrival and departure inspection records', '9-step condition report with photos and grades', 'Invoice PDF generation per vehicle or batch'],
     },
     {
-      icon: Truck, iconColor: '#F4A62A', title: 'Tow & Impound Operators', tag: 'Growth · Pro',
+      icon: Truck, iconColor: '#F4A62A', title: 'Tow & Impound Operators', tag: 'Operations · Pro',
       features: ['Mobile-first inspection from any smartphone', 'Dispatch remote inspectors via one-time link', 'Photos, damage items, BOL, keys — all in one report', 'Inspector signature captured on-screen', 'Timestamped, defensible condition record'],
     },
     {
@@ -721,16 +722,24 @@ function TheReport() {
 
 // ─── Pricing ──────────────────────────────────────────────────────────────
 function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
-  const plans = [
-    { key: 'demo',       name: 'Demo',       price: 'Free', sub: '3 one-time · No overage', featured: false,
-      features: ['3 one-time reports', '1 user', 'PDF report output', 'No credit card'], cta: 'Try for Free' },
-    { key: 'starter',    name: 'Starter',    price: '$99',  sub: '30/mo · $3.50 overage',  featured: false,
-      features: ['30 reports/mo', '3 users', 'Email support', 'Unlimited report history', 'Dispatch (add-on $29)', 'Lot Billing (add-on $49)'], cta: 'Get Started' },
-    { key: 'growth',     name: 'Growth',     price: '$199', sub: '75/mo · $3.00 overage',  featured: true,
-      features: ['75 reports/mo', '5 users', 'Email + chat support', 'Dispatch included', 'Lot Billing included', 'Lot Map (add-on $59)', 'White Label PDF (add-on $49)'], cta: 'Get Started' },
-    { key: 'pro',        name: 'Pro',        price: '$399', sub: '300/mo · $2.00 overage', featured: false,
-      features: ['300 reports/mo', 'Unlimited users', 'Priority support', 'Lot Map included', 'White Label PDF', 'Custom inspection templates', 'Export & reporting', 'Multi-location ready'], cta: 'Get Started' },
-  ]
+  // Every figure comes from lib/pricing. Nothing here is typed by hand, so the
+  // landing page cannot advertise a price the app does not charge.
+  const plans = (['demo', 'operations', 'pro'] as const).map(key => {
+    const plan = PLANS[key]
+    return {
+      key,
+      name: plan.name,
+      price: formatPlanPrice(plan).replace('/mo', ''),
+      perMonth: key !== 'demo',
+      sub: key === 'demo'
+        ? `${plan.trialDays} days · ${plan.reportsIncluded} reports`
+        : `$${plan.annualCost?.toLocaleString()}/yr billed annually`,
+      featured: key === 'operations',
+      features: planHighlights(plan),
+      cta: key === 'demo' ? 'Try for Free' : 'Get Started',
+    }
+  })
+  const crossover = planCrossovers()
   return (
     <section id="pricing" className="bg-[#0D1B2A] py-20 px-5">
       <div className="max-w-5xl mx-auto">
@@ -741,7 +750,7 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
             <p className="text-[#94A3B8] text-sm max-w-xl mx-auto">You're only charged for completed reports. Drafts and in-progress inspections are always free.</p>
           </div>
         </FadeCard>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
           {plans.map((p, i) => (
             <FadeCard key={p.key} delay={i * 80}>
               <div className={`relative rounded-2xl p-5 border h-full flex flex-col card-lift ${p.featured ? 'border-[#F4A62A] bg-[#1B2D40] amber-pulse' : 'border-[#1B2D40] bg-[#1B2D40] hover:border-[#00B4D8]/40 cyan-glow'}`}>
@@ -750,7 +759,7 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
                 )}
                 <div className="mb-4">
                   <div className="text-white font-bold text-base mb-1">{p.name}</div>
-                  <div className="text-3xl font-bold text-white">{p.price}<span className="text-sm font-normal text-[#94A3B8]">{p.key !== 'demo' ? '/mo' : ''}</span></div>
+                  <div className="text-3xl font-bold text-white">{p.price}<span className="text-sm font-normal text-[#94A3B8]">{p.perMonth ? '/mo' : ''}</span></div>
                   <div className="text-[#94A3B8] text-xs mt-1">{p.sub}</div>
                 </div>
                 <div className="flex flex-col gap-2 flex-1 mb-5">
@@ -772,38 +781,26 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
           <div className="border border-[#1B2D40] rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#1B2D40]/40 mb-5">
             <div>
               <div className="text-white font-bold text-lg mb-1">Enterprise</div>
-              <div className="text-[#94A3B8] text-sm">Custom pricing · Unlimited reports · Unlimited users · Multi-location · FMC/Locations account · API + custom integrations · Dedicated account manager</div>
+              <div className="text-[#94A3B8] text-sm">Custom pricing · {planHighlights(PLANS.enterprise).join(' · ')} · Dedicated account manager</div>
             </div>
             <a href="mailto:hello@conditioniq.app" className="flex-shrink-0 bg-white/5 border border-white/10 text-white font-bold text-sm px-6 py-3 rounded-xl hover:bg-white/10 transition-all">Contact Sales</a>
           </div>
         </FadeCard>
-        {/* Add-ons */}
+        {/* How usage is billed */}
         <FadeCard>
           <div className="bg-[#1B2D40] border border-[#00B4D8]/15 rounded-2xl p-6">
-            <h3 className="text-white font-bold text-sm mb-4">Expand Your Plan with Add-Ons</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr>{['Add-On','Starter','Growth','Pro'].map(h => <th key={h} className="text-[#94A3B8] font-semibold pb-3 pr-6">{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {[
-                    { n: 'Dispatch',        s: '$29/mo',  g: 'Included', p: 'Included' },
-                    { n: 'Lot Billing',     s: '$49/mo',  g: 'Included', p: 'Included' },
-                    { n: 'Lot Map',         s: '—',       g: '$59/mo',   p: 'Included' },
-                    { n: 'White Label PDF', s: '—',       g: '$49/mo',   p: 'Included' },
-                  ].map((r, i) => (
-                    <tr key={i} className="border-t border-white/5">
-                      <td className="text-white py-2.5 pr-6 font-medium">{r.n}</td>
-                      <td className={`py-2.5 pr-6 ${r.s === '—' ? 'text-[#94A3B8]/30' : 'text-[#94A3B8]'}`}>{r.s}</td>
-                      <td className={`py-2.5 pr-6 ${r.g === 'Included' ? 'text-[#00B4D8] font-semibold' : 'text-[#94A3B8]'}`}>{r.g}</td>
-                      <td className="py-2.5 text-[#00B4D8] font-semibold">{r.p}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h3 className="text-white font-bold text-sm mb-4">Every plan includes the whole platform</h3>
+            <p className="text-[#94A3B8] text-xs mb-4">Lot map, lot billing, dispatch links, customer CRM and white label PDFs come with Operations and Pro. Plans differ only by how many vehicles, reports and seats they include.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="rounded-xl bg-white/5 p-4">
+                <div className="text-white font-semibold mb-1">Above {crossover.vehicles} vehicles on lot, Pro costs less.</div>
+                <div className="text-[#94A3B8]">Vehicles are counted as the most on your lot at one time in a billing cycle.</div>
+              </div>
+              <div className="rounded-xl bg-white/5 p-4">
+                <div className="text-white font-semibold mb-1">Above {crossover.reports} reports a month, Pro costs less.</div>
+                <div className="text-[#94A3B8]">Only generated reports count. Drafts and abandoned inspections are free.</div>
+              </div>
             </div>
-            <p className="text-[#94A3B8] text-xs mt-4 border-t border-white/5 pt-4">Growth + all add-ons = $307/mo. Pro at $399 includes everything plus 225 additional reports and unlimited team.</p>
           </div>
         </FadeCard>
       </div>
@@ -812,27 +809,32 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
 }
 
 // ─── FAQ ──────────────────────────────────────────────────────────────────
+// Plan figures are read from lib/pricing so answers stay true when prices change.
+// Copy follows brief section 10: concrete figures, no em dashes.
+const OPS = PLANS.operations
+const PRO = PLANS.pro
+const DEMO = PLANS.demo
 const FAQ_ITEMS = [
   { q: 'Do I need to install anything?',
     a: "No. Condition IQ runs entirely in your browser and on your phone's browser. No app download, no software installation, no IT setup required." },
-  { q: 'What counts as a completed report?',
-    a: "A report is counted when an inspection is submitted — not when it's started. Inspections abandoned or cancelled within 24 hours do not count against your monthly total." },
-  { q: 'What happens when I hit my report limit?',
-    a: "You'll receive a notification as you approach your limit. Additional reports are billed at your plan's overage rate — $3.50 on Starter, $3.00 on Growth, $2.00 on Pro. You're never locked out." },
+  { q: 'What counts as a report?',
+    a: 'A report counts once it is generated. Drafts do not count, and an inspection left inactive for 24 hours is cancelled at no charge.' },
+  { q: 'What happens when I go past my plan?',
+    a: `You get an in-app warning at 80% of your allowance. After that, reports are $${OPS.additionalReportCost.toFixed(2)} each on Operations and $${PRO.additionalReportCost.toFixed(2)} on Pro, and vehicles on lot are $${OPS.additionalVehicleCost} each on Operations and $${PRO.additionalVehicleCost} on Pro. Paid plans are never locked out.` },
   { q: 'Does the free demo require a credit card?',
-    a: 'No. Your free demo includes 10 reports and 3 days of full access with no credit card required.' },
+    a: `No. The demo includes ${DEMO.reportsIncluded} reports and ${DEMO.trialDays} days of full access. When it ends, everything you recorded stays viewable and you can upgrade to keep inspecting.` },
   { q: 'How do I add team members?',
-    a: "Email the Condition IQ team and we'll add them within one business day. Limits: 3 on Starter, 5 on Growth, unlimited on Pro and Enterprise." },
-  { q: "What's the difference between Dispatch and Send to Inspector?",
-    a: 'Same feature. Dispatch is where you manage sent links and status. Send to Inspector is the action — generating a one-time link for an external person to complete an inspection.' },
+    a: `Admins add team members from Settings. Operations includes ${OPS.maxUsers} seats, and Pro and Enterprise include unlimited seats.` },
+  { q: 'How do I send an inspection to someone outside my team?',
+    a: 'Send a one-time link from any vehicle or from the Inspections page. The link shows as Sent until they start it, and links never use a seat.' },
   { q: 'Can I white label the reports?',
-    a: 'Yes. White Label branding applies to all generated PDFs — logo, header color, accent stripe, business name. Available as an add-on on Growth, included on Pro and Enterprise.' },
+    a: 'Yes, on Operations, Pro and Enterprise. Your logo, header color, accent stripe and business name appear on every generated PDF. Demo reports carry Condition IQ branding.' },
   { q: 'Is there a contract?',
-    a: 'No. Monthly plans are pay-as-you-go and can be cancelled at any time. Annual plans are billed upfront at a discount.' },
+    a: `No. Monthly plans can be cancelled at any time. Annual plans are billed upfront: $${OPS.annualCost?.toLocaleString()} for Operations and $${PRO.annualCost?.toLocaleString()} for Pro.` },
   { q: 'Can I export my data?',
-    a: 'Yes, on Pro and Enterprise. CSV export is available for your full vehicle inventory and inspection history.' },
+    a: 'Yes, on every plan. CSV export covers your vehicle inventory and inspection history.' },
   { q: 'Can multiple inspectors use the same account?',
-    a: "Yes. Your plan's team member limit controls how many users can be added. Pro and Enterprise have unlimited team members." },
+    a: `Yes. Operations includes ${OPS.maxUsers} seats. Pro and Enterprise include unlimited seats.` },
 ]
 
 function FAQ() {

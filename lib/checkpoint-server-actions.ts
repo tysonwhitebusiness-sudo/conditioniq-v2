@@ -3,6 +3,7 @@
 import { createAdminClient } from './supabase/admin'
 import { authorizeCompanyAccess } from './inspection-auth'
 import type { VehicleCheckpointDirection } from './checkpoint-actions'
+import { computeUsageState } from './usage-state'
 
 // Adapted from uploadInspectionPhoto (lib/inspection-server-actions.ts) — same
 // bucket + signed-URL pattern, but that function is coupled to inspection_id for
@@ -24,6 +25,12 @@ export async function uploadCheckpointPhoto(
 
   const ok = await authorizeCompanyAccess(companyId)
   if (!ok) throw new Error('Not authorized to upload photos for this vehicle')
+
+  // Every checkpoint (intake, outtake, backfill) uploads its photos through this
+  // action before the record is created, and createCheckpoint itself runs in the
+  // browser, so this is the server-side point where an ended demo is stopped.
+  const blockReason = (await computeUsageState(createAdminClient(), companyId)).blockReason
+  if (blockReason) throw new Error(blockReason)
 
   const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/)
   if (!match) throw new Error('Invalid image data')

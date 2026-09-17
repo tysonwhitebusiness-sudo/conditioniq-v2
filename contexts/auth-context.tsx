@@ -33,13 +33,19 @@ export interface Company {
   name: string
   slug: string | null
   subscription_tier: string
+  // No longer maintained: usage is derived from generated reports. Read usage
+  // through checkUsageState / usePlanUsage, never from this column.
   reports_used: number
-  reports_included: number
+  reports_included: number | null
   billing_cycle_start: string
   stripe_customer_id: string | null
   account_type: string
+  // Superseded by price_override_monthly / price_override_annual.
   legacy_pricing: boolean
   billing_interval: string
+  price_override_monthly?: number | null
+  price_override_annual?: number | null
+  trial_expires_at?: string | null
 }
 
 interface AuthContextValue {
@@ -271,7 +277,7 @@ export function createFakeAuthContext(opts?: {
 
   const fakeCompany: Company | null = companyId ? {
     id: companyId, name: 'Remote', slug: null,
-    subscription_tier: 'starter', reports_used: 0, reports_included: 30,
+    subscription_tier: 'operations', reports_used: 0, reports_included: null,
     billing_cycle_start: new Date().toISOString(),
     stripe_customer_id: null, account_type: 'standard',
     legacy_pricing: false, billing_interval: 'monthly',

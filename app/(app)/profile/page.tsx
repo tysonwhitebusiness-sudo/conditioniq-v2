@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, LogOut, CreditCard, Users, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
+import { getPlan } from '@/lib/pricing'
 
 export default function ProfilePage() {
   const { user, userProfile, company, loading, signOut, refreshProfile } = useAuth()
@@ -78,7 +79,7 @@ export default function ProfilePage() {
         <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Organization</p>
           <p className="font-semibold text-gray-900">{company.name}</p>
-          <p className="text-sm text-gray-500 capitalize mt-0.5">{company.subscription_tier} plan</p>
+          <p className="text-sm text-gray-500 mt-0.5">{getPlan(company.subscription_tier).name} plan</p>
         </div>
       )}
 

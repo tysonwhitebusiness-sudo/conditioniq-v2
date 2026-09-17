@@ -88,7 +88,7 @@ export default function HomeDashboard({}: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: '#FEF3C7', borderBottom: '1px solid #F59E0B' }}>
           <AlertTriangle size={16} color="#F59E0B" style={{ flexShrink: 0 }} />
           <p style={{ flex: 1, fontSize: 13, fontWeight: 500, color: '#92400E', margin: 0 }}>
-            {expiringCount} inspection{expiringCount !== 1 ? 's' : ''} will auto-complete in less than 4 hours.{' '}
+            {expiringCount} inspection{expiringCount !== 1 ? 's' : ''} will be cancelled in less than 4 hours if left inactive.{' '}
             <button onClick={() => router.push('/inspections?tab=in_progress')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#D97706', fontWeight: 600, fontSize: 13, textDecoration: 'underline' }}>
               Resume now →
             </button>

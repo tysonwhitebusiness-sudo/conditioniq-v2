@@ -8,6 +8,7 @@ import {
   Shield, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, Users, LayoutGrid, CreditCard, DollarSign, Palette, Settings, ChevronDown, User, Lock, ClipboardList,
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import { usePlanUsage } from '@/hooks/use-plan-usage'
 import { PRIMARY, AMBER, DANGER, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 export type NavTab = 'home' | 'queue' | 'history' | 'account'
@@ -53,10 +54,14 @@ export default function DesktopSidebar({
   const lotBillingEnabled = useFeatureFlag('lot_billing')
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const settingsOpen = pathname.startsWith('/settings')
-  const reportsUsed = effectiveCompany?.reports_used ?? 0
-  const reportsTotal = effectiveCompany?.reports_included ?? 10
-  const usagePct = Math.min(100, reportsTotal > 0 ? (reportsUsed / reportsTotal) * 100 : 0)
-  const usageBarColor = usagePct >= 100 ? DANGER : usagePct >= 80 ? AMBER : PRIMARY
+  // Derived usage, not the retired reports_used counter. Previously a profile with
+  // no company fell back to a fabricated "free · 0 / 10" meter; now the meter
+  // simply does not render until real usage loads.
+  const usage = usePlanUsage(effectiveCompany?.id)
+  const meterColor = (pct: number) => (pct >= 100 ? DANGER : pct >= 80 ? AMBER : PRIMARY)
+  const usagePct = usage ? Math.min(100, Math.max(usage.percentUsed, usage.vehicles.percentUsed)) : 0
+  const usageBarColor = meterColor(usagePct)
+  const nearLimit = !!usage && (usage.isNearLimit || usage.vehicles.isNearLimit)
   const displayName = userProfile?.full_name ?? user?.email ?? ''
   const initials = displayName.split(' ').filter(Boolean).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase() || 'U'
 
@@ -326,17 +331,39 @@ export default function DesktopSidebar({
         </div>
       ) : (
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${GRAY_300}` }}>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: GRAY_500 }}>{reportsUsed} / {reportsTotal} reports</span>
-              <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: GRAY_100, color: GRAY_500, textTransform: 'uppercase' }}>
-                {effectiveCompany?.subscription_tier ?? 'free'}
-              </span>
+          {usage && (
+            <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: GRAY_100, color: GRAY_500, textTransform: 'uppercase' }}>
+                  {usage.planName}
+                </span>
+              </div>
+              {[
+                { label: usage.demo.isDemo ? 'demo reports' : 'reports', used: usage.used, included: usage.included, pct: usage.percentUsed },
+                ...(usage.demo.isDemo ? [] : [{ label: 'vehicles (peak)', used: usage.vehicles.used, included: usage.vehicles.included, pct: usage.vehicles.percentUsed }]),
+              ].map(m => (
+                <div key={m.label}>
+                  <span style={{ fontSize: 11, color: GRAY_500 }}>
+                    {m.used}{m.included === null ? '' : ` / ${m.included}`} {m.label}
+                  </span>
+                  {m.included !== null && (
+                    <div style={{ height: 4, background: GRAY_100, borderRadius: 2, marginTop: 3 }}>
+                      <div style={{ height: 4, background: meterColor(m.pct), borderRadius: 2, width: `${Math.min(100, m.pct)}%`, transition: 'width 400ms ease' }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+              {!usage.canStartInspection ? (
+                <button onClick={() => router.push('/settings/billing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: DANGER, fontFamily: 'inherit' }}>
+                  Demo ended. View plans
+                </button>
+              ) : nearLimit && (
+                <button onClick={() => router.push('/settings/billing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: AMBER, fontFamily: 'inherit' }}>
+                  Approaching your plan limit
+                </button>
+              )}
             </div>
-            <div style={{ height: 4, background: GRAY_100, borderRadius: 2 }}>
-              <div style={{ height: 4, background: usageBarColor, borderRadius: 2, width: `${usagePct}%`, transition: 'width 400ms ease' }} />
-            </div>
-          </div>
+          )}
 
           {/* Profile and Sign out are siblings, not nested. A <button> inside a
               <button> is invalid HTML and threw a hydration error on every load. */}

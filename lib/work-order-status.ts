@@ -205,14 +205,35 @@ export async function updateWorkOrderStatus(
   if (oldStatus === newStatus) return
 
   const legacy = toLegacyColumns(newStatus)
+  const nowIso = new Date().toISOString()
+  const patch: Record<string, unknown> = {
+    work_order_status: newStatus,
+    status: legacy.status,
+    lifecycle_status: legacy.lifecycle_status,
+    updated_at: nowIso,
+  }
+
+  // A release must record when it happened. releaseVehicle() already did; this
+  // path did not, so vehicles released through a status change kept
+  // released_at null. That had two effects: lot billing (calculateVehicleBilling
+  // treats a null released_at as "still here") kept accruing storage days after
+  // the vehicle left, and vehicle metering counted it as on the lot forever.
+  // 49 production vehicles are in that state as of Sep 2026.
+  //
+  // arrived_at is deliberately not touched here: lot billing starts its day
+  // count from it, and changing it would change customer invoices.
+  if (newStatus === 'released') {
+    patch.released_at = nowIso
+    patch.released_date = nowIso.split('T')[0]
+  } else if (oldStatus === 'released') {
+    // Reopened: the earlier release no longer ends the stay.
+    patch.released_at = null
+    patch.released_date = null
+  }
+
   const { error: updateErr } = await supabase
     .from('storage_vehicles')
-    .update({
-      work_order_status: newStatus,
-      status: legacy.status,
-      lifecycle_status: legacy.lifecycle_status,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', vehicleId)
   if (updateErr) throw updateErr
 

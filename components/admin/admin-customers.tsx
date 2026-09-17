@@ -7,15 +7,15 @@ import { getCompaniesWithPendingRequests } from '@/lib/billing-actions'
 import { Search, ChevronRight, MessageSquare } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
-  demo:           { bg: '#F0F4F8', color: '#94A3B8' },
-  starter:        { bg: '#E0F7FC', color: '#0097B2' },
-  growth:         { bg: '#D1FAE5', color: '#065F46' },
-  pro:            { bg: '#EDE9FE', color: '#5B21B6' },
-  enterprise:     { bg: '#FEF3C7', color: '#92400E' },
-  legacy_starter: { bg: '#FFF0E8', color: '#C2410C' },
+  demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  operations: { bg: '#E0F7FC', color: '#0097B2' },
+  pro:        { bg: '#EDE9FE', color: '#5B21B6' },
+  enterprise: { bg: '#FEF3C7', color: '#92400E' },
 }
 
-const TIERS = ['demo', 'legacy_starter', 'starter', 'growth', 'pro', 'enterprise']
+const TIERS = ['demo', 'operations', 'pro', 'enterprise']
+
+type CompanyUsage = { planKey: string; reportsUsed: number; reportsIncluded: number | null; hasPriceOverride: boolean }
 
 export default function AdminCustomers() {
   const router = useRouter()
@@ -39,7 +39,7 @@ export default function AdminCustomers() {
   const filtered = companies.filter(c => {
     const q = search.toLowerCase()
     const matchSearch = !q || (c.name as string)?.toLowerCase().includes(q)
-    const matchTier = !tierFilter || c.subscription_tier === tierFilter
+    const matchTier = !tierFilter || (c.usage as CompanyUsage | undefined)?.planKey === tierFilter
     return matchSearch && matchTier
   })
 
@@ -80,11 +80,12 @@ export default function AdminCustomers() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(company => {
-            const tier = (company.subscription_tier as string) ?? 'starter'
-            const pc = PLAN_COLORS[tier] ?? PLAN_COLORS.starter
-            const used = (company.reports_used as number) ?? 0
-            const inc = (company.reports_included as number) ?? 1
-            const pct = Math.min(100, (used / Math.max(inc, 1)) * 100)
+            const usage = company.usage as CompanyUsage
+            const tier = usage.planKey
+            const pc = PLAN_COLORS[tier] ?? PLAN_COLORS.operations
+            const used = usage.reportsUsed
+            const inc = usage.reportsIncluded
+            const pct = inc === null ? 0 : Math.min(100, (used / Math.max(inc, 1)) * 100)
             const barColor = pct >= 100 ? '#EF4444' : pct >= 80 ? '#F4A62A' : '#00B4D8'
             const ageDays = Math.floor((Date.now() - new Date(company.created_at as string).getTime()) / 86400000)
             const hasPending = pendingCompanyIds.has(company.id as string)
@@ -99,8 +100,8 @@ export default function AdminCustomers() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
                     <span style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{company.name as string}</span>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: pc.bg, color: pc.color, flexShrink: 0 }}>{tier.toUpperCase()}</span>
-                    {(company.legacy_pricing as boolean) && (
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', flexShrink: 0 }}>LEGACY</span>
+                    {usage.hasPriceOverride && (
+                      <span title="Grandfathered: price held below the plan's list price" style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', flexShrink: 0 }}>HELD PRICE</span>
                     )}
                     {hasPending && (
                       <span title="Pending plan change request" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>
@@ -113,7 +114,7 @@ export default function AdminCustomers() {
                     <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, maxWidth: 200 }}>
                       <div style={{ height: 4, width: `${pct}%`, background: barColor, borderRadius: 2 }} />
                     </div>
-                    <span style={{ fontSize: 12, color: '#94A3B8' }}>{used}/{inc} reports</span>
+                    <span style={{ fontSize: 12, color: '#94A3B8' }}>{used}/{inc === null ? '∞' : inc} reports</span>
                   </div>
                 </div>
                 <ChevronRight size={16} color="#94A3B8" />

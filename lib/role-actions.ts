@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserCompanyRole } from './auth-server-actions'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
+import { getDefaultMemberCap } from '@/lib/pricing'
 
 // ── Authorization guard ───────────────────────────────────────────────────────
 // company_members' members_update/members_delete RLS policies only check the
@@ -58,6 +59,30 @@ export async function getCompanyMembers(companyId: string) {
   return data ?? []
 }
 
+// Seat limits were stored (team_members.config.cap, set from the admin screen)
+// and shown on the billing page, but never checked here. An admin-set cap wins
+// over the plan's default; null means unlimited. Someone who is already a
+// member is exempt, because the upsert below also serves as a role change.
+async function checkSeatAvailable(companyId: string, userId: string): Promise<string | null> {
+  const admin = createAdminClient()
+  const [{ data: existing }, { count }, { data: company }, { data: capFlag }] = await Promise.all([
+    admin.from('company_members').select('id').eq('company_id', companyId).eq('user_id', userId).maybeSingle(),
+    admin.from('company_members').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
+    admin.from('companies').select('subscription_tier').eq('id', companyId).maybeSingle(),
+    admin.from('company_feature_flags').select('config').eq('company_id', companyId).eq('feature_key', 'team_members').maybeSingle(),
+  ])
+  if (existing) return null
+
+  const overrideCap = (capFlag?.config as { cap?: number } | null)?.cap
+  const cap = typeof overrideCap === 'number' ? overrideCap : getDefaultMemberCap(company?.subscription_tier)
+  if (cap === null) return null
+
+  if ((count ?? 0) >= cap) {
+    return `Your plan includes ${cap} seat${cap === 1 ? '' : 's'}, and all are in use. Remove a member or upgrade your plan to add another.`
+  }
+  return null
+}
+
 export async function addCompanyMember(
   companyId: string,
   email: string,
@@ -81,6 +106,9 @@ export async function addCompanyMember(
 
   if (lookupError) return { error: `Lookup failed: ${lookupError.message}` }
   if (!profile) return { error: 'No account found with that email. They must sign up first.' }
+
+  const seatError = await checkSeatAvailable(companyId, profile.id)
+  if (seatError) return { error: seatError }
 
   const { error } = await supabase
     .from('company_members')

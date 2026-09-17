@@ -1,6 +1,6 @@
 'use client'
 
-import { Car, AlertTriangle, Clock } from 'lucide-react'
+import { Car, AlertTriangle, Clock, Lock } from 'lucide-react'
 import type { UsageState } from '@/lib/usage-actions'
 import { PRIMARY, PRIMARY_LIGHT, WHITE, DANGER, DANGER_LIGHT, SCORE_CRITICAL_TEXT, WARN, WARN_LIGHT, WARN_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
@@ -13,8 +13,60 @@ interface Props {
 
 export default function UsageConfirmationModal({ usageState, onConfirm, onCancel, loading }: Props) {
   const pct = usageState.percentUsed
-  const isOverage = usageState.isOverage
-  const isWarning = !isOverage && pct >= 80
+  const unlimited = usageState.included === null
+  const isOverage = !unlimited && usageState.isOverage
+  const isWarning = !isOverage && usageState.isNearLimit
+  const cycleWord = usageState.demo?.isDemo ? 'in your demo' : 'this billing cycle'
+
+  // An ended demo cannot start new inspections. The server enforces this too;
+  // showing it here means the user learns why before tapping Start.
+  if (usageState.canStartInspection === false) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(13,27,42,0.65)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+        <div role="alertdialog" aria-labelledby="demo-ended-title" style={{
+          background: WHITE, borderRadius: 20, width: '100%', maxWidth: 380,
+          padding: 24, boxShadow: '0 20px 60px rgba(13,27,42,0.2)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 28, background: WARN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Lock size={26} color={WARN_DARK} />
+            </div>
+          </div>
+          <h2 id="demo-ended-title" style={{ fontSize: 20, fontWeight: 700, color: GRAY_900, textAlign: 'center', margin: '0 0 8px' }}>
+            Upgrade to keep inspecting
+          </h2>
+          <p style={{ fontSize: 14, color: GRAY_700, textAlign: 'center', margin: '0 0 20px', lineHeight: 1.5 }}>
+            {usageState.blockReason}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <a
+              href="/settings/billing"
+              style={{
+                height: 52, borderRadius: 12, fontWeight: 700, fontSize: 15, background: PRIMARY, color: WHITE,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none',
+              }}
+            >
+              View plans
+            </a>
+            <button
+              onClick={onCancel}
+              style={{
+                height: 48, borderRadius: 12, background: WHITE,
+                border: `1.5px solid ${GRAY_300}`, color: GRAY_700,
+                fontWeight: 600, fontSize: 15, cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -47,7 +99,7 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
         {/* Subtitle */}
         <p style={{ fontSize: 14, color: GRAY_700, textAlign: 'center', margin: '0 0 4px', lineHeight: 1.5 }}>
           {isOverage
-            ? `You've used all ${usageState.included} reports this month.`
+            ? `You've used all ${usageState.included} reports ${cycleWord}.`
             : `Completing this inspection will use 1 report from your ${usageState.planName} plan.`}
         </p>
         {isOverage && (
@@ -64,7 +116,7 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
           }}>
             <AlertTriangle size={16} color={WARN} style={{ flexShrink: 0 }} />
             <p style={{ fontSize: 13, color: WARN_DARK, margin: 0 }}>
-              You've used {Math.round(pct)}% of your monthly limit.
+              You've used {Math.round(pct)}% of your report allowance {cycleWord}.
             </p>
           </div>
         )}
@@ -80,8 +132,8 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
           </div>
         )}
 
-        {/* Usage bar — under 100% */}
-        {!isOverage && (
+        {/* Usage bar — under 100%, and only when there is an allowance to measure against */}
+        {!isOverage && !unlimited && (
           <div style={{ background: GRAY_100, borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 13, color: GRAY_700 }}>Reports used</span>
@@ -96,7 +148,7 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
               }} />
             </div>
             <p style={{ fontSize: 13, color: GRAY_700, margin: '8px 0 0' }}>
-              {usageState.remaining} report{usageState.remaining !== 1 ? 's' : ''} remaining this month.
+              {usageState.remaining} report{usageState.remaining !== 1 ? 's' : ''} remaining {cycleWord}.
             </p>
           </div>
         )}

@@ -5,11 +5,12 @@ import { getAdminStats, getOverageTracker, getMRRByMonth, getRecentCustomerActiv
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { DollarSign, Users, FileText, TrendingUp, Activity, AlertTriangle, CheckCircle } from 'lucide-react'
 
+// Keyed by current plan; retired names are normalized server-side first.
 const PLAN_COLORS: Record<string, string> = {
-  demo: '#94A3B8', starter: '#00B4D8', growth: '#10B981', pro: '#8B5CF6', enterprise: '#F4A62A', legacy_starter: '#64748B',
+  demo: '#94A3B8', operations: '#00B4D8', pro: '#8B5CF6', enterprise: '#F4A62A',
 }
 const PLAN_LABELS: Record<string, string> = {
-  demo: 'DEMO', starter: 'STARTER', growth: 'GROWTH', pro: 'PRO', enterprise: 'ENT', legacy_starter: 'LEGACY',
+  demo: 'DEMO', operations: 'OPS', pro: 'PRO', enterprise: 'ENT',
 }
 const ACT_COLORS: Record<string, string> = { signup: '#10B981', upgrade: '#00B4D8', downgrade: '#F4A62A', cancel: '#EF4444' }
 
@@ -55,7 +56,7 @@ export default function AdminOverview() {
 
   const topCustomers = (stats?.topCustomers ?? []) as Record<string, unknown>[]
   const planCounts: Record<string, number> = {}
-  topCustomers.forEach(c => { const t = (c.subscription_tier as string) ?? 'demo'; planCounts[t] = (planCounts[t] ?? 0) + 1 })
+  topCustomers.forEach(c => { const t = (c.usage as { planKey?: string })?.planKey ?? 'demo'; planCounts[t] = (planCounts[t] ?? 0) + 1 })
   const planData = Object.entries(planCounts).map(([name, value]) => ({ name, value }))
 
   const statCards = [
@@ -117,23 +118,25 @@ export default function AdminOverview() {
         <Card>
           <SH>Top Customers by Usage</SH>
           {topCustomers.length === 0 ? <p style={{ fontSize: 14, color: '#94A3B8' }}>No customers yet</p> : topCustomers.map(c => {
-            const used = (c.reports_used as number) ?? 0
-            const inc = (c.reports_included as number) ?? 1
-            const pct = Math.min(100, (used / Math.max(inc, 1)) * 100)
+            const u = c.usage as { reportsUsed: number; reportsIncluded: number | null; planKey: string; hasPriceOverride: boolean }
+            const used = u.reportsUsed
+            const inc = u.reportsIncluded
+            const pct = inc === null ? 0 : Math.min(100, (used / Math.max(inc, 1)) * 100)
             const barColor = pct >= 100 ? '#EF4444' : pct >= 80 ? '#F4A62A' : '#00B4D8'
-            const tier = (c.subscription_tier as string) ?? 'demo'
+            const tier = u.planKey
             return (
               <div key={c.id as string} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name as string}</span>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 10, background: `${PLAN_COLORS[tier] ?? '#94A3B8'}20`, color: PLAN_COLORS[tier] ?? '#94A3B8', flexShrink: 0 }}>{PLAN_LABELS[tier] ?? tier}</span>
+                    {u.hasPriceOverride && <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', flexShrink: 0 }}>HELD PRICE</span>}
                   </div>
                   <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
                     <div style={{ height: 4, width: `${pct}%`, background: barColor, borderRadius: 2 }} />
                   </div>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9', flexShrink: 0 }}>{used}/{inc}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9', flexShrink: 0 }}>{used}/{inc === null ? '∞' : inc}</span>
               </div>
             )
           })}
@@ -147,7 +150,7 @@ export default function AdminOverview() {
           {overage.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
               <CheckCircle size={28} color="#10B981" style={{ display: 'block', margin: '0 auto 8px' }} />
-              <p style={{ fontSize: 13, color: '#10B981', fontWeight: 600, margin: 0 }}>No overages this month</p>
+              <p style={{ fontSize: 13, color: '#10B981', fontWeight: 600, margin: 0 }}>No overages this cycle</p>
             </div>
           ) : overage.map(c => (
             <div key={c.id as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -156,7 +159,12 @@ export default function AdminOverview() {
                 <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{c.planName as string}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#F4A62A', margin: 0 }}>{c.overageCount as number} over</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#F4A62A', margin: 0 }}>
+                  {[
+                    (c.overageCount as number) > 0 ? `${c.overageCount} reports` : null,
+                    (c.vehicleOverageCount as number) > 0 ? `${c.vehicleOverageCount} vehicles` : null,
+                  ].filter(Boolean).join(' · ')} over
+                </p>
                 <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>${(c.overageRevenue as number).toFixed(2)}</p>
               </div>
             </div>

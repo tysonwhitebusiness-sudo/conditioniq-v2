@@ -84,6 +84,18 @@ delete from company_feature_flags f
    and f.feature_key = 'white_label'
    and c.subscription_tier in ('operations', 'pro', 'enterprise');
 
+-- The nightly reset-billing-cycles job zeroes reports_used (no longer read) and
+-- adds 30 days to billing_cycle_start. The app now derives each cycle from that
+-- column's day of month, so adding 30 days would walk every account's billing
+-- day backwards by a day or two each month. Stop the job; the column stays a
+-- fixed anchor. The function itself is left in place, unscheduled.
+do $$
+begin
+  if exists (select 1 from cron.job where jobname = 'reset-billing-cycles') then
+    perform cron.unschedule('reset-billing-cycles');
+  end if;
+end $$;
+
 commit;
 
 -- ── Verify after applying ─────────────────────────────────────────────────────
@@ -99,3 +111,6 @@ commit;
 --   from company_feature_flags f join companies c on c.id = f.company_id
 --  where f.enabled = false;
 --   -> no white_label, lot_map, lot_billing or reporting_export rows for paid plans
+--
+-- select jobname from cron.job where jobname = 'reset-billing-cycles';
+--   -> no rows

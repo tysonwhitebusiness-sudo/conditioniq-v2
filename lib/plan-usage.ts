@@ -3,9 +3,11 @@
 
 // ── Billing cycle ─────────────────────────────────────────────────────────────
 // Each account is billed on its own day of the month, anchored to
-// companies.billing_cycle_start. That column is never advanced, so the current
-// cycle is derived from the anchor's day-of-month rather than read directly.
-// Deriving it means the cycle rolls over on schedule with no job to run.
+// companies.billing_cycle_start. The current cycle is derived from the anchor's
+// day-of-month rather than read directly, so it rolls over with no job to run.
+// The column must therefore stay fixed: the old reset-billing-cycles cron, which
+// added 30 days nightly and drifted the day, is unscheduled by migration
+// 20260916000000. Pay Per Use ignores the anchor and uses the calendar month.
 //
 // An anchor on the 29th-31st lands on the last day of shorter months.
 
@@ -26,13 +28,17 @@ export interface BillingCycle {
   end: Date
 }
 
+// Calendar month containing `now`, offset by whole months (-1 = the month before).
+// UTC, matching currentBillingCycle's calendar fallback that Pay Per Use uses.
+export function calendarMonth(now: Date, offset = 0): BillingCycle {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset + 1, 1))
+  return { start, end }
+}
+
 export function currentBillingCycle(anchorIso: string | null | undefined, now: Date = new Date()): BillingCycle {
   // No anchor recorded: fall back to the calendar month.
-  if (!anchorIso) {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
-    return { start, end }
-  }
+  if (!anchorIso) return calendarMonth(now)
   const anchor = new Date(anchorIso)
   const anchorDay = anchor.getUTCDate()
 

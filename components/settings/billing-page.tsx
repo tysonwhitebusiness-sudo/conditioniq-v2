@@ -7,7 +7,7 @@ import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import {
   getPlan, normalizePlanKey, calcOverage, effectiveMonthlyPrice, effectiveAnnualPrice, hasPriceOverride,
-  planHighlights, PLANS, PUBLIC_PLAN_ORDER,
+  planHighlights, formatPlanPrice, planCrossovers, PLANS, PUBLIC_PLAN_ORDER,
 } from '@/lib/pricing'
 import {
   getBillingPageData, submitPlanChangeRequest,
@@ -19,6 +19,7 @@ import { Check, ChevronDown, ChevronUp, X, Loader2, AlertTriangle } from 'lucide
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
   demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  pay_per_use: { bg: '#DCFCE7', color: '#166534' },
   operations: { bg: '#E0F7FC', color: '#0097B2' },
   pro:        { bg: '#EDE9FE', color: '#5B21B6' },
   enterprise: { bg: '#FEF3C7', color: '#92400E' },
@@ -290,7 +291,8 @@ export default function BillingPage() {
     : null
 
   const price = billingInterval === 'annual' ? effectiveAnnualPrice(planFields) : effectiveMonthlyPrice(planFields)
-  const priceDisplay = tier === 'demo' ? 'Free'
+  const priceDisplay = plan.usageBased ? formatPlanPrice(plan)
+    : tier === 'demo' ? 'Free'
     : price === null ? 'Custom'
     : `$${price.toLocaleString()}/${billingInterval === 'annual' ? 'yr' : 'mo'}`
 
@@ -346,7 +348,10 @@ export default function BillingPage() {
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <p style={{ fontSize: 26, fontWeight: 800, color: '#0D1B2A', margin: 0, lineHeight: 1 }}>{priceDisplay}</p>
-                  {billingInterval === 'annual' && tier !== 'enterprise' && tier !== 'demo' && (
+                  {plan.usageBased && (
+                    <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>no monthly fee</p>
+                  )}
+                  {billingInterval === 'annual' && tier !== 'enterprise' && tier !== 'demo' && !plan.usageBased && (
                     <p style={{ fontSize: 11, color: '#94A3B8', margin: '4px 0 0' }}>billed annually</p>
                   )}
                 </div>
@@ -356,11 +361,30 @@ export default function BillingPage() {
             {/* ── 2. Usage ── */}
             <Card>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                <SectionLabel>{usage?.demo.isDemo ? 'Demo Usage' : 'Usage This Cycle'}</SectionLabel>
+                <SectionLabel>{usage?.demo.isDemo ? 'Demo Usage' : plan.usageBased ? 'Usage This Month' : 'Usage This Cycle'}</SectionLabel>
                 {!usage?.demo.isDemo && <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{resetLabel(usage?.cycle.end)}</p>}
               </div>
 
-              {usage && overage ? (
+              {usage?.usageBased ? (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: '#0D1B2A', margin: 0 }}>
+                      {usage.used} {usage.used === 1 ? 'report' : 'reports'} this month
+                    </p>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>
+                      ${(usage.estimatedCharge ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#94A3B8', margin: '4px 0 0', lineHeight: 1.5 }}>
+                    Estimated charge at ${usage.overageRate.toFixed(2)} per report, invoiced at the end of the month.
+                  </p>
+                  {usage.used > planCrossovers().payPerUseReports && (
+                    <p style={{ fontSize: 12, color: '#0097B2', margin: '8px 0 0', lineHeight: 1.5 }}>
+                      Above {planCrossovers().payPerUseReports} reports a month, {PLANS.operations.name} at {formatPlanPrice(PLANS.operations)} costs less and adds the lot platform.
+                    </p>
+                  )}
+                </div>
+              ) : usage && overage ? (
                 <>
                   <Meter
                     label="Reports" unit="report"

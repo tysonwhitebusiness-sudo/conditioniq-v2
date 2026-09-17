@@ -93,7 +93,7 @@ export default function BillingDashboard() {
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-[#1e3a5f]">
-              {basePrice === null ? 'Custom' : <>${basePrice}<span className="text-sm font-normal text-gray-400">/mo</span></>}
+              {plan.usageBased ? formatPlanPrice(plan) : basePrice === null ? 'Custom' : <>${basePrice}<span className="text-sm font-normal text-gray-400">/mo</span></>}
             </p>
             {heldPrice && <p className="text-xs text-gray-400">Grandfathered price</p>}
           </div>
@@ -114,18 +114,19 @@ export default function BillingDashboard() {
       {/* Usage Meters */}
       <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-4">
         <p className="text-xs text-gray-400 uppercase tracking-wide">
-          {usageState.demo.isDemo ? 'Demo Usage' : `Usage This Cycle · ${new Date(usageState.cycle.start).toLocaleDateString()} to ${nextCycle.toLocaleDateString()}`}
+          {usageState.demo.isDemo ? 'Demo Usage' : plan.usageBased ? `Usage This Month · ${new Date(usageState.cycle.start).toLocaleDateString(undefined, { timeZone: 'UTC' })} to ${new Date(nextCycle.valueOf() - 1).toLocaleDateString(undefined, { timeZone: 'UTC' })}` : `Usage This Cycle · ${new Date(usageState.cycle.start).toLocaleDateString()} to ${nextCycle.toLocaleDateString()}`}
         </p>
         {[
           { label: 'Reports', meter: usageState as { used: number; included: number | null; percentUsed: number; isNearLimit: boolean }, unit: 'report', line: overage.reports },
-          { label: 'Vehicles on lot (peak)', meter: vehicles, unit: 'vehicle', line: overage.vehicles },
+          // Pay Per Use has no lot platform, so no vehicle meter.
+          ...(plan.usageBased ? [] : [{ label: 'Vehicles on lot (peak)', meter: vehicles, unit: 'vehicle', line: overage.vehicles }]),
         ].map(({ label, meter, unit, line }) => (
           <div key={label} className="space-y-2">
             <div className="flex items-end justify-between">
               <p className="text-sm font-medium text-gray-700">{label}</p>
               <p className="text-sm text-gray-500">
                 <span className="text-xl font-bold text-gray-900">{meter.used}</span>
-                {meter.included === null ? ' · unlimited' : ` of ${meter.included} included`}
+                {plan.usageBased ? ` · ${formatPlanPrice(plan)}` : meter.included === null ? ' · unlimited' : ` of ${meter.included} included`}
               </p>
             </div>
             {meter.included !== null && (
@@ -136,7 +137,7 @@ export default function BillingDashboard() {
                 />
               </div>
             )}
-            {line.over > 0 && (
+            {line.over > 0 && !plan.usageBased && (
               <p className="text-sm text-orange-600 font-medium">
                 {line.over} over the allowance, billed at ${line.rate.toFixed(2)} per {unit}
               </p>
@@ -146,7 +147,7 @@ export default function BillingDashboard() {
             )}
           </div>
         ))}
-        {vehicles.included !== null && (
+        {vehicles.included !== null && !plan.usageBased && (
           <p className="text-xs text-gray-400">Vehicles are billed on the most on your lot at one time this cycle. {vehicles.current} on the lot now.</p>
         )}
       </div>
@@ -154,19 +155,19 @@ export default function BillingDashboard() {
       {/* Estimated Invoice */}
       {!usageState.demo.isDemo && (
         <div className="bg-white rounded-2xl p-5 border border-gray-200 space-y-3">
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Estimated Next Invoice</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">{plan.usageBased ? 'Estimated Month-End Invoice' : 'Estimated Next Invoice'}</p>
           {estimated === null ? (
             <p className="text-sm text-gray-500">Enterprise accounts are invoiced on contract terms.</p>
           ) : (
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
+              {!plan.usageBased && <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Base ({plan.name}{heldPrice ? ', grandfathered' : ''})</span>
                 <span>${(basePrice ?? 0).toFixed(2)}</span>
-              </div>
+              </div>}
               {overage.reports.cost > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Report overage ({overage.reports.over} × ${overage.reports.rate.toFixed(2)})</span>
-                  <span className="text-orange-600">${overage.reports.cost.toFixed(2)}</span>
+                  <span className="text-gray-500">{plan.usageBased ? 'Reports' : 'Report overage'} ({overage.reports.over} × ${overage.reports.rate.toFixed(2)})</span>
+                  <span className={plan.usageBased ? undefined : 'text-orange-600'}>${overage.reports.cost.toFixed(2)}</span>
                 </div>
               )}
               {overage.vehicles.cost > 0 && (
@@ -181,7 +182,11 @@ export default function BillingDashboard() {
               </div>
             </div>
           )}
-          <p className="text-xs text-gray-400">Next billing date: {nextCycle.toLocaleDateString()}</p>
+          <p className="text-xs text-gray-400">
+            {plan.usageBased
+              ? `Invoiced after the month ends on ${new Date(nextCycle.valueOf() - 1).toLocaleDateString(undefined, { timeZone: 'UTC' })}.`
+              : `Next billing date: ${nextCycle.toLocaleDateString()}`}
+          </p>
         </div>
       )}
 
@@ -273,7 +278,7 @@ function UpgradeModal({ onClose, currentPlan, companyId, companyName }: { onClos
                   onClick={() => handleRequest(p.key)}
                   className="w-full py-2 bg-[#1e3a5f] text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2"
                 >
-                  <ArrowUp size={14} /> Request Upgrade
+                  <ArrowUp size={14} /> Request Plan Change
                 </button>
               )}
             </div>

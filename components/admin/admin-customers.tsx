@@ -8,12 +8,13 @@ import { Search, ChevronRight, MessageSquare } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
   demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  pay_per_use: { bg: '#DCFCE7', color: '#166534' },
   operations: { bg: '#E0F7FC', color: '#0097B2' },
   pro:        { bg: '#EDE9FE', color: '#5B21B6' },
   enterprise: { bg: '#FEF3C7', color: '#92400E' },
 }
 
-const TIERS = ['demo', 'operations', 'pro', 'enterprise']
+const TIERS = ['demo', 'pay_per_use', 'operations', 'pro', 'enterprise']
 
 type CompanyUsage = { planKey: string; reportsUsed: number; reportsIncluded: number | null; hasPriceOverride: boolean }
 

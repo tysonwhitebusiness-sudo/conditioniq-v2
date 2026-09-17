@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import { usePlanUsage } from '@/hooks/use-plan-usage'
+import { usePlan } from '@/hooks/use-plan'
 import { PRIMARY, AMBER, DANGER, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 export type NavTab = 'home' | 'queue' | 'history' | 'account'
@@ -58,6 +59,7 @@ export default function DesktopSidebar({
   // no company fell back to a fabricated "free · 0 / 10" meter; now the meter
   // simply does not render until real usage loads.
   const usage = usePlanUsage(effectiveCompany?.id)
+  const { plan } = usePlan()
   const meterColor = (pct: number) => (pct >= 100 ? DANGER : pct >= 80 ? AMBER : PRIMARY)
   const usagePct = usage ? Math.min(100, Math.max(usage.percentUsed, usage.vehicles.percentUsed)) : 0
   const usageBarColor = meterColor(usagePct)
@@ -78,7 +80,10 @@ export default function DesktopSidebar({
     else if (item.type === 'action' && item.id === 'send-inspector') onSendToInspector?.()
   }
 
-  const inspItems: NavItem[] = [
+  // Pay Per Use has no lot platform: its home screen is the inspections list.
+  const inspItems: NavItem[] = !plan.hasPlatform ? [
+    { id: 'inspections', label: 'Inspections', icon: <ClipboardList size={18} />, type: 'route' as const, route: '/' },
+  ] : [
     { id: 'dashboard',    label: 'Dashboard',         icon: <LayoutDashboard size={18} />, type: 'route' as const, route: '/' },
     { id: 'vehicles',     label: 'Vehicles',          icon: <Car size={18} />,           type: 'route', route: '/vehicles' },
     { id: 'customers',    label: 'Customers',         icon: <Users size={18} />,         type: 'route' as const, route: '/customers' },
@@ -338,7 +343,11 @@ export default function DesktopSidebar({
                   {usage.planName}
                 </span>
               </div>
-              {[
+              {usage.usageBased ? (
+                <span style={{ fontSize: 11, color: GRAY_500 }}>
+                  {usage.used} {usage.used === 1 ? 'report' : 'reports'} this month · ${(usage.estimatedCharge ?? 0).toFixed(2)}
+                </span>
+              ) : [
                 { label: usage.demo.isDemo ? 'demo reports' : 'reports', used: usage.used, included: usage.included, pct: usage.percentUsed },
                 ...(usage.demo.isDemo ? [] : [{ label: 'vehicles (peak)', used: usage.vehicles.used, included: usage.vehicles.included, pct: usage.vehicles.percentUsed }]),
               ].map(m => (

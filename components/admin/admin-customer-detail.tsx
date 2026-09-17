@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getCompanyById, updateCompanyBilling, getCompanyInspections, getCompanyUsage } from '@/lib/admin-actions'
+import { getCompanyById, updateCompanyBilling, getCompanyInspections, getCompanyUsage, getPayPerUseStatement, type PayPerUseMonth } from '@/lib/admin-actions'
 import type { UsageState } from '@/lib/usage-state'
 import { getFeatureFlags, upsertFeatureFlag } from '@/lib/feature-flags'
 import type { FeatureFlags, FeatureKey } from '@/lib/feature-flags'
-import { getPlan, getDefaultMemberCap, normalizePlanKey, effectiveMonthlyPrice, effectiveAnnualPrice, PUBLIC_PLAN_ORDER } from '@/lib/pricing'
+import { getPlan, getDefaultMemberCap, normalizePlanKey, effectiveMonthlyPrice, effectiveAnnualPrice, formatPlanPrice, PUBLIC_PLAN_ORDER } from '@/lib/pricing'
 import { getPlanChangeRequests, updatePlanChangeRequestStatus } from '@/lib/billing-actions'
 import type { PlanChangeRequest } from '@/lib/billing-actions'
 import {
@@ -19,10 +19,14 @@ import { ArrowLeft, Ghost, Plus, Lock, LayoutGrid, Clock } from 'lucide-react'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
   demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  pay_per_use: { bg: '#DCFCE7', color: '#166534' },
   operations: { bg: '#E0F7FC', color: '#0097B2' },
   pro:        { bg: '#EDE9FE', color: '#5B21B6' },
   enterprise: { bg: '#FEF3C7', color: '#92400E' },
 }
+
+// UTC to match how the month is counted.
+const monthName = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 // Empty input means "use the plan default" (null in the database).
 function parseOptionalNumber(raw: string): number | null {
@@ -114,6 +118,7 @@ export default function AdminCustomerDetail() {
   const [planRequests, setPlanRequests] = useState<PlanChangeRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
   const [usage, setUsage] = useState<UsageState | null>(null)
+  const [ppu, setPpu] = useState<{ lastMonth: PayPerUseMonth; thisMonth: PayPerUseMonth } | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -137,6 +142,7 @@ export default function AdminCustomerDetail() {
       getCompanyUsage(companyId),
     ])
     setUsage(u)
+    setPpu(u.usageBased ? await getPayPerUseStatement(companyId) : null)
     setInspections(ins as Record<string, unknown>[])
     setNotes(n)
     setFlags(f)
@@ -258,7 +264,8 @@ export default function AdminCustomerDetail() {
   }
   const hasHeldPrice = billingFields.price_override_monthly != null || billingFields.price_override_annual != null
   const effectivePrice = currentInterval === 'annual' ? effectiveAnnualPrice(billingFields) : effectiveMonthlyPrice(billingFields)
-  const planCostDisplay = currentTier === 'demo' ? 'Free'
+  const planCostDisplay = currentPlan.usageBased ? formatPlanPrice(currentPlan)
+    : currentTier === 'demo' ? 'Free'
     : effectivePrice === null ? 'Custom'
     : `$${effectivePrice.toLocaleString()}/${currentInterval === 'annual' ? 'yr' : 'mo'}`
   const companyPlanKey = normalizePlanKey(company.subscription_tier as string)
@@ -310,7 +317,28 @@ export default function AdminCustomerDetail() {
           <SH>Billing Controls</SH>
 
           {/* Usage this cycle — derived from generated reports and vehicle arrivals/releases, not editable */}
-          {usage && (
+          {usage?.usageBased && ppu && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              {[
+                { label: `Last month (${monthName(ppu.lastMonth.start)}) to invoice`, m: ppu.lastMonth },
+                { label: `This month (${monthName(ppu.thisMonth.start)}) so far`, m: ppu.thisMonth },
+              ].map(({ label, m }) => (
+                <div key={label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px' }}>
+                  <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>{label}</p>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9', margin: 0 }}>
+                    ${m.amount.toFixed(2)}
+                    <span style={{ fontSize: 11, fontWeight: 500, color: '#94A3B8', marginLeft: 6 }}>
+                      {m.reports} {m.reports === 1 ? 'report' : 'reports'} × ${m.rate.toFixed(2)}
+                    </span>
+                  </p>
+                </div>
+              ))}
+              <p style={{ gridColumn: '1 / -1', fontSize: 11, color: '#94A3B8', margin: 0 }}>
+                Pay Per Use: every generated report in the calendar month (UTC), invoiced manually.
+              </p>
+            </div>
+          )}
+          {usage && !usage.usageBased && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px' }}>
                 <p style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>
@@ -384,7 +412,7 @@ export default function AdminCustomerDetail() {
             <span style={{ fontSize: 12, color: '#94A3B8' }}>{currentPlan.name}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#F1F5F9' }}>{planCostDisplay}</span>
-              {currentTier !== 'enterprise' && currentTier !== 'demo' && (
+              {currentTier !== 'enterprise' && currentTier !== 'demo' && !currentPlan.usageBased && (
                 <span style={{ fontSize: 11, color: '#94A3B8' }}>
                   {currentPlan.reportsIncluded} reports + ${currentPlan.additionalReportCost}/report · {currentPlan.vehiclesIncluded} vehicles + ${currentPlan.additionalVehicleCost}/vehicle
                 </span>

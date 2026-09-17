@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Lock, ChevronRight, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
@@ -20,11 +20,16 @@ import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import { checkUsageState, initiateInspection } from '@/lib/usage-actions'
 import { getDeviceId } from '@/lib/device-id'
 import type { UsageState } from '@/lib/usage-actions'
+import { getPlan } from '@/lib/pricing'
+import { INSPECTION_STATUSES } from '@/lib/unified-inspections'
+import type { StatusFilter } from '@/components/queue/queue-page'
 
 type AppStep = 'browse' | 'inspecting' | 'completed'
 type NavTab = 'home' | 'queue' | 'history' | 'account'
 
 const SESSION_KEY = 'vcr_in_progress'
+
+const NAV_TABS: NavTab[] = ['home', 'queue', 'history', 'account']
 
 const DESKTOP_PAGE_TITLES: Record<NavTab, string> = {
   home: 'Dashboard',
@@ -38,7 +43,17 @@ export default function VehicleInspectionApp() {
   const { user, effectiveCompany, isOwnerUser } = useAuth()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const searchParams = useSearchParams()
-  const [navTab, setNavTab] = useState<NavTab>((searchParams.get('tab') as NavTab) ?? 'home')
+  // Pay Per Use has no lot dashboard: its home is the full inspections list.
+  const usageBasedHome = !getPlan(effectiveCompany?.subscription_tier).hasPlatform
+  const requestedTab = searchParams.get('tab') as NavTab | null
+  const [navTab, setNavTab] = useState<NavTab>(requestedTab && NAV_TABS.includes(requestedTab) ? requestedTab : 'home')
+  const homeTab: NavTab = usageBasedHome && navTab === 'home' ? 'queue' : navTab
+  // Filters carried over from /inspections, which redirects here for Pay Per Use.
+  const statusParam = searchParams.get('status')
+  const homeFilter: StatusFilter = statusParam && (INSPECTION_STATUSES as string[]).includes(statusParam)
+    ? statusParam as StatusFilter
+    : 'all'
+  const sendParam = searchParams.get('send')
   const [appStep, setAppStep] = useState<AppStep>('browse')
   const [showActionSheet, setShowActionSheet] = useState(false)
   const [showVehiclePicker, setShowVehiclePicker] = useState(false)
@@ -97,6 +112,18 @@ export default function VehicleInspectionApp() {
     setUsageState(state)
     setShowUsageModal(true)
   }, [effectiveCompany, user, doStartInspection])
+
+  // The Pay Per Use bottom nav has no lot screen to add a vehicle from; its center
+  // button links here with ?start=1 to open the start flow directly.
+  const startParam = searchParams.get('start')
+  const startHandled = useRef(false)
+  useEffect(() => {
+    if (startParam !== '1') { startHandled.current = false; return }
+    if (startHandled.current || !effectiveCompany || !user) return
+    startHandled.current = true
+    router.replace('/')
+    handleStartInspection()
+  }, [startParam, effectiveCompany, user, router, handleStartInspection])
 
   const handleResumeInspection = useCallback(async (data: any) => {
     if (data.locked_at) {
@@ -204,7 +231,7 @@ export default function VehicleInspectionApp() {
       return (
         <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
           <DesktopSidebar
-            activeTab={navTab}
+            activeTab={homeTab}
             onTabChange={tab => setNavTab(tab as NavTab)}
             onStartInspection={() => handleStartInspection()}
             onSendToInspector={() => setShowSendSheet(true)}
@@ -266,7 +293,7 @@ export default function VehicleInspectionApp() {
           onClick={() => { setAppStep('browse'); setCurrentInspectionId(null); setCurrentInspectionData({}) }}
           style={{ background: GRAY_900, color: WHITE, padding: '14px 32px', borderRadius: 32, fontWeight: 700, fontSize: 15, border: 'none', cursor: 'pointer', width: '100%', maxWidth: 360 }}
         >
-          Back to Dashboard
+          {usageBasedHome ? 'Back to Inspections' : 'Back to Dashboard'}
         </button>
       </div>
     )
@@ -275,7 +302,7 @@ export default function VehicleInspectionApp() {
       return (
         <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
           <DesktopSidebar
-            activeTab={navTab}
+            activeTab={homeTab}
             onTabChange={tab => setNavTab(tab as NavTab)}
             onStartInspection={() => handleStartInspection()}
             onSendToInspector={() => setShowSendSheet(true)}
@@ -296,7 +323,7 @@ export default function VehicleInspectionApp() {
   // ── Main tab content ─────────────────────────────────────────────────────
   const tabContent = (
     <>
-      {navTab === 'home' && (
+      {homeTab === 'home' && (
         isDesktop ? (
           <DesktopHomeDashboard onStartInspection={() => setShowVehiclePicker(true)} />
         ) : (
@@ -307,16 +334,18 @@ export default function VehicleInspectionApp() {
           />
         )
       )}
-      {navTab === 'queue' && (
+      {homeTab === 'queue' && (
         <QueuePage
           key="queue"
-          initialFilter="queued"
+          initialFilter={usageBasedHome ? homeFilter : 'queued'}
+          openSendSheet={usageBasedHome && sendParam !== null}
+          sendVin={usageBasedHome && sendParam && sendParam.length === 17 ? sendParam : undefined}
           onStartInspection={handleStartInspection}
           onResumeInspection={handleResumeInspection}
           onViewReport={handleViewReport}
         />
       )}
-      {navTab === 'history' && (
+      {homeTab === 'history' && (
         <QueuePage
           key="history"
           initialFilter="completed"
@@ -325,7 +354,7 @@ export default function VehicleInspectionApp() {
           onViewReport={handleViewReport}
         />
       )}
-      {navTab === 'account' && <ProfilePage />}
+      {homeTab === 'account' && <ProfilePage />}
     </>
   )
 
@@ -334,7 +363,7 @@ export default function VehicleInspectionApp() {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', background: GRAY_100 }}>
         <DesktopSidebar
-          activeTab={navTab}
+          activeTab={homeTab}
           onTabChange={tab => setNavTab(tab as NavTab)}
           onStartInspection={() => handleStartInspection()}
           onSendToInspector={() => setShowSendSheet(true)}
@@ -342,7 +371,7 @@ export default function VehicleInspectionApp() {
           onCollapseChange={setSidebarCollapsed}
         />
         <div style={{ marginLeft: sidebarWidth, flex: 1, display: 'flex', flexDirection: 'column', transition: 'margin-left 200ms ease' }}>
-          <DesktopTopBar pageTitle={DESKTOP_PAGE_TITLES[navTab]} sidebarWidth={sidebarWidth} />
+          <DesktopTopBar pageTitle={usageBasedHome && homeTab === 'queue' ? 'Inspections' : DESKTOP_PAGE_TITLES[homeTab]} sidebarWidth={sidebarWidth} />
           <main style={{ paddingTop: 64, flex: 1 }}>
             {tabContent}
           </main>

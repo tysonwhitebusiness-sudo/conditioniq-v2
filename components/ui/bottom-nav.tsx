@@ -1,9 +1,10 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Car, Plus, LayoutGrid, ClipboardList, Lock } from 'lucide-react'
+import { Home, Car, Plus, LayoutGrid, ClipboardList, Lock, Settings } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import { usePlan } from '@/hooks/use-plan'
 
 // NavTab kept for backward-compat imports
 export type NavTab = 'home' | 'vehicles' | 'dispatch' | 'account'
@@ -17,13 +18,16 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
   const pathname = usePathname()
   const router = useRouter()
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const { plan } = usePlan()
 
   if (isDesktop) return null
 
   const isActive = (route: string) =>
     route === '/' ? pathname === '/' : pathname === route || pathname.startsWith(route + '/')
 
-  const handleCenter = () => router.push('/vehicles?add=true')
+  // Pay Per Use has no vehicle list to add from, so its center button starts an
+  // inspection on the home screen instead.
+  const handleCenter = () => router.push(plan.hasPlatform ? '/vehicles?add=true' : '/?start=1')
 
   const tabBtn = (id: string, Icon: React.ElementType, label: string, route: string, locked = false) => {
     const active = isActive(route)
@@ -59,8 +63,9 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
         <div style={{ display: 'flex', height: 64, position: 'relative' }}>
           {/* Left tabs */}
           <div style={{ flex: 1, display: 'flex' }}>
-            {tabBtn('home', Home, 'Home', '/')}
-            {tabBtn('vehicles', Car, 'Vehicles', '/vehicles')}
+            {plan.hasPlatform
+              ? <>{tabBtn('home', Home, 'Home', '/')}{tabBtn('vehicles', Car, 'Vehicles', '/vehicles')}</>
+              : tabBtn('inspections', ClipboardList, 'Inspections', '/')}
           </div>
 
           {/* Center FAB */}
@@ -75,7 +80,7 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: 'none', cursor: 'pointer',
               }}
-              aria-label="Add Vehicle"
+              aria-label={plan.hasPlatform ? 'Add Vehicle' : 'Start Inspection'}
             >
               <Plus size={26} color="#FFFFFF" strokeWidth={2.5} />
             </button>
@@ -83,8 +88,9 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
 
           {/* Right tabs */}
           <div style={{ flex: 1, display: 'flex' }}>
-            {tabBtn('lot', LayoutGrid, 'Lot', '/lot', lotMapEnabled === false)}
-            {tabBtn('inspections', ClipboardList, 'Inspections', '/inspections')}
+            {plan.hasPlatform
+              ? <>{tabBtn('lot', LayoutGrid, 'Lot', '/lot', lotMapEnabled === false)}{tabBtn('inspections', ClipboardList, 'Inspections', '/inspections')}</>
+              : tabBtn('settings', Settings, 'Settings', '/settings')}
           </div>
         </div>
       </div>

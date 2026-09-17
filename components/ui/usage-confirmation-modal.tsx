@@ -98,10 +98,17 @@ export default function UsageConfirmationModal({ usageState, onConfirm, onCancel
 
         {/* Subtitle */}
         <p style={{ fontSize: 14, color: GRAY_700, textAlign: 'center', margin: '0 0 4px', lineHeight: 1.5 }}>
-          {isOverage
+          {usageState.usageBased
+            ? `Completing this inspection will be billed at $${usageState.overageRate.toFixed(2)}, invoiced at the end of the month.`
+            : isOverage
             ? `You've used all ${usageState.included} reports ${cycleWord}.`
             : `Completing this inspection will use 1 report from your ${usageState.planName} plan.`}
         </p>
+        {usageState.usageBased && (
+          <p style={{ fontSize: 13, color: GRAY_500, textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
+            {usageState.used} {usageState.used === 1 ? 'report' : 'reports'} this month so far, ${(usageState.estimatedCharge ?? 0).toFixed(2)}.
+          </p>
+        )}
         {isOverage && (
           <p style={{ fontSize: 14, color: GRAY_700, textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
             Completing this inspection will be billed as an overage at ${usageState.overageRate.toFixed(2)}.

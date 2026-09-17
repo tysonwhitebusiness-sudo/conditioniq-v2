@@ -5,6 +5,7 @@ import {
   getPlan, normalizePlanKey, effectiveMonthlyPrice, calcOverage, PLANS, type CompanyPlanFields,
 } from '@/lib/pricing'
 import { computeUsageState, type UsageState } from '@/lib/usage-state'
+import { calendarMonth } from '@/lib/plan-usage'
 import { captureHighSeverityError } from './sentry'
 
 export async function requireSuperAdmin() {
@@ -152,6 +153,39 @@ export async function getCompanyUsage(companyId: string): Promise<UsageState> {
   return computeUsageState(createClient(), companyId)
 }
 
+// Pay Per Use is invoiced by hand at month end: every generated report in the
+// calendar month at the plan rate. Last month is the figure to invoice; this
+// month is running.
+export interface PayPerUseMonth {
+  start: string
+  end: string
+  reports: number
+  rate: number
+  amount: number
+}
+
+export async function getPayPerUseStatement(companyId: string): Promise<{ lastMonth: PayPerUseMonth; thisMonth: PayPerUseMonth }> {
+  await requireSuperAdmin()
+  const supabase = createClient()
+  const rate = PLANS.pay_per_use.additionalReportCost
+  const now = new Date()
+  const month = async (offset: number): Promise<PayPerUseMonth> => {
+    const { start, end } = calendarMonth(now, offset)
+    const { count, error } = await supabase
+      .from('vehicle_inspections')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .not('report_generated_at', 'is', null)
+      .gte('report_generated_at', start.toISOString())
+      .lt('report_generated_at', end.toISOString())
+    if (error) throw error
+    const reports = count ?? 0
+    return { start: start.toISOString(), end: end.toISOString(), reports, rate, amount: reports * rate }
+  }
+  const [lastMonth, thisMonth] = await Promise.all([month(-1), month(0)])
+  return { lastMonth, thisMonth }
+}
+
 export async function updateCompanyBilling(
   companyId: string,
   updates: {
@@ -206,6 +240,9 @@ export async function getOverageTracker() {
   const { data } = await supabase.from('companies').select('*')
   const enriched = await withUsage(supabase, (data ?? []) as Record<string, any>[])
   return enriched
+    // Pay Per Use has no allowance to exceed; its reports are the bill itself and
+    // are shown on the customer page instead.
+    .filter(c => !getPlan(c.subscription_tier).usageBased)
     .map(c => {
       const breakdown = calcOverage(c as CompanyPlanFields, { reportsUsed: c.usage.reportsUsed, peakVehicles: c.usage.peakVehicles })
       return {

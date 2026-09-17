@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import { usePlan } from '@/hooks/use-plan'
 
 export default function MobilePageHeader() {
   const { effectiveCompany, user, userProfile, isOwnerUser, companyRole, platformRole, signOut, impersonatedCompany } = useAuth()
@@ -13,6 +14,7 @@ export default function MobilePageHeader() {
   const router = useRouter()
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const lotBillingEnabled = useFeatureFlag('lot_billing')
+  const { plan } = usePlan()
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -137,11 +139,13 @@ export default function MobilePageHeader() {
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#111827' }}>Billing & Plan</span>
               </button>
 
+              {plan.hasPlatform && (
               <button onClick={() => nav('/lot-billing')} style={itemStyle}>
                 {iconBox(lotBillingEnabled === false ? '#F3F4F6' : '#F0FDF4', <DollarSign size={15} color={lotBillingEnabled === false ? '#6B7280' : '#059669'} />)}
                 <span style={{ fontSize: 14, fontWeight: 500, color: lotBillingEnabled === false ? '#6B7280' : '#111827', flex: 1 }}>Lot Billing</span>
                 {lotBillingEnabled === false && <Lock size={13} color="#D1D5DB" style={{ flexShrink: 0 }} />}
               </button>
+              )}
 
               {isAdmin && (
                 <button onClick={() => nav('/settings/branding')} style={itemStyle}>

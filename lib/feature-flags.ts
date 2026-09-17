@@ -34,7 +34,7 @@ function flag(key: FeatureKey, enabled: boolean): FeatureFlag {
 // growth) resolve to Operations instead of falling through every set and
 // silently losing all features, as they did before.
 function buildDefaults(plan: PlanKey | null): FeatureFlags {
-  const hasPlatform = plan !== null
+  const hasPlatform = plan !== null && PLANS[plan].hasPlatform
   const enterprise = plan === 'enterprise'
   return {
     locations:        flag('locations',        true),

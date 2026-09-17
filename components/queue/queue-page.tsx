@@ -5,9 +5,11 @@ import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import StatusBadge, { ScoreBadge } from '@/components/ui/status-badge'
-import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2, Check, Copy, Link2 } from 'lucide-react'
+import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2, Check, Copy, Link2, Download } from 'lucide-react'
 import { createShareToken } from '@/lib/usage-actions'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
+import { downloadInspectionHistory } from '@/lib/inspection-export'
+import { usePlan } from '@/hooks/use-plan'
 import {
   loadInspectionRows, countByStatus, INSPECTION_STATUSES, INSPECTION_STATUS_LABEL,
   type InspectionRow, type InspectionStatus,
@@ -511,6 +513,9 @@ export default function QueuePage({
   const [shareSuccessId, setShareSuccessId] = useState<string | null>(null)
   const [showAddToQueue, setShowAddToQueue] = useState(false)
   const [sendSheet, setSendSheet] = useState<SendSheetState>({ open: openSendSheet, vin: sendVin })
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const { plan } = usePlan()
 
   const supabase = createClient()
   const companyId = effectiveCompany?.id ?? ''
@@ -529,6 +534,21 @@ export default function QueuePage({
   }, [companyId])
 
   useEffect(() => { load() }, [load])
+
+  // Full history, not the capped list on screen.
+  const handleExport = async () => {
+    if (!companyId || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const count = await downloadInspectionHistory(companyId, effectiveCompany?.name)
+      if (count === 0) setExportError('No completed reports to export yet.')
+    } catch (e: any) {
+      setExportError('Export failed: ' + (e?.message ?? 'unknown error'))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const deleteQueueItem = async (id: string) => {
     await supabase.from('inspection_queue').delete().eq('id', id)
@@ -743,6 +763,19 @@ export default function QueuePage({
           >
             <Send size={14} /> Send Link
           </button>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            aria-label="Export inspection history as CSV"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
+              height: 40, borderRadius: 10, cursor: exporting ? 'default' : 'pointer', whiteSpace: 'nowrap',
+              background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_700, fontSize: 13, fontWeight: 600,
+              opacity: exporting ? 0.7 : 1, fontFamily: 'inherit',
+            }}
+          >
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export CSV
+          </button>
           {showQueueActions && (
             <>
               <button
@@ -763,11 +796,17 @@ export default function QueuePage({
                   background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
                 }}
               >
-                <Plus size={14} /> Check-In
+                <Plus size={14} /> {plan.hasPlatform ? 'Check-In' : 'Start Inspection'}
               </button>
             </>
           )}
         </div>
+
+        {exportError && (
+          <p role="status" style={{ fontSize: 13, color: exportError.startsWith('Export failed') ? DANGER_TEXT : GRAY_500, margin: '0 0 10px' }}>
+            {exportError}
+          </p>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {cardList}

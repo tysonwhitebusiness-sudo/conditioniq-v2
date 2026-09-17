@@ -7,10 +7,10 @@ import { DollarSign, Users, FileText, TrendingUp, Activity, AlertTriangle, Check
 
 // Keyed by current plan; retired names are normalized server-side first.
 const PLAN_COLORS: Record<string, string> = {
-  demo: '#94A3B8', operations: '#00B4D8', pro: '#8B5CF6', enterprise: '#F4A62A',
+  demo: '#94A3B8', pay_per_use: '#10B981', operations: '#00B4D8', pro: '#8B5CF6', enterprise: '#F4A62A',
 }
 const PLAN_LABELS: Record<string, string> = {
-  demo: 'DEMO', operations: 'OPS', pro: 'PRO', enterprise: 'ENT',
+  demo: 'DEMO', pay_per_use: 'PPU', operations: 'OPS', pro: 'PRO', enterprise: 'ENT',
 }
 const ACT_COLORS: Record<string, string> = { signup: '#10B981', upgrade: '#00B4D8', downgrade: '#F4A62A', cancel: '#EF4444' }
 

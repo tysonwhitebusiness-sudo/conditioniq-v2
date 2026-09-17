@@ -41,6 +41,10 @@ export interface UsageState {
 
   planName: string
   planKey: string
+  // Pay Per Use: every report is billed, there is no allowance, and the cycle is
+  // the calendar month (invoiced manually at month end).
+  usageBased: boolean
+  estimatedCharge: number | null // usage-based plans only: reports x rate
   vehicles: MeterState & { current: number }
   cycle: { start: string; end: string }
   demo: DemoState
@@ -89,7 +93,10 @@ export async function computeUsageState(
     .maybeSingle() as { data: CompanyRow | null }
 
   const plan: Plan = getPlan(company?.subscription_tier)
-  const cycle: BillingCycle = currentBillingCycle(company?.billing_cycle_start, now)
+  const cycle: BillingCycle = currentBillingCycle(
+    plan.billingCycle === 'calendar' ? null : company?.billing_cycle_start,
+    now,
+  )
   const isDemo = plan.key === 'demo'
 
   // A demo's report allowance covers the whole trial, not a single cycle.
@@ -117,7 +124,9 @@ export async function computeUsageState(
   if (vehiclesRes.error) throw vehiclesRes.error
 
   const reportsUsed = reportsRes.count ?? 0
-  const reports = meter(reportsUsed, company ? effectiveReportsIncluded(company) : plan.reportsIncluded, plan.additionalReportCost)
+  const reports = plan.usageBased
+    ? meter(reportsUsed, null, plan.additionalReportCost)
+    : meter(reportsUsed, company ? effectiveReportsIncluded(company) : plan.reportsIncluded, plan.additionalReportCost)
   const occupancy = vehicleOccupancy(vehiclesRes.data ?? [], cycle, now)
   const vehicleMeter = meter(occupancy.peak, plan.vehiclesIncluded, plan.additionalVehicleCost)
   // Reports flag overage at the limit because the next report is billable.
@@ -138,6 +147,8 @@ export async function computeUsageState(
     ...reports,
     planName: plan.name,
     planKey: plan.key,
+    usageBased: plan.usageBased,
+    estimatedCharge: plan.usageBased ? reportsUsed * plan.additionalReportCost : null,
     vehicles,
     cycle: { start: cycle.start.toISOString(), end: cycle.end.toISOString() },
     demo,

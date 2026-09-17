@@ -2,14 +2,16 @@
 // shows a price, an allowance or a plan name — the landing page, billing
 // settings, the billing dashboard, the admin screens — reads from here.
 //
-// Gating is by scale, not capability: every paid plan gets the whole platform.
-// Plans differ by vehicles, reports and seats.
+// Gating is by scale, not capability: every subscription plan gets the whole
+// platform, and plans differ by vehicles, reports and seats. Pay Per Use is the
+// one exception, a different product shape: inspections and dispatch only, no
+// lot platform, no base fee.
 //
 // Conventions:
 //   null limit   = unlimited
 //   null price   = custom (Enterprise)
 
-export type PlanKey = 'demo' | 'operations' | 'pro' | 'enterprise'
+export type PlanKey = 'demo' | 'pay_per_use' | 'operations' | 'pro' | 'enterprise'
 
 export interface Plan {
   key: PlanKey
@@ -22,6 +24,13 @@ export interface Plan {
   additionalVehicleCost: number
   maxUsers: number | null
   whiteLabel: boolean
+  // The lot platform: vehicle inventory, lot map, lot billing and customers.
+  hasPlatform: boolean
+  // 'account' = each account's own billing day (subscriptions).
+  // 'calendar' = the calendar month (Pay Per Use, invoiced at month end).
+  billingCycle: 'account' | 'calendar'
+  // Every report is billed; there is no allowance to use up.
+  usageBased: boolean
   // Demo only: how long the account runs before new inspections are blocked.
   trialDays?: number
 }
@@ -32,33 +41,56 @@ export const PLANS: Record<PlanKey, Plan> = {
     monthlyCost: 0, annualCost: 0,
     reportsIncluded: 5, additionalReportCost: 0,
     vehiclesIncluded: null, additionalVehicleCost: 0,
-    maxUsers: 1, whiteLabel: false, trialDays: 14,
+    maxUsers: 1, whiteLabel: false, hasPlatform: true,
+    billingCycle: 'account', usageBased: false, trialDays: 14,
+  },
+  pay_per_use: {
+    key: 'pay_per_use', name: 'Pay Per Use',
+    monthlyCost: 0, annualCost: null,
+    reportsIncluded: 0, additionalReportCost: 3,
+    vehiclesIncluded: null, additionalVehicleCost: 0,
+    maxUsers: 2, whiteLabel: false, hasPlatform: false,
+    billingCycle: 'calendar', usageBased: true,
   },
   operations: {
     key: 'operations', name: 'Operations',
     monthlyCost: 199, annualCost: 1990,
     reportsIncluded: 150, additionalReportCost: 2.5,
     vehiclesIncluded: 50, additionalVehicleCost: 4,
-    maxUsers: 5, whiteLabel: true,
+    maxUsers: 5, whiteLabel: true, hasPlatform: true,
+    billingCycle: 'account', usageBased: false,
   },
   pro: {
     key: 'pro', name: 'Pro',
     monthlyCost: 399, annualCost: 3990,
     reportsIncluded: 500, additionalReportCost: 1.5,
     vehiclesIncluded: 200, additionalVehicleCost: 2,
-    maxUsers: null, whiteLabel: true,
+    maxUsers: null, whiteLabel: true, hasPlatform: true,
+    billingCycle: 'account', usageBased: false,
   },
   enterprise: {
     key: 'enterprise', name: 'Enterprise',
     monthlyCost: null, annualCost: null,
     reportsIncluded: null, additionalReportCost: 0,
     vehiclesIncluded: null, additionalVehicleCost: 0,
-    maxUsers: null, whiteLabel: true,
+    maxUsers: null, whiteLabel: true, hasPlatform: true,
+    billingCycle: 'account', usageBased: false,
   },
 }
 
 // Display order for pricing tables.
-export const PUBLIC_PLAN_ORDER: PlanKey[] = ['demo', 'operations', 'pro', 'enterprise']
+export const PUBLIC_PLAN_ORDER: PlanKey[] = ['demo', 'pay_per_use', 'operations', 'pro', 'enterprise']
+
+// Routes that belong to the lot platform. An account on a plan without it is
+// redirected away from these (decision: route blocking, not database rules).
+export const PLATFORM_ROUTE_PREFIXES = [
+  '/vehicles', '/inventory', '/lot', '/lot-billing', '/customers',
+  '/storage', '/settings/fees', '/settings/lot-billing',
+]
+
+export function isPlatformRoute(pathname: string): boolean {
+  return PLATFORM_ROUTE_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
 
 // Plan names retired by the restructure. Starter was eliminated and Growth was
 // renamed Operations. The two Starter accounts moved to the Operations feature
@@ -108,8 +140,12 @@ export interface CompanyPlanFields {
 // restructure, the override was honored on screen but ignored where overage was
 // recorded; every allowance check now goes through this one function.
 export function effectiveReportsIncluded(company: CompanyPlanFields): number | null {
+  const plan = getPlan(company.subscription_tier)
+  // Usage-based plans bill every report; a leftover allowance from a previous
+  // plan must not make some of them free.
+  if (plan.usageBased) return plan.reportsIncluded
   if (company.reports_included != null) return company.reports_included
-  return getPlan(company.subscription_tier).reportsIncluded
+  return plan.reportsIncluded
 }
 
 // Grandfathered accounts keep their old price on the new feature set.
@@ -190,6 +226,15 @@ export function planHighlights(plan: Plan): string[] {
         PLATFORM_FEATURES,
         'Condition IQ branded PDFs',
       ]
+    case 'pay_per_use':
+      return [
+        'No monthly fee',
+        `$${plan.additionalReportCost.toFixed(2)} per report, invoiced monthly`,
+        `${plan.maxUsers} seats`,
+        'Unlimited dispatch links',
+        'Inspection history and CSV export',
+        'Condition IQ branded PDFs',
+      ]
     case 'enterprise':
       return [
         'Custom vehicle and report volume',
@@ -211,6 +256,7 @@ export function planHighlights(plan: Plan): string[] {
 
 export function formatPlanPrice(plan: Plan, interval: 'monthly' | 'annual' = 'monthly'): string {
   if (plan.key === 'demo') return 'Free'
+  if (plan.usageBased) return `$${plan.additionalReportCost.toFixed(2)}/report`
   const price = interval === 'annual' ? plan.annualCost : plan.monthlyCost
   if (price === null) return 'Custom'
   return `${money(price)}/${interval === 'annual' ? 'yr' : 'mo'}`
@@ -219,13 +265,17 @@ export function formatPlanPrice(plan: Plan, interval: 'monthly' | 'annual' = 'mo
 // Brief section 4.3: publish the point where the larger plan becomes cheaper.
 // Derived from the plan figures so the published numbers cannot drift from the
 // prices. Each ignores the other meter (vehicles-only / reports-only usage).
-export function planCrossovers(): { vehicles: number; reports: number } {
+export function planCrossovers(): { vehicles: number; reports: number; payPerUseReports: number } {
+  const ppu = PLANS.pay_per_use
   const ops = PLANS.operations
   const pro = PLANS.pro
   const gap = (pro.monthlyCost ?? 0) - (ops.monthlyCost ?? 0)
   return {
     vehicles: (ops.vehiclesIncluded ?? 0) + gap / ops.additionalVehicleCost,
     reports: (ops.reportsIncluded ?? 0) + gap / ops.additionalReportCost,
+    // Above this many reports a month, Operations' base fee is cheaper than paying
+    // per report, and it adds the lot platform.
+    payPerUseReports: Math.floor((ops.monthlyCost ?? 0) / ppu.additionalReportCost),
   }
 }
 

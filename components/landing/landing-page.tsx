@@ -776,6 +776,17 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
             </FadeCard>
           ))}
         </div>
+        {/* Pay Per Use */}
+        <FadeCard>
+          <div className="border border-[#1B2D40] rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#1B2D40]/40 mb-5">
+            <div>
+              <div className="text-white font-bold text-lg mb-1">{PLANS.pay_per_use.name} <span className="text-[#00B4D8] font-bold">{formatPlanPrice(PLANS.pay_per_use)}</span></div>
+              <div className="text-[#94A3B8] text-sm">{planHighlights(PLANS.pay_per_use).join(' · ')}</div>
+              <div className="text-[#94A3B8] text-xs mt-2">Inspections and dispatch only, no lot platform. Above {crossover.payPerUseReports} reports a month, {PLANS.operations.name} costs less.</div>
+            </div>
+            <button onClick={onGetStarted} className="flex-shrink-0 bg-white/5 border border-white/10 text-white font-bold text-sm px-6 py-3 rounded-xl hover:bg-white/10 transition-all">Get Started</button>
+          </div>
+        </FadeCard>
         {/* Enterprise */}
         <FadeCard>
           <div className="border border-[#1B2D40] rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#1B2D40]/40 mb-5">
@@ -789,7 +800,7 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
         {/* How usage is billed */}
         <FadeCard>
           <div className="bg-[#1B2D40] border border-[#00B4D8]/15 rounded-2xl p-6">
-            <h3 className="text-white font-bold text-sm mb-4">Every plan includes the whole platform</h3>
+            <h3 className="text-white font-bold text-sm mb-4">Every subscription includes the whole platform</h3>
             <p className="text-[#94A3B8] text-xs mb-4">Lot map, lot billing, dispatch links, customer CRM and white label PDFs come with Operations and Pro. Plans differ only by how many vehicles, reports and seats they include.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="rounded-xl bg-white/5 p-4">
@@ -814,6 +825,7 @@ function Pricing({ onGetStarted }: { onGetStarted: () => void }) {
 const OPS = PLANS.operations
 const PRO = PLANS.pro
 const DEMO = PLANS.demo
+const PPU = PLANS.pay_per_use
 const FAQ_ITEMS = [
   { q: 'Do I need to install anything?',
     a: "No. Condition IQ runs entirely in your browser and on your phone's browser. No app download, no software installation, no IT setup required." },
@@ -824,17 +836,17 @@ const FAQ_ITEMS = [
   { q: 'Does the free demo require a credit card?',
     a: `No. The demo includes ${DEMO.reportsIncluded} reports and ${DEMO.trialDays} days of full access. When it ends, everything you recorded stays viewable and you can upgrade to keep inspecting.` },
   { q: 'How do I add team members?',
-    a: `Admins add team members from Settings. Operations includes ${OPS.maxUsers} seats, and Pro and Enterprise include unlimited seats.` },
+    a: `Admins add team members from Settings. Pay Per Use includes ${PPU.maxUsers} seats, Operations includes ${OPS.maxUsers} seats, and Pro and Enterprise include unlimited seats.` },
   { q: 'How do I send an inspection to someone outside my team?',
     a: 'Send a one-time link from any vehicle or from the Inspections page. The link shows as Sent until they start it, and links never use a seat.' },
   { q: 'Can I white label the reports?',
-    a: 'Yes, on Operations, Pro and Enterprise. Your logo, header color, accent stripe and business name appear on every generated PDF. Demo reports carry Condition IQ branding.' },
+    a: 'Yes, on Operations, Pro and Enterprise. Your logo, header color, accent stripe and business name appear on every generated PDF. Demo and Pay Per Use reports carry Condition IQ branding.' },
   { q: 'Is there a contract?',
-    a: `No. Monthly plans can be cancelled at any time. Annual plans are billed upfront: $${OPS.annualCost?.toLocaleString()} for Operations and $${PRO.annualCost?.toLocaleString()} for Pro.` },
+    a: `No. Pay Per Use has no monthly fee: reports are $${PPU.additionalReportCost.toFixed(2)} each, invoiced at the end of the month. Monthly plans can be cancelled at any time. Annual plans are billed upfront: $${OPS.annualCost?.toLocaleString()} for Operations and $${PRO.annualCost?.toLocaleString()} for Pro.` },
   { q: 'Can I export my data?',
     a: 'Yes, on every plan. CSV export covers your vehicle inventory and inspection history.' },
   { q: 'Can multiple inspectors use the same account?',
-    a: `Yes. Operations includes ${OPS.maxUsers} seats. Pro and Enterprise include unlimited seats.` },
+    a: `Yes. Pay Per Use includes ${PPU.maxUsers} seats and Operations includes ${OPS.maxUsers}. Pro and Enterprise include unlimited seats.` },
 ]
 
 function FAQ() {

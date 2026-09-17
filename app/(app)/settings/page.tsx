@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
+import { usePlan } from '@/hooks/use-plan'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import BottomNav from '@/components/ui/bottom-nav'
 import { User, CreditCard, Users, Palette, ChevronRight, Lock, Sparkles, Receipt } from 'lucide-react'
@@ -24,10 +25,11 @@ export default function SettingsPage() {
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const whiteLabelEnabled = useFeatureFlag('white_label')
   const lotMapEnabled = useFeatureFlag('lot_map')
+  const { plan } = usePlan()
 
   const isAdmin = isOwnerUser || companyRole === 'admin'
 
-  const cards: SettingsCard[] = [
+  const allCards: SettingsCard[] = [
     {
       icon: <User size={20} />,
       title: 'Profile',
@@ -69,6 +71,9 @@ export default function SettingsPage() {
       accessible: isAdmin && !!lotMapEnabled,
     },
   ]
+
+  // Fee structure is lot billing configuration, which Pay Per Use does not have.
+  const cards = plan.hasPlatform ? allCards : allCards.filter(c => c.route !== '/settings/fees')
 
   if (loading) return null
 

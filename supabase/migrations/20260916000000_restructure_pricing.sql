@@ -4,9 +4,11 @@
 -- Growth is renamed Operations. Every paid plan gets the whole platform; plans
 -- differ by vehicles, reports and seats. All four add-on SKUs are retired.
 --
--- Apply this BEFORE deploying the Phase 5 code. The code tolerates the old tier
--- names (lib/pricing.ts normalizes them), but the admin billing screen writes the
--- two price_override columns added here and will fail to save without them.
+-- Apply this immediately AFTER the new code is live, not before. The previous
+-- code only knows starter/growth/pro, so renamed tiers, deleted flag rows and the
+-- stopped cron would break it. The new code tolerates the old tier names
+-- (lib/pricing.ts normalizes them); until this runs, only the admin billing
+-- screen's held-price save fails, and held prices do not display.
 --
 -- Expand/contract: legacy_pricing and reports_used are left in place. Nothing
 -- reads them any more; drop them in a later migration once this deploy is

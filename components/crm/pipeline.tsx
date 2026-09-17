@@ -146,7 +146,7 @@ export default function Pipeline() {
   }
 
   if (loading) return (
-    <div style={{ padding: 24 }}>
+    <div className="adm-page">
       <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 16 }}>
         {STAGES.map(s => <div key={s.key} style={{ minWidth: 220, height: 400, background: '#E2E8F0', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />)}
       </div>
@@ -155,8 +155,8 @@ export default function Pipeline() {
   )
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+    <div className="adm-page">
+      <div className="adm-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>Pipeline</h1>
         <span style={{ fontSize: 12, color: '#94A3B8' }}>{leads.length} leads</span>
       </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getAllFeedback, updateFeedbackStatus, getScreenshotSignedUrl, type CustomerFeedback, type FeedbackCategory, type FeedbackStatus } from '@/lib/feedback-actions'
 import { ChevronDown, ChevronUp, ExternalLink, MessageSquare } from 'lucide-react'
+import { PRIMARY, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300 } from '@/lib/design-tokens'
 
 const CATEGORY_CFG: Record<FeedbackCategory, { label: string; bg: string; color: string }> = {
   bug:             { label: 'Bug',            bg: '#FEE2E2', color: '#991B1B' },
@@ -51,12 +52,12 @@ export default function AdminFeedback() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 900 }}>
+    <div className="adm-page" style={{ maxWidth: 900 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <MessageSquare size={22} color="#00B4D8" />
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', margin: 0 }}>Customer Feedback</h1>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#94A3B8' }}>({feedback.length})</span>
+        <MessageSquare size={22} color={PRIMARY} />
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: GRAY_900, margin: 0 }}>Customer Feedback</h1>
+        <span style={{ fontSize: 13, fontWeight: 600, color: GRAY_500 }}>({feedback.length})</span>
       </div>
 
       {/* Filters */}
@@ -64,7 +65,7 @@ export default function AdminFeedback() {
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as FeedbackCategory | '')}
-          style={{ height: 38, padding: '0 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, background: '#1B2D40', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+          style={{ height: 38, padding: '0 10px', border: `1px solid ${GRAY_300}`, borderRadius: 10, fontSize: 13, background: WHITE, color: GRAY_900, fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
         >
           <option value="">All Categories</option>
           <option value="bug">Bug</option>
@@ -74,7 +75,7 @@ export default function AdminFeedback() {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as FeedbackStatus | '')}
-          style={{ height: 38, padding: '0 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, background: '#1B2D40', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+          style={{ height: 38, padding: '0 10px', border: `1px solid ${GRAY_300}`, borderRadius: 10, fontSize: 13, background: WHITE, color: GRAY_900, fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
         >
           <option value="">All Statuses</option>
           <option value="new">New</option>
@@ -87,15 +88,15 @@ export default function AdminFeedback() {
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} style={{ height: 72, background: 'rgba(255,255,255,0.06)', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div key={i} style={{ height: 72, background: GRAY_300, borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
           ))}
           <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
         </div>
       ) : feedback.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 24px' }}>
-          <MessageSquare size={32} color="#94A3B8" style={{ display: 'block', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 15, fontWeight: 600, color: '#F1F5F9', margin: '0 0 4px' }}>No feedback yet</p>
-          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Feedback submitted by customers will appear here.</p>
+          <MessageSquare size={32} color={GRAY_500} style={{ display: 'block', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 15, fontWeight: 600, color: GRAY_900, margin: '0 0 4px' }}>No feedback yet</p>
+          <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>Feedback submitted by customers will appear here.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -111,14 +112,14 @@ export default function AdminFeedback() {
             return (
               <div
                 key={item.id}
-                style={{ background: '#1B2D40', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden', transition: 'box-shadow 150ms' }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)')}
+                style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 14, overflow: 'hidden', transition: 'box-shadow 150ms' }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(15,23,42,0.10)')}
                 onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
               >
                 {/* Row */}
                 <div
                   onClick={() => handleExpand(item)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', cursor: 'pointer' }}
+                  style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 12px', padding: '14px 16px', cursor: 'pointer' }}
                 >
                   {/* Category badge */}
                   <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: cat.bg, color: cat.color, whiteSpace: 'nowrap' }}>
@@ -126,11 +127,11 @@ export default function AdminFeedback() {
                   </span>
 
                   {/* Content */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: '#F1F5F9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: GRAY_900, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.description}
                     </p>
-                    <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
+                    <p style={{ fontSize: 12, color: GRAY_500, margin: 0 }}>
                       {companyName} · {dateStr}
                     </p>
                   </div>
@@ -144,7 +145,7 @@ export default function AdminFeedback() {
                       flexShrink: 0,
                       height: 28,
                       padding: '0 6px',
-                      border: `1px solid ${st.bg === '#FFF' ? 'rgba(255,255,255,0.1)' : st.bg}`,
+                      border: `1px solid ${st.bg === '#FFF' ? GRAY_300 : st.bg}`,
                       borderRadius: 8,
                       fontSize: 11,
                       fontWeight: 700,
@@ -160,27 +161,27 @@ export default function AdminFeedback() {
                     <option value="resolved">Resolved</option>
                   </select>
 
-                  {isExpanded ? <ChevronUp size={16} color="#94A3B8" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="#94A3B8" style={{ flexShrink: 0 }} />}
+                  {isExpanded ? <ChevronUp size={16} color={GRAY_500} style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color={GRAY_500} style={{ flexShrink: 0 }} />}
                 </div>
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div style={{ padding: '0 18px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ padding: '0 18px 16px', borderTop: `1px solid ${GRAY_300}` }}>
                     <div style={{ paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {/* Full description */}
                       <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Description</p>
-                        <p style={{ fontSize: 14, color: '#CBD5E1', margin: 0, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{item.description}</p>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Description</p>
+                        <p style={{ fontSize: 14, color: GRAY_700, margin: 0, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{item.description}</p>
                       </div>
 
                       {/* Meta */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div className="adm-g2" style={{ gap: 10 }}>
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Submitted by</p>
-                          <p style={{ fontSize: 13, color: '#F1F5F9', margin: 0 }}>{submitterName}</p>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Submitted by</p>
+                          <p style={{ fontSize: 13, color: GRAY_900, margin: 0 }}>{submitterName}</p>
                         </div>
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Page</p>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Page</p>
                           {item.page_url ? (
                             <a
                               href={item.page_url}
@@ -192,7 +193,7 @@ export default function AdminFeedback() {
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.page_url.replace(/^https?:\/\/[^/]+/, '')}</span>
                             </a>
                           ) : (
-                            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>—</p>
+                            <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>—</p>
                           )}
                         </div>
                       </div>
@@ -200,17 +201,17 @@ export default function AdminFeedback() {
                       {/* Screenshot */}
                       {item.screenshot_url && (
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Screenshot</p>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Screenshot</p>
                           {screenshotUrl ? (
                             <a href={screenshotUrl} target="_blank" rel="noreferrer">
                               <img
                                 src={screenshotUrl}
                                 alt="feedback screenshot"
-                                style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', display: 'block', objectFit: 'contain', cursor: 'pointer' }}
+                                style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 10, border: `1px solid ${GRAY_300}`, display: 'block', objectFit: 'contain', cursor: 'pointer' }}
                               />
                             </a>
                           ) : (
-                            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Loading…</p>
+                            <p style={{ fontSize: 13, color: GRAY_500, margin: 0 }}>Loading…</p>
                           )}
                         </div>
                       )}

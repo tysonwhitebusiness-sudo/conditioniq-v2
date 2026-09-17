@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { getAllCompanies } from '@/lib/admin-actions'
 import { getCompaniesWithPendingRequests } from '@/lib/billing-actions'
 import { Search, ChevronRight, MessageSquare } from 'lucide-react'
+import { PLANS } from '@/lib/pricing'
+import { WHITE, GRAY_900, GRAY_500, GRAY_300 } from '@/lib/design-tokens'
 
 const PLAN_COLORS: Record<string, { bg: string; color: string }> = {
-  demo:       { bg: '#F0F4F8', color: '#94A3B8' },
+  demo:       { bg: '#F0F4F8', color: GRAY_500 },
   pay_per_use: { bg: '#DCFCE7', color: '#166534' },
   operations: { bg: '#E0F7FC', color: '#0097B2' },
   pro:        { bg: '#EDE9FE', color: '#5B21B6' },
@@ -45,22 +47,23 @@ export default function AdminCustomers() {
   })
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200 }}>
+    <div className="adm-page" style={{ maxWidth: 1200 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', margin: 0 }}>Customers ({companies.length})</h1>
+      <div className="adm-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: GRAY_900, margin: 0 }}>Customers ({companies.length})</h1>
         <div style={{ flex: 1 }} />
-        <div style={{ position: 'relative' }}>
-          <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
+        <div className="adm-grow-mobile" style={{ position: 'relative' }}>
+          <Search size={14} color={GRAY_500} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
           <input
             value={search} onChange={e => setSearch(e.target.value)} placeholder="Search companies..."
-            style={{ height: 38, paddingLeft: 32, paddingRight: 12, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#1B2D40', color: '#F1F5F9', width: 220 }}
+            style={{ height: 38, paddingLeft: 32, paddingRight: 12, border: `1px solid ${GRAY_300}`, borderRadius: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', background: WHITE, color: GRAY_900, width: 220, maxWidth: '100%', boxSizing: 'border-box' }}
+            className="adm-grow-mobile"
           />
         </div>
         <select value={tierFilter} onChange={e => setTierFilter(e.target.value)}
-          style={{ height: 38, padding: '0 10px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 13, background: '#1B2D40', color: '#F1F5F9', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
+          style={{ height: 38, padding: '0 10px', border: `1px solid ${GRAY_300}`, borderRadius: 10, fontSize: 13, background: WHITE, color: GRAY_900, fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
           <option value="">All Plans</option>
-          {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+          {TIERS.map(t => <option key={t} value={t}>{PLANS[t as keyof typeof PLANS]?.name ?? t}</option>)}
         </select>
       </div>
 
@@ -68,15 +71,15 @@ export default function AdminCustomers() {
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} style={{ height: 72, background: 'rgba(255,255,255,0.06)', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div key={i} style={{ height: 72, background: GRAY_300, borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
           ))}
           <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 24px' }}>
-          <Search size={32} color="#94A3B8" style={{ display: 'block', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 16, fontWeight: 600, color: '#F1F5F9', margin: '0 0 4px' }}>No customers found</p>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: 0 }}>Try adjusting your search or filter</p>
+          <Search size={32} color={GRAY_500} style={{ display: 'block', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 16, fontWeight: 600, color: GRAY_900, margin: '0 0 4px' }}>No customers found</p>
+          <p style={{ fontSize: 14, color: GRAY_500, margin: 0 }}>Try adjusting your search or filter</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -93,13 +96,13 @@ export default function AdminCustomers() {
             return (
               <div key={company.id as string}
                 onClick={() => router.push(`/admin/customers/${company.id as string}`)}
-                style={{ background: '#1B2D40', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'box-shadow 150ms' }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)')}
+                style={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'box-shadow 150ms' }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(15,23,42,0.10)')}
                 onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{company.name as string}</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', marginBottom: 4 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: GRAY_900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{company.name as string}</span>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: pc.bg, color: pc.color, flexShrink: 0 }}>{tier.toUpperCase()}</span>
                     {usage.hasPriceOverride && (
                       <span title="Grandfathered: price held below the plan's list price" style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: '#FFF0E8', color: '#C2410C', flexShrink: 0 }}>HELD PRICE</span>
@@ -109,16 +112,23 @@ export default function AdminCustomers() {
                         <MessageSquare size={9} />PLAN REQ
                       </span>
                     )}
-                    <span style={{ fontSize: 12, color: '#94A3B8', flexShrink: 0 }}>{ageDays}d old</span>
+                    <span style={{ fontSize: 12, color: GRAY_500, flexShrink: 0 }}>{ageDays}d old</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, maxWidth: 200 }}>
-                      <div style={{ height: 4, width: `${pct}%`, background: barColor, borderRadius: 2 }} />
+                  {tier === 'pay_per_use' ? (
+                    // No allowance to fill: Pay Per Use shows what this month is running at.
+                    <span style={{ fontSize: 12, color: GRAY_500 }}>
+                      {used} {used === 1 ? 'report' : 'reports'} this month · ${(used * PLANS.pay_per_use.additionalReportCost).toFixed(2)}
+                    </span>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 4, background: GRAY_300, borderRadius: 2, maxWidth: 200 }}>
+                        <div style={{ height: 4, width: `${pct}%`, background: barColor, borderRadius: 2 }} />
+                      </div>
+                      <span style={{ fontSize: 12, color: GRAY_500 }}>{used}/{inc === null ? '∞' : inc} reports</span>
                     </div>
-                    <span style={{ fontSize: 12, color: '#94A3B8' }}>{used}/{inc === null ? '∞' : inc} reports</span>
-                  </div>
+                  )}
                 </div>
-                <ChevronRight size={16} color="#94A3B8" />
+                <ChevronRight size={16} color={GRAY_500} />
               </div>
             )
           })}

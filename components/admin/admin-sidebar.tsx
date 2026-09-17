@@ -6,6 +6,7 @@ import {
   Car, BarChart2, Users, Target, List, UserCheck, Columns2,
   ChevronLeft, ShieldCheck, LogOut, MessageSquare, Inbox, Clock,
 } from 'lucide-react'
+import { PRIMARY, PRIMARY_TINT, AMBER_DARK, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300 } from '@/lib/design-tokens'
 
 const OPS_ITEMS = [
   { href: '/admin/overview',  label: 'Overview',       icon: BarChart2     },
@@ -25,7 +26,7 @@ const CRM_ITEMS = [
 
 const SL: React.CSSProperties = {
   fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-  color: 'rgba(255,255,255,0.3)', padding: '16px 12px 6px', display: 'block',
+  color: GRAY_500, padding: '16px 12px 6px', display: 'block',
 }
 
 interface Props {
@@ -49,10 +50,10 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }: Props) {
     padding: '10px 12px',
     borderRadius: active ? '0 8px 8px 0' : 8,
     margin: '1px 0', cursor: 'pointer',
-    background: active ? 'rgba(0,180,216,0.12)' : 'transparent',
-    color: active ? '#00B4D8' : 'rgba(255,255,255,0.6)',
+    background: active ? PRIMARY_TINT : 'transparent',
+    color: active ? PRIMARY : GRAY_700,
     borderTopWidth: 0, borderRightWidth: 0, borderBottomWidth: 0,
-    borderLeftWidth: 3, borderLeftStyle: 'solid', borderLeftColor: active ? '#00B4D8' : 'transparent',
+    borderLeftWidth: 3, borderLeftStyle: 'solid', borderLeftColor: active ? PRIMARY : 'transparent',
     fontSize: 14, fontWeight: 500,
     width: '100%', textAlign: 'left', outline: 'none', fontFamily: 'inherit',
     transition: 'background 150ms, color 150ms',
@@ -68,19 +69,19 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }: Props) {
       {/* Sidebar panel */}
       <div className={`adm-sidebar ${mobileOpen ? 'mob-open' : ''}`}>
         {/* Logo */}
-        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '20px 16px 16px', borderBottom: `1px solid ${GRAY_300}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 18, background: '#00B4D8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Car size={18} color="#FFF" />
+            <div style={{ width: 36, height: 36, borderRadius: 18, background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Car size={18} color={WHITE} />
             </div>
             <div>
-              <p style={{ color: '#FFF', fontWeight: 700, fontSize: 15, margin: 0 }}>Condition IQ</p>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, margin: 0 }}>Admin</p>
+              <p style={{ color: GRAY_900, fontWeight: 700, fontSize: 15, margin: 0 }}>Condition IQ</p>
+              <p style={{ color: GRAY_500, fontSize: 11, margin: 0 }}>Admin</p>
             </div>
           </div>
           <button
             onClick={() => nav('/')}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.5)', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, color: GRAY_500, fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
           >
             <ChevronLeft size={13} /> Back to App
           </button>
@@ -104,22 +105,22 @@ export default function AdminSidebar({ mobileOpen, onMobileClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${GRAY_300}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 16, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#0D1B2A', flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 16, background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: WHITE, flexShrink: 0 }}>
               {initials}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName || user?.email}</p>
-              <p style={{ fontSize: 11, color: '#00B4D8', margin: 0 }}>Super Admin</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: GRAY_900, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName || user?.email}</p>
+              <p style={{ fontSize: 11, color: PRIMARY, margin: 0 }}>Super Admin</p>
               {impersonatedCompany && (
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#F4A62A', margin: '2px 0 0' }}>Ghost Mode: {impersonatedCompany.name}</p>
+                <p style={{ fontSize: 10, fontWeight: 700, color: AMBER_DARK, margin: '2px 0 0' }}>Ghost Mode: {impersonatedCompany.name}</p>
               )}
             </div>
           </div>
           <button
             onClick={async () => signOut()}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.4)', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, color: GRAY_500, fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}
           >
             <LogOut size={13} /> Sign out
           </button>

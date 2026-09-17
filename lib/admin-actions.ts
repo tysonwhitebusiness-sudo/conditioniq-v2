@@ -66,11 +66,17 @@ async function withUsage(supabase: any, companies: Record<string, any>[]): Promi
 export async function getAdminStats() {
   await requireSuperAdmin()
   const supabase = createClient()
-  const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  // Generated reports in the calendar month (UTC), the same rows usage and
+  // Pay Per Use invoices count. This used to count inspections started in the
+  // last 30 days, which matched neither.
+  const month = calendarMonth(new Date())
 
   const [companies, reports, recentActivity] = await Promise.all([
     supabase.from('companies').select('*'),
-    supabase.from('vehicle_inspections').select('id, company_id, created_at').gte('created_at', monthAgo),
+    supabase.from('vehicle_inspections').select('id', { count: 'exact', head: true })
+      .not('report_generated_at', 'is', null)
+      .gte('report_generated_at', month.start.toISOString())
+      .lt('report_generated_at', month.end.toISOString()),
     supabase.from('vehicle_inspections').select('id, vin, company_id, created_at, companies(name)').order('created_at', { ascending: false }).limit(20),
   ])
 
@@ -79,6 +85,10 @@ export async function getAdminStats() {
   // Custom-priced (Enterprise) and demo accounts contribute nothing to MRR.
   const mrr = enriched.reduce((sum, c) => sum + (c.usage.monthlyPrice ?? 0), 0)
   const trialCount = enriched.filter(c => c.usage.planKey === 'demo').length
+
+  // Every account, not just the top ten shown in the usage list.
+  const planBreakdown: Record<string, number> = {}
+  for (const c of enriched) planBreakdown[c.usage.planKey] = (planBreakdown[c.usage.planKey] ?? 0) + 1
 
   const topCustomers = enriched
     .map(c => ({ ...c, accountAgeDays: Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86400000) }))
@@ -89,7 +99,8 @@ export async function getAdminStats() {
   return {
     mrr,
     activeCustomers: enriched.length,
-    reportsThisMonth: (reports.data ?? []).length,
+    reportsThisMonth: reports.count ?? 0,
+    planBreakdown,
     trialAccounts: trialCount,
     topCustomers,
     recentActivity: recentActivity.data ?? [],
@@ -151,6 +162,59 @@ export async function getCompanyById(companyId: string) {
 export async function getCompanyUsage(companyId: string): Promise<UsageState> {
   await requireSuperAdmin()
   return computeUsageState(createClient(), companyId)
+}
+
+// Pay Per Use accounts for the admin overview: each account's reports and
+// dollars this month so far and last month (the figure to invoice), plus totals.
+export interface PayPerUseAccountRow {
+  id: string
+  name: string
+  thisMonthReports: number
+  thisMonthAmount: number
+  lastMonthReports: number
+  lastMonthAmount: number
+}
+
+export async function getPayPerUseOverview(): Promise<{
+  rate: number
+  thisMonth: { start: string; end: string }
+  lastMonth: { start: string; end: string }
+  accounts: PayPerUseAccountRow[]
+}> {
+  await requireSuperAdmin()
+  const supabase = createClient()
+  const rate = PLANS.pay_per_use.additionalReportCost
+  const now = new Date()
+  const thisMonth = calendarMonth(now, 0)
+  const lastMonth = calendarMonth(now, -1)
+
+  const { data: companies, error } = await supabase.from('companies').select('id, name, subscription_tier')
+  if (error) throw error
+  const ppu = (companies ?? []).filter((c: { subscription_tier: string }) => getPlan(c.subscription_tier).usageBased)
+  const range = { thisMonth: { start: thisMonth.start.toISOString(), end: thisMonth.end.toISOString() }, lastMonth: { start: lastMonth.start.toISOString(), end: lastMonth.end.toISOString() } }
+  if (ppu.length === 0) return { rate, ...range, accounts: [] }
+
+  const { data: reports, error: reportsErr } = await supabase
+    .from('vehicle_inspections')
+    .select('company_id, report_generated_at')
+    .in('company_id', ppu.map((c: { id: string }) => c.id))
+    .not('report_generated_at', 'is', null)
+    .gte('report_generated_at', range.lastMonth.start)
+    .lt('report_generated_at', range.thisMonth.end)
+  if (reportsErr) throw reportsErr
+
+  const accounts = ppu.map((c: { id: string; name: string }) => {
+    const mine = (reports ?? []).filter((r: { company_id: string }) => r.company_id === c.id)
+    const thisCount = mine.filter((r: { report_generated_at: string }) => r.report_generated_at >= range.thisMonth.start).length
+    const lastCount = mine.length - thisCount
+    return {
+      id: c.id, name: c.name,
+      thisMonthReports: thisCount, thisMonthAmount: thisCount * rate,
+      lastMonthReports: lastCount, lastMonthAmount: lastCount * rate,
+    }
+  }).sort((a: PayPerUseAccountRow, b: PayPerUseAccountRow) => b.lastMonthAmount - a.lastMonthAmount || b.thisMonthAmount - a.thisMonthAmount)
+
+  return { rate, ...range, accounts }
 }
 
 // Pay Per Use is invoiced by hand at month end: every generated report in the

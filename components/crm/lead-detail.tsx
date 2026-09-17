@@ -109,7 +109,7 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 24 }}>
+    <div className="adm-page">
       <div style={{ height: 32, width: 200, background: '#E2E8F0', borderRadius: 8, marginBottom: 24, animation: 'pulse 1.5s ease-in-out infinite' }} />
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
     </div>
@@ -124,9 +124,9 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
   const activity = (lead.crm_activity_log as Record<string, unknown>[]) ?? []
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100 }}>
+    <div className="adm-page" style={{ maxWidth: 1100 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div className="adm-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <button onClick={() => router.push('/admin/crm/leads')}
           style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4A5568', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
           <ArrowLeft size={16} /> Back
@@ -144,7 +144,7 @@ export default function LeadDetail({ leadId }: { leadId: string }) {
         </select>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="adm-g2" style={{ gap: 16 }}>
         {/* LEFT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Contact Info */}

@@ -261,9 +261,9 @@ export default function OutreachQueue() {
   const liPct = Math.min(100, ((goals.linkedin_requests as number ?? 0) / (goals.linkedin_goal as number ?? 15)) * 100)
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200 }}>
+    <div className="adm-page" style={{ maxWidth: 1200 }}>
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+      <div className="adm-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>Outreach Queue</h1>
           <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>{smart.length + day5.length + day12.length} leads ready</p>
@@ -375,7 +375,7 @@ export default function OutreachQueue() {
 
         {/* Quick Send Panel */}
         {openLead && (
-          <div style={{ width: 420, flexShrink: 0, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, position: 'sticky', top: 88, maxHeight: 'calc(100vh - 112px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div className="adm-side-panel" style={{ width: 420, flexShrink: 0, background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, position: 'sticky', top: 88, maxHeight: 'calc(100vh - 112px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <QuickSendPanel lead={openLead} onClose={() => setOpenLead(null)} onSent={() => { load(); setOpenLead(null) }} />
           </div>
         )}

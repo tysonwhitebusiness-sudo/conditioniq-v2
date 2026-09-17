@@ -103,7 +103,7 @@ export default function InboundRequests() {
   }, {})
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100 }}>
+    <div className="adm-page" style={{ maxWidth: 1100 }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: '0 0 4px' }}>Inbound Requests</h1>
         <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Contact requests submitted from the public landing page.</p>
@@ -138,8 +138,8 @@ export default function InboundRequests() {
         ))}
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden' }}>
+      {/* Table: scrolls sideways inside its card on a phone */}
+      <div className="adm-scroll-x" style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <div style={{ width: 32, height: 32, border: '3px solid #E1E8F0', borderTopColor: '#00B4D8', borderRadius: 16, animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
@@ -156,7 +156,7 @@ export default function InboundRequests() {
         ) : (
           <>
             {/* Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px 100px 130px', gap: 12, padding: '10px 16px', background: '#F8FAFC', borderBottom: '1px solid #E1E8F0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px 100px 130px', minWidth: 760, gap: 12, padding: '10px 16px', background: '#F8FAFC', borderBottom: '1px solid #E1E8F0' }}>
               {['Name', 'Email', 'Company', 'Type', 'Date', 'Status'].map(h => (
                 <span key={h} style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
               ))}
@@ -165,7 +165,7 @@ export default function InboundRequests() {
               <div
                 key={r.id}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px 100px 130px',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px 100px 130px', minWidth: 760,
                   gap: 12, padding: '14px 16px', alignItems: 'center',
                   borderBottom: i < filtered.length - 1 ? '1px solid #F0F4F8' : 'none',
                   background: (r.status ?? 'new') === 'new' ? 'rgba(0,180,216,0.02)' : '#FFF',

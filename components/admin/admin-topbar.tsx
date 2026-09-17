@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { Bell, Menu } from 'lucide-react'
+import { PRIMARY, AMBER, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_100 } from '@/lib/design-tokens'
 
 const TITLES: Record<string, string> = {
   '/admin/overview':      'Overview',
@@ -39,28 +40,29 @@ export default function AdminTopBar({ onHamburgerClick }: Props) {
         <button
           className="adm-hamburger"
           onClick={onHamburgerClick}
-          style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: 'none', cursor: 'pointer', alignItems: 'center', justifyContent: 'center' }}
+          aria-label="Open menu"
+          style={{ width: 36, height: 36, borderRadius: 8, background: GRAY_100, border: 'none', cursor: 'pointer', alignItems: 'center', justifyContent: 'center' }}
         >
-          <Menu size={18} color="rgba(255,255,255,0.7)" />
+          <Menu size={18} color={GRAY_700} />
         </button>
-        <h1 style={{ fontSize: 17, fontWeight: 700, color: '#FFFFFF', margin: 0 }}>{title}</h1>
+        <h1 style={{ fontSize: 17, fontWeight: 700, color: GRAY_900, margin: 0 }}>{title}</h1>
       </div>
 
       {/* Right: search (desktop only) + bell + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button
           className="adm-search"
-          style={{ width: 36, height: 36, borderRadius: 18, background: 'rgba(255,255,255,0.06)', border: 'none', cursor: 'pointer', alignItems: 'center', justifyContent: 'center' }}
+          style={{ width: 36, height: 36, borderRadius: 18, background: GRAY_100, border: 'none', cursor: 'pointer', alignItems: 'center', justifyContent: 'center' }}
         >
-          <Bell size={16} color="rgba(255,255,255,0.5)" />
+          <Bell size={16} color={GRAY_500} />
         </button>
         {impersonatedCompany && (
-          <span title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 20, background: '#F4A62A', color: '#0D1B2A', whiteSpace: 'nowrap' }}>
+          <span title={`Ghost Mode: viewing ${impersonatedCompany.name}`} style={{ display: 'flex', alignItems: 'center', fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 20, background: AMBER, color: GRAY_900, whiteSpace: 'nowrap' }}>
             GHOST
           </span>
         )}
         <div style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 16, background: '#F4A62A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#0D1B2A' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 16, background: PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: WHITE }}>
             {initials}
           </div>
         </div>

@@ -86,12 +86,12 @@ export default function AllLeads() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200 }}>
+    <div className="adm-page" style={{ maxWidth: 1200 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+      <div className="adm-wrap" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>All Leads ({total})</h1>
         <div style={{ flex: 1 }} />
-        <div style={{ position: 'relative' }}>
+        <div className="adm-grow-mobile" style={{ position: 'relative' }}>
           <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search leads..."
             style={{ height: 38, paddingLeft: 32, paddingRight: 12, border: '1px solid #E1E8F0', borderRadius: 10, fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#FFF', width: 200 }} />
@@ -112,9 +112,9 @@ export default function AllLeads() {
         </button>
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(13,27,42,0.06)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      {/* Table: scrolls sideways inside its card on a phone */}
+      <div className="adm-scroll-x" style={{ background: '#FFF', border: '1px solid #E1E8F0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(13,27,42,0.06)' }}>
+        <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#F0F4F8' }}>
               <th style={{ padding: '12px 16px', width: 40 }}>
@@ -207,7 +207,7 @@ export default function AllLeads() {
               <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0D1B2A', margin: 0 }}>Add Lead</h2>
               <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={16} color="#4A5568" /></button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div className="adm-g2" style={{ gap: 12, marginBottom: 12 }}>
               {([['first_name', 'First Name'], ['last_name', 'Last Name'], ['email', 'Email'], ['company', 'Company'], ['job_title', 'Job Title']] as const).map(([k, lbl]) => (
                 <div key={k} style={{ gridColumn: k === 'email' ? '1 / -1' : 'auto' }}>
                   <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>{lbl}</label>

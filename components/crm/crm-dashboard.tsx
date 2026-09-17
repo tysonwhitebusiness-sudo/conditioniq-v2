@@ -95,8 +95,8 @@ export default function CRMDashboard() {
   }, [today])
 
   if (loading) return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
+    <div className="adm-page">
+      <div className="adm-g3" style={{ gap: 16, marginBottom: 24 }}>
         {Array.from({ length: 3 }).map((_, i) => <div key={i} style={{ height: 120, background: '#E2E8F0', borderRadius: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />)}
       </div>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
@@ -113,7 +113,7 @@ export default function CRMDashboard() {
   ]
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200 }}>
+    <div className="adm-page" style={{ maxWidth: 1200 }}>
       {/* Today's Goals */}
       <Card style={{ marginBottom: 20 }}>
         <SH>Today&apos;s Goals</SH>
@@ -136,7 +136,7 @@ export default function CRMDashboard() {
       </Card>
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="adm-g6" style={{ gap: 12, marginBottom: 20 }}>
         {statCards.map(({ label, value, icon: Icon, color }) => (
           <Card key={label} style={{ padding: 16 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
@@ -149,7 +149,7 @@ export default function CRMDashboard() {
       </div>
 
       {/* Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+      <div className="adm-g2" style={{ gap: 16, marginBottom: 20 }}>
         <Card>
           <SH>Weekly Email Volume</SH>
           <ResponsiveContainer width="100%" height={180}>

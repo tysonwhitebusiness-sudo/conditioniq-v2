@@ -153,7 +153,8 @@ export function calculateVehicleScore(data: Record<string, any>): ScoreResult {
   mechanicalScore = Math.max(0, mechanicalScore)
 
   // --- DOCUMENTATION (15 pts) ---
-  if (!bol_data.bolPresent) { documentationScore -= 5; recs.push('BOL missing') }
+  // Older inspections recorded the BOL as bolProvided.
+  if (!(bol_data.bolPresent ?? bol_data.bolProvided)) { documentationScore -= 5; recs.push('BOL missing') }
   if (!documentation_data.registrationCurrent) { documentationScore -= 4; recs.push('Registration not current') }
   if (!documentation_data.insurancePresent) documentationScore -= 3
   const totalKeys = (keys_data.mechanicalKeys ?? 0) + (keys_data.keyFobs ?? 0)
@@ -162,7 +163,10 @@ export function calculateVehicleScore(data: Record<string, any>): ScoreResult {
   documentationScore = Math.max(0, documentationScore)
 
   // --- MILEAGE (10 pts) ---
-  const odometer = parseInt((data.vehicleInfo?.odometer ?? '0').replace(/,/g, ''))
+  // A saved inspection keeps the odometer in its own column; the wizard keeps it
+  // under vehicleInfo. Reading only the second meant saved inspections were
+  // never marked down for mileage.
+  const odometer = parseInt(String(data.odometer ?? data.vehicleInfo?.odometer ?? '0').replace(/,/g, ''), 10) || 0
   if (odometer > 200000) mileageScore -= 6
   else if (odometer > 150000) mileageScore -= 4
   else if (odometer > 100000) mileageScore -= 2

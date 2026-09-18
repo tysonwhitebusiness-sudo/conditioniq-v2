@@ -1,8 +1,10 @@
 import React from 'react'
+import QRCode from 'qrcode'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
 import { renderReportToBuffer } from './render-document'
 import { buildReportModel } from './model'
+import { reportVerifyUrl } from './layout'
 import { loadReportImage, loadDiagramImage, type ReportImage } from './photos'
 import ReportDocument, { type ReportDiagram } from './report-document'
 import type { ReportDamagePin } from '@/lib/damage-server-actions'
@@ -130,12 +132,19 @@ export async function renderInspectionReport(inspectionId: string): Promise<Rend
   const loaded = await Promise.all(list.map(src => loadReportImage(src)))
   const images = Object.fromEntries(list.map((src, i) => [src, loaded[i]]))
 
+  // The certification card carries the verify link as a QR code. A report
+  // without one is still a report, so a failure here is not an error.
+  const qr = await QRCode.toBuffer(reportVerifyUrl(model.reportNo), { margin: 0, width: 240, errorCorrectionLevel: 'M' })
+    .then(data => ({ data, format: 'png' as const }))
+    .catch(() => null)
+
   const buffer = await renderReportToBuffer(
     React.createElement(ReportDocument, {
       model,
       images,
       diagrams,
       branding: { logo: branding.logo, headerColor: branding.headerColor, accentColor: branding.accentColor },
+      qr,
     }) as any,
   )
 

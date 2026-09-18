@@ -23,6 +23,35 @@ export interface ReportPhoto {
   group: 'exterior' | 'interior' | 'engine' | 'documents'
 }
 
+// R3 · Slots the approved layout reserves for the AI plan (phase C and D).
+// Each one prints only when it is filled, so a report without AI looks
+// finished rather than gappy.
+export type RecommendationUrgency = 'Before road use' | 'Soon' | 'Reconditioning'
+
+export interface ReportRecommendation {
+  urgency: RecommendationUrgency
+  action: string
+  why?: string
+  source: string
+}
+
+export interface ReportRecall {
+  id: string
+  component: string
+  summary: string
+  reportedOn?: string
+}
+
+export interface ReportAssist {
+  /** One or two short sentences, each printed on its own line. */
+  verdict?: string[]
+  summary?: string
+  recommendations?: ReportRecommendation[]
+  recalls?: ReportRecall[]
+  complaints?: { count: number; topAreas: string[] }
+  photoCheck?: string
+}
+
 export interface ReportModel {
   inspectionId: string
   reportNo: string
@@ -31,6 +60,8 @@ export interface ReportModel {
   date: Date
   vin: string
   title: string
+  /** Year, make and model without the trim — "2024 Nissan Altima". */
+  name: string
   year: string | null
   make: string | null
   model: string | null
@@ -58,6 +89,10 @@ export interface ReportModel {
   photos: ReportPhoto[]
   leadPhotoSrc: string | null
   signatureSrc: string | null
+  /** Filled by the AI plan when it runs; empty until then. */
+  assist: ReportAssist
+  /** True when the vehicle details came from a NHTSA VIN decode. */
+  decodedByNhtsa: boolean
 }
 
 const str = (v: unknown): string | null => {
@@ -139,7 +174,11 @@ export function buildReportModel(
   const year = str(inspection.year) ?? str(vehicleInfo.year)
   const make = str(inspection.make) ?? str(vehicleInfo.make)
   const model = str(inspection.model) ?? str(vehicleInfo.model)
-  const title = [year, make, model].filter(Boolean).join(' ') || 'Unknown Vehicle'
+  // Makes arrive in capitals from the VIN decode (NISSAN); the title reads as a
+  // name, with the trim when it is known — 2024 Nissan Altima S.
+  const trimText = str(decoded.trim ?? decoded.vehicleTrim ?? decoded.Trim)
+  const makeText = make && make === make.toUpperCase() && make.length > 3 ? make.charAt(0) + make.slice(1).toLowerCase() : make
+  const title = [year, makeText, model, trimText].filter(Boolean).join(' ') || 'Unknown Vehicle'
 
   const photos: ReportPhoto[] = []
   const seen = new Set<string>()
@@ -179,6 +218,7 @@ export function buildReportModel(
     date: created ? new Date(created) : new Date(),
     vin,
     title,
+    name: [year, makeText, model].filter(Boolean).join(' ') || title,
     year,
     make,
     model,
@@ -199,5 +239,7 @@ export function buildReportModel(
     photos,
     leadPhotoSrc,
     signatureSrc: isPhoto(inspection.signature_url) ? inspection.signature_url : null,
+    assist: {},
+    decodedByNhtsa: !!(vehicleInfo.advancedInfo ?? inspection.advancedInfo),
   }
 }

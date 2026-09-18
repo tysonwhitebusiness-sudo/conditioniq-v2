@@ -1,6 +1,6 @@
 // R1 · The inspections the report is checked against.
 //
-// Ten cases, each one a shape the report has to survive: nothing recorded, a
+// Twelve cases, each one a shape the report has to survive: nothing recorded, a
 // full walk-around, thirty damage pins, only tall phone photos, only wide ones,
 // notes long enough to reflow a page, a truck, a Pay Per Use inspection, an
 // inspection recorded on the older form, and one with no photos at all.
@@ -179,5 +179,33 @@ export const REPORT_CASES = [
       FULL_SLOTS,
       'tall',
     ),
+  },
+  {
+    name: 'four damage pins',
+    // The most damage that still prints as cards; one more and it is a table.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    pins: pins(4),
+    diagram: 'diagram-1',
+  },
+  {
+    name: 'assist filled',
+    // Every AI slot the layout reserves, filled, so the phase C output has a
+    // place to land that is already known to fit.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    pins: pins(1),
+    diagram: 'diagram-1',
+    assist: {
+      verdict: ['Clean exterior and all 18 function tests passed.', 'Brake fluid is low and the interior needs reconditioning.'],
+      summary: 'Recorded at 69,279 miles. Paint and glass are good, with one small scratch on the rear bumper, and tread depth is 12–13/32" on all four tires. Under the hood, brake fluid is low and oil residue was noted around the fill cap; transmission fluid was not checked.',
+      recommendations: [
+        { urgency: 'Before road use', action: 'Top up brake fluid and check for a leak', why: 'Brake fluid recorded low', source: 'Maintenance guidance' },
+        { urgency: 'Before road use', action: 'Confirm steering recall 23V882000 was repaired', why: 'Open recall', source: 'NHTSA recall 23V882000' },
+        { urgency: 'Soon', action: 'Check transmission fluid', why: 'Not checked', source: 'Maintenance guidance' },
+        { urgency: 'Reconditioning', action: 'Interior detail and odor treatment', why: 'Stains and odor recorded', source: 'NAAA grading scale, interior' },
+      ],
+      recalls: [{ id: '23V882000', component: 'Steering: rack and pinion', summary: 'Bolts connecting the electric power steering unit to the steering rack may loosen, which can cause loss of steering control.', reportedOn: 'Dec 21, 2023' }],
+      complaints: { count: 41, topAreas: ['service brakes', 'steering', 'engine'] },
+      photoCheck: '2 photos may be in the wrong slot: "Rear" shows the driver side.',
+    },
   },
 ]

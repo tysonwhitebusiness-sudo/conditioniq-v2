@@ -33,6 +33,7 @@ const { renderReportToBuffer } = await import('../lib/report/render-document.ts'
 const { buildReportModel } = await import('../lib/report/model.ts')
 const { calculateVehicleScore } = await import('../lib/vehicle-score.ts')
 const ReportDocument = (await import('../lib/report/report-document.tsx')).default
+const QRCode = (await import('qrcode')).default
 
 const KEEP = process.argv.includes('--keep')
 const ONE_ID = process.argv.find(a => a.startsWith('--id='))?.slice(5)
@@ -81,6 +82,7 @@ async function measure(name, buffer) {
   let overlaps = 0
   let pagesWithoutHeader = 0
   let orphanedHeadings = 0
+  let allText = ''
 
   for (let n = 1; n <= pages; n++) {
     const page = await pdf.getPage(n)
@@ -119,6 +121,7 @@ async function measure(name, buffer) {
     }
 
     const pageText = items.map(i => i.str).join(' ')
+    allText += ` ${text.items.map(i => i.str).join(' ')}`
     if (!/Vehicle condition report/i.test(pageText)) pagesWithoutHeader++
 
     const png = Buffer.from(await renderPageAsImage(bytes.slice(), n, { canvasImport: () => import('@napi-rs/canvas'), scale: 1.2 }))
@@ -142,7 +145,7 @@ async function measure(name, buffer) {
     blank.push(Math.round((blankRows / (bottom - top)) * 100))
   }
 
-  return { pages, blank, overlaps, pagesWithoutHeader, orphanedHeadings, sizeKb: Math.round(buffer.length / 1024) }
+  return { pages, blank, overlaps, pagesWithoutHeader, orphanedHeadings, allText, sizeKb: Math.round(buffer.length / 1024) }
 }
 
 async function renderCase(testCase) {
@@ -158,15 +161,28 @@ async function renderCase(testCase) {
     const image = samplePhoto(800, 420, '#DDE3E8')
     diagrams.push({ view: 'rear', image, aspect: 420 / 800, modelAssetId: testCase.diagram })
   }
-  const buffer = await renderReportToBuffer(React.createElement(ReportDocument, { model, images, diagrams }))
+  if (testCase.assist) model.assist = testCase.assist
+  const qr = { data: await QRCode.toBuffer(`https://conditioniq.app/r/${model.reportNo}`, { margin: 0, width: 240 }), format: 'png' }
+  const buffer = await renderReportToBuffer(React.createElement(ReportDocument, { model, images, diagrams, qr }))
   if (KEEP) writeFileSync(join(OUT, `${testCase.name}.pdf`), buffer)
-  return buffer
+  return { buffer, expected: expectedText(model) }
 }
 
 const failures = []
 const rows = []
 
-function check(name, m) {
+// Text the report must carry exactly as recorded. A font carried over between
+// renders once drew "J. Smith" as ". Smith" and "2.5L" as ".5L", so the render
+// test builds every case in one process, as a warm server does, and reads the
+// text back.
+function expectedText(model) {
+  return [model.vin, model.title, model.inspectorName, model.engine].filter(v => v && v !== '—')
+}
+
+function check(name, m, expected = []) {
+  for (const text of expected) {
+    if (!m.allText.includes(text)) failures.push(`${name}: "${text}" does not appear as recorded`)
+  }
   const filled = m.blank.length > 1 ? m.blank.slice(0, -1) : []
   const averageBlank = filled.length ? Math.round(filled.reduce((a, b) => a + b, 0) / filled.length) : 0
   const worstBeforeLast = filled.length ? Math.max(...filled) : 0
@@ -180,10 +196,10 @@ function check(name, m) {
 }
 
 for (const testCase of REPORT_CASES) {
-  const buffer = await renderCase(testCase)
+  const { buffer, expected } = await renderCase(testCase)
   const m = await measure(testCase.name, buffer)
   rows.push({ name: testCase.name, ...m })
-  check(testCase.name, m)
+  check(testCase.name, m, expected)
 }
 
 if (ONE_ID) {

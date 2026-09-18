@@ -19,7 +19,7 @@ export const PHOTO_BOXES = {
   gallery: { ratio: 4 / 3, fit: 'cover' as const, radius: 4, columns: 4, gap: 6 },
   heroPair: { ratio: 16 / 8.5, fit: 'cover' as const, radius: 6, columns: 2, gap: 6 },
   damage: { ratio: 1, fit: 'cover' as const, radius: 5, width: 110 },
-  damageThumb: { ratio: 1, fit: 'cover' as const, radius: 3, width: 56 },
+  damageThumb: { ratio: 1, fit: 'cover' as const, radius: 3, width: 40 },
   document: { ratio: 3 / 4, fit: 'contain' as const, radius: 4, width: 62 },
   signature: { ratio: 3, fit: 'contain' as const, radius: 0, width: 180 },
 } as const
@@ -60,4 +60,20 @@ export function reportBoxForField(fieldKey: string): ReportBoxKind {
   if (fieldKey === 'baselinePhoto' || fieldKey === 'vehiclePhoto') return 'lead'
   if (/^damage/i.test(fieldKey)) return 'damage'
   return 'gallery'
+}
+
+// R3 · Where a printed report can be checked, and the clock it is dated by.
+//
+// Reports render on the server, which runs on UTC; printing that time would put
+// an afternoon inspection on the next morning. Dates and times print in US
+// Central with the zone named, until companies carry their own time zone.
+export const REPORT_TIME_ZONE = 'America/Chicago'
+export const REPORT_VERIFY_HOST = 'conditioniq.app'
+
+export function reportVerifyUrl(reportNo: string): string {
+  return `https://${REPORT_VERIFY_HOST}/r/${reportNo}`
+}
+
+export function reportVerifyText(reportNo: string): string {
+  return `Verify at ${REPORT_VERIFY_HOST}/r/${reportNo}`
 }

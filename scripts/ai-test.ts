@@ -25,8 +25,8 @@ async function main() {
   const { createAdminClient } = await import('../lib/supabase/admin')
 
   // ── Arithmetic ────────────────────────────────────────────────────────────
-  check('cost of 10k in / 1k out on Sonnet 5 is $0.045', Math.abs(costOf('claude-sonnet-5', { inputTokens: 10_000, outputTokens: 1_000 }) - 0.045) < 1e-9)
-  check('worst case counts every allowed output token', Math.abs(worstCaseCost('claude-sonnet-5', 1000, 2000) - (1000 * 3 + 2000 * 15) / 1e6) < 1e-9)
+  check('cost of 10k in / 1k out on Sonnet 5 is $0.03', Math.abs(costOf('claude-sonnet-5', { inputTokens: 10_000, outputTokens: 1_000 }) - 0.03) < 1e-9)
+  check('worst case counts every allowed output token', Math.abs(worstCaseCost('claude-sonnet-5', 1000, 2000) - (1000 * 2 + 2000 * 10) / 1e6) < 1e-9)
   const budget = { ceiling: 0.2, summaryReserve: 0.05, spent: 0.1 }
   check('a feature call that fits before the reserve is allowed', fitsBudget(budget, 0.05, false))
   check('a feature call that would eat the summary reserve is skipped', !fitsBudget(budget, 0.051, false))

@@ -31,7 +31,8 @@ export async function readWithAi(opts: {
     companyId: opts.companyId,
     inspectionId: opts.inspectionId,
     system: SYSTEM,
-    maxTokens: 1024,
+    maxTokens: 256,
+    thinking: 'off',
     messages: [{
       role: 'user',
       content: [

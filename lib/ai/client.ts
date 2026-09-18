@@ -23,6 +23,9 @@ export interface AiRequest {
   system: string
   messages: Anthropic.MessageParam[]
   maxTokens: number
+  /** Off for reading and classifying, where thinking only adds cost. Adaptive when omitted. */
+  thinking?: 'off' | 'adaptive'
+  effort?: 'low' | 'medium' | 'high'
 }
 
 export type AiResult =
@@ -122,7 +125,9 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
         max_tokens: req.maxTokens,
         system: req.system,
         messages: req.messages,
-      })
+        ...(req.thinking === 'off' ? { thinking: { type: 'disabled' as const } } : {}),
+        ...(req.effort ? { output_config: { effort: req.effort } } : {}),
+      } as Anthropic.MessageCreateParamsNonStreaming)
       const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, cacheReadTokens: message.usage.cache_read_input_tokens ?? 0 }
       const costUsd = costOf(AI_MODEL, usage)
       await settle({

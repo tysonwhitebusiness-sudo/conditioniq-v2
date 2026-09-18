@@ -1,12 +1,14 @@
 // A · What a call costs, and the most it could cost.
 //
-// Prices are per million tokens. Check them against Anthropic's pricing page
+// Prices are per million tokens. Batch requests are billed at half of these.
+// Check them against Anthropic's pricing page
 // when a model changes: the ceiling is only as honest as these numbers.
 
 export const AI_MODEL = 'claude-sonnet-5'
 
 export const MODEL_PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
-  'claude-sonnet-5': { input: 3, output: 15, cacheRead: 0.3 },
+  // $2 in / $10 out per million; cache reads at a tenth of input.
+  'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2 },
 }
 
 export interface AiUsage {

@@ -45,3 +45,6 @@ next-env.d.ts
 # curated vehicle diagram library staging — large binaries (GLB/PNG), never
 # committed; uploaded directly to Supabase Storage via scripts/seed-vehicle-model-assets.ts
 /vehicle-library-staging
+
+# Output of npm run report:test -- --keep
+.report-test/

@@ -698,13 +698,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
   // ── PDF download for a single inspection
   const downloadPDF = async (inspId: string) => {
     try {
-      const { data } = await createClient().from('vehicle_inspections').select('*').eq('id', inspId).single()
-      if (!data) return
-      const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
-        import('@/lib/vehicle-score'),
-        import('@/lib/pdf-generator'),
-      ])
-      await generateInspectionPDF(data, calculateVehicleScore(data), data.signature_url ?? '')
+      const { generateReport } = await import('@/lib/pdf-generator')
+      await generateReport(inspId)
     } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
   }
 
@@ -938,13 +933,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                             const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
                             if (url) { window.open(url, '_blank'); return }
                           }
-                          const full = await fetchFullInspectionAction(insp.id)
-                          if (!full) { setErrorMsg('Inspection data not found'); return }
-                          const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
-                            import('@/lib/vehicle-score'),
-                            import('@/lib/pdf-generator'),
-                          ])
-                          await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
+                          const { generateReport } = await import('@/lib/pdf-generator')
+                          await generateReport(insp.id)
                         } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
                       }}
                       style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>

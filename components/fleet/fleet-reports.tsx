@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { getFMCReports, getFMCLocations } from '@/lib/fleet-actions'
 import { Search, Download } from 'lucide-react'
-import { generateInspectionPDF } from '@/lib/pdf-generator'
-import { calculateVehicleScore } from '@/lib/vehicle-score'
-import { fetchFullInspectionAction } from '@/lib/inspection-server-actions'
+import { generateReport } from '@/lib/pdf-generator'
 
 export default function FleetReports() {
   const { effectiveCompany } = useAuth()
@@ -29,14 +27,9 @@ export default function FleetReports() {
 
   useEffect(() => { load() }, [effectiveCompany, search])
 
-  // The list carries only the columns it renders, so the full inspection — the
-  // step answers and photos the report is built from — is fetched here, for the
-  // one row being downloaded.
+  // Built on the server from the inspection id; the list row only supplies it.
   const handleDownload = async (report: any) => {
-    const full = await fetchFullInspectionAction(report.id)
-    if (!full) return
-    const score = calculateVehicleScore(full)
-    await generateInspectionPDF(full, score, full.signature_url ?? '')
+    await generateReport(report.id)
   }
 
   return (

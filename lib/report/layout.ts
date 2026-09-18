@@ -1,0 +1,39 @@
+// R1 and R2 · the page and the photo boxes.
+//
+// Every number the report is drawn with lives here, so the layout can be
+// checked against the approved mockup instead of being spread through the
+// component.
+
+/** US Letter in points. Customers print on Letter, not A4. */
+export const PAGE = { size: 'LETTER' as const, width: 612, height: 792, margin: 36 }
+export const CONTENT_WIDTH = PAGE.width - PAGE.margin * 2 // 540
+
+// R2 · Photo system.
+//
+// A photo's box no longer depends on the photo. Each kind of photo has a fixed
+// shape and the photo is scaled to fill it, so a tall phone photo and a wide
+// laptop photo lay out identically. Documents are the exception: they are shown
+// whole on a light panel, because a cropped registration is useless.
+export const PHOTO_BOXES = {
+  lead: { ratio: 16 / 6.6, fit: 'cover' as const, radius: 6 },
+  gallery: { ratio: 4 / 3, fit: 'cover' as const, radius: 4, columns: 4, gap: 6 },
+  heroPair: { ratio: 16 / 8.5, fit: 'cover' as const, radius: 6, columns: 2, gap: 6 },
+  damage: { ratio: 1, fit: 'cover' as const, radius: 5, width: 110 },
+  damageThumb: { ratio: 1, fit: 'cover' as const, radius: 3, width: 56 },
+  document: { ratio: 3 / 4, fit: 'contain' as const, radius: 4, width: 62 },
+  signature: { ratio: 3, fit: 'contain' as const, radius: 0, width: 180 },
+} as const
+
+export type PhotoBox = keyof typeof PHOTO_BOXES
+
+/** Width of one cell in a grid of `columns` across the content width. */
+export function columnWidth(columns: number, gap: number, within = CONTENT_WIDTH): number {
+  return (within - gap * (columns - 1)) / columns
+}
+
+/** The box a photo is drawn in, given the space it sits in. */
+export function photoBox(kind: PhotoBox, width?: number) {
+  const box = PHOTO_BOXES[kind] as { ratio: number; fit: 'cover' | 'contain'; radius: number; width?: number; columns?: number; gap?: number }
+  const w = width ?? box.width ?? (box.columns ? columnWidth(box.columns, box.gap ?? 0) : CONTENT_WIDTH)
+  return { width: w, height: w / box.ratio, fit: box.fit, radius: box.radius }
+}

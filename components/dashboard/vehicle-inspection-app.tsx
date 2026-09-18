@@ -173,18 +173,8 @@ export default function VehicleInspectionApp() {
   const handleViewReport = useCallback(async (item: any) => {
     if (!item?.id) return
     try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('vehicle_inspections')
-        .select('*')
-        .eq('id', item.id)
-        .single()
-      if (!data) return
-      const { calculateVehicleScore } = await import('@/lib/vehicle-score')
-      const scoreResult = calculateVehicleScore(data)
-      const { generateInspectionPDF } = await import('@/lib/pdf-generator')
-      await generateInspectionPDF(data, scoreResult, data.signature_url ?? '')
+      const { generateReport } = await import('@/lib/pdf-generator')
+      await generateReport(item.id)
     } catch (e: any) {
       setErrorMsg('Could not generate report: ' + (e.message ?? 'Unknown error'))
     }

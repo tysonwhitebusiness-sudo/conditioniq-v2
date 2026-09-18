@@ -72,13 +72,9 @@ function InspectionsContent() {
           : await getReportSignedUrlAction(item.report_url)
         if (url) { window.open(url, '_blank'); return }
       }
-      const full = await fetchFullInspectionAction(item.id)
-      if (!full) return
-      const [{ calculateVehicleScore }, { generateInspectionPDF }] = await Promise.all([
-        import('@/lib/vehicle-score'),
-        import('@/lib/pdf-generator'),
-      ])
-      await generateInspectionPDF(full, calculateVehicleScore(full), full.signature_url ?? '')
+      // The report is built on the server from the inspection id alone.
+      const { generateReport } = await import('@/lib/pdf-generator')
+      await generateReport(item.id)
     } catch (e) {
       console.error('[inspections] pdf error', e)
     }

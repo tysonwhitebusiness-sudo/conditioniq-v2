@@ -44,6 +44,12 @@ export async function setCompanyAiEnabled(companyId: string, enabled: boolean): 
   return error ? { ok: false, error: error.message } : { ok: true }
 }
 
+/** Whether the server has an Anthropic key. Says only yes or no; the key never leaves the server. */
+export async function getAiKeyConfigured(): Promise<boolean | null> {
+  if (!(await isPlatformAdmin())) return null
+  return !!process.env.ANTHROPIC_API_KEY?.trim()
+}
+
 export async function getAiKillSwitch(): Promise<boolean | null> {
   if (!(await isPlatformAdmin())) return null
   const { data } = await createAdminClient().from('ai_settings').select('kill_switch').maybeSingle()

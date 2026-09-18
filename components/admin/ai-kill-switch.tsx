@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getAiKillSwitch, setAiKillSwitch } from '@/lib/ai/settings-actions'
-import { WHITE, GRAY_900, GRAY_500, GRAY_300, DANGER, DANGER_LIGHT, DANGER_TEXT, SUCCESS_DARK } from '@/lib/design-tokens'
+import { getAiKillSwitch, setAiKillSwitch, getAiKeyConfigured } from '@/lib/ai/settings-actions'
+import { WHITE, GRAY_900, GRAY_500, GRAY_300, DANGER, DANGER_LIGHT, DANGER_TEXT, SUCCESS_DARK, WARN_DARK } from '@/lib/design-tokens'
 
 // A · Stops every AI call on the platform at once. Inspections carry on as
 // they would with AI switched off; nothing is lost.
@@ -10,8 +10,9 @@ export default function AiKillSwitch() {
   const [on, setOn] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [keySet, setKeySet] = useState<boolean | null>(null)
 
-  useEffect(() => { getAiKillSwitch().then(setOn) }, [])
+  useEffect(() => { getAiKillSwitch().then(setOn); getAiKeyConfigured().then(setKeySet) }, [])
   if (on === null) return null
 
   const flip = async () => {
@@ -31,6 +32,11 @@ export default function AiKillSwitch() {
         <p style={{ fontSize: 13, color: on ? DANGER_TEXT : GRAY_500, margin: '2px 0 0' }}>
           {on ? 'All AI calls are stopped for every account.' : 'AI is running. Each inspection stays under its spend ceiling.'}
         </p>
+        {keySet === false ? (
+          <p style={{ fontSize: 12, color: WARN_DARK, margin: '4px 0 0' }}>No Anthropic API key set: AI calls are skipped. Add ANTHROPIC_API_KEY to .env.local and to the Vercel environment variables.</p>
+        ) : keySet ? (
+          <p style={{ fontSize: 12, color: SUCCESS_DARK, margin: '4px 0 0' }}>Anthropic API key connected.</p>
+        ) : null}
         {error ? <p style={{ fontSize: 12, color: DANGER_TEXT, margin: '4px 0 0' }}>{error}</p> : null}
       </div>
       <button

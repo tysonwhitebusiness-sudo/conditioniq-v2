@@ -148,6 +148,28 @@ function combined(name: string, guideText: string): Technique {
 export const tunedGuide = combined('tuned-guide', DAMAGE_GUIDE)
 export const tunedGuideSoft = combined('tuned-guide-soft', SOFT_GUIDE)
 
+// Round 2 (18 Sep): the tuned prompt plus one rule for the group mix-ups seen
+// in the misses (a scratched window called a scratch, a smashed lens called a
+// hole), then higher-resolution photos, then Opus instead of Sonnet.
+const V2_RULE = '- Scratches, chips and cracks in glass (windshield, windows) are "glass". A broken or cracked headlamp, tail-lamp or marker lens is "lamp".'
+
+function v2(name: string, extra: Partial<Technique> = {}): Technique {
+  return {
+    name,
+    promptVersion: `damage-tuned-v2${extra.imageEdge === 2048 ? '-2048' : ''}${extra.model ? `-${extra.model}` : ''}`,
+    maxTokens: 400,
+    ...extra,
+    build: (_item: DamageItem, image: string) => ({
+      system: `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${TUNED_RULES}\n${V2_RULE}\n\n${ANSWER_FORMAT}`,
+      thinking: { type: 'disabled' },
+      messages: [{ role: 'user', content: [photo(image), { type: 'text', text: DAMAGE_USER_TEXT }] }],
+    }),
+  }
+}
+
 export const TECHNIQUES: Record<string, Technique> = {
+  'v2': v2('v2'),
+  'v2-hires': v2('v2-hires', { imageEdge: 2048 }),
+  'v2-hires-opus': v2('v2-hires-opus', { imageEdge: 2048, model: 'claude-opus-5' }),
   'tuned-guide': tunedGuide,
   'tuned-guide-soft': tunedGuideSoft, plain, guide, examples: withExamples, tuned, 'tuned-think': tunedThink }

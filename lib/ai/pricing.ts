@@ -9,6 +9,8 @@ export const AI_MODEL = 'claude-sonnet-5'
 export const MODEL_PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
   // $2 in / $10 out per million; cache reads at a tenth of input.
   'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2 },
+  // Measured against Sonnet in the lab; not used by the app.
+  'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5 },
 }
 
 export interface AiUsage {

@@ -25,6 +25,10 @@ export interface Technique {
   promptVersion: string
   /** Output allowance per photo; also what the worst case is priced at. */
   maxTokens: number
+  /** Defaults to the app's model. */
+  model?: string
+  /** Longest edge of the photo sent: 1024 (the sets) or 2048 (the high-res copies). */
+  imageEdge?: 1024 | 2048
   build(item: DamageItem, image: string): Omit<Anthropic.MessageCreateParamsNonStreaming, 'model' | 'max_tokens'>
 }
 
@@ -55,6 +59,10 @@ export interface Metrics {
   extraGroupRate: number
   /** Clean photos with any damage reported. */
   falseAlarmRate: number
+  /** Damaged photos where any damage at all was reported: what the inspector sees flagged. */
+  flaggedRate: number
+  /** photoRecall, counting look-alike groups as a match (puncture/tear, lamp/glass). */
+  lenientPhotoRecall: number
   costPerPhotoUsd: number
   /** At six photos checked per inspection. */
   costPerInspectionUsd: number
@@ -66,16 +74,21 @@ export function readManifest(): Manifest {
   return JSON.parse(readFileSync(join(SETS_DIR, 'manifest.json'), 'utf8'))
 }
 
-export function imageData(item: { file: string }): string {
-  return readFileSync(join(SETS_DIR, item.file)).toString('base64')
+export function imageData(item: { file: string }, edge: 1024 | 2048 = 1024): string {
+  return readFileSync(join(SETS_DIR, edge === 2048 ? `hires/${item.file}` : item.file)).toString('base64')
 }
+
+// Groups a person would accept for each other when naming the same damage: a
+// hole with torn edges, and a broken lamp lens (which is glass).
+const LOOKALIKE: Partial<Record<DamageGroup, DamageGroup[]>> = { puncture: ['tear'], tear: ['puncture'], lamp: ['glass'], glass: ['lamp'] }
 
 function spent(): number {
   return existsSync(SPEND_FILE) ? JSON.parse(readFileSync(SPEND_FILE, 'utf8')).total : 0
 }
 function addSpend(usd: number) {
   mkdirSync(RUNS_DIR, { recursive: true })
-  writeFileSync(SPEND_FILE, JSON.stringify({ total: spent() + usd, updated: new Date().toISOString() }))
+  const prior = existsSync(SPEND_FILE) ? JSON.parse(readFileSync(SPEND_FILE, 'utf8')) : {}
+  writeFileSync(SPEND_FILE, JSON.stringify({ ...prior, total: spent() + usd, updated: new Date().toISOString() }))
 }
 
 const hashOf = (params: unknown) => createHash('sha256').update(JSON.stringify(params)).digest('hex').slice(0, 32)
@@ -138,6 +151,8 @@ export function score(results: ItemResult[], technique: string, set: string, thr
     groupRecall: pairs ? foundPairs / pairs : 0,
     extraGroupRate: predicted ? extra / predicted : 0,
     falseAlarmRate: clean.length ? clean.filter(r => kept(r).size > 0).length / clean.length : 0,
+    flaggedRate: damaged.length ? damaged.filter(r => kept(r).size > 0).length / damaged.length : 0,
+    lenientPhotoRecall: damaged.length ? damaged.filter(r => { const got = kept(r); return r.truth.some(g => got.has(g) || (LOOKALIKE[g] ?? []).some(l => got.has(l))) }).length / damaged.length : 0,
     costPerPhotoUsd: perPhoto,
     // Sent live (not batched) in the app, so the in-app cost is twice the lab's.
     costPerInspectionUsd: (perPhoto / BATCH_DISCOUNT) * 6,
@@ -151,15 +166,16 @@ export async function run(technique: Technique, setName: string, items: DamageIt
   const client = new Anthropic()
   mkdirSync(CACHE_DIR, { recursive: true })
   const requests = items.map(item => {
-    const params = { model: AI_MODEL, max_tokens: technique.maxTokens, ...technique.build(item, imageData(item)) } as Anthropic.MessageCreateParamsNonStreaming
+    const params = { model: technique.model ?? AI_MODEL, max_tokens: technique.maxTokens, ...technique.build(item, imageData(item, technique.imageEdge)) } as Anthropic.MessageCreateParamsNonStreaming
     return { item, params, key: hashOf(params) }
   })
   const todo = requests.filter(r => !existsSync(join(CACHE_DIR, `${r.key}.json`)))
 
   if (todo.length) {
     // Worst case: every input token plus every allowed output token, at batch price.
-    const sample = await client.messages.countTokens({ model: AI_MODEL, system: todo[0].params.system, messages: todo[0].params.messages })
-    const worst = todo.length * costOf(AI_MODEL, { inputTokens: sample.input_tokens * 1.15, outputTokens: technique.maxTokens }) * BATCH_DISCOUNT
+    const model = technique.model ?? AI_MODEL
+    const sample = await client.messages.countTokens({ model, system: todo[0].params.system, messages: todo[0].params.messages })
+    const worst = todo.length * costOf(model, { inputTokens: sample.input_tokens * 1.15, outputTokens: technique.maxTokens }) * BATCH_DISCOUNT
     console.log(`${technique.name} on ${setName}: ${todo.length} to send (${requests.length - todo.length} cached), ~${sample.input_tokens} input tokens each, worst case $${worst.toFixed(2)}; spent so far $${spent().toFixed(2)} of $${LAB_BUDGET_USD}`)
     if (spent() + worst > LAB_BUDGET_USD) throw new Error(`Refused: would pass the lab budget of $${LAB_BUDGET_USD}`)
 
@@ -179,7 +195,7 @@ export async function run(technique: Technique, setName: string, items: DamageIt
       const entry: Record<string, unknown> = { custom_id: result.custom_id, type: result.result.type }
       if (result.result.type === 'succeeded') {
         const m = result.result.message
-        const usd = costOf(AI_MODEL, { inputTokens: m.usage.input_tokens, outputTokens: m.usage.output_tokens, cacheReadTokens: m.usage.cache_read_input_tokens ?? 0 }) * BATCH_DISCOUNT
+        const usd = costOf(technique.model ?? AI_MODEL, { inputTokens: m.usage.input_tokens, outputTokens: m.usage.output_tokens, cacheReadTokens: m.usage.cache_read_input_tokens ?? 0 }) * BATCH_DISCOUNT
         batchCost += usd
         entry.text = m.content.map(b => (b.type === 'text' ? b.text : '')).join('')
         entry.usage = m.usage
@@ -211,8 +227,10 @@ export function saveRun(metrics: Metrics, results: ItemResult[]) {
 
 export function printTable(rows: Metrics[]) {
   const pct = (n: number) => `${Math.round(n * 100)}%`.padStart(5)
-  console.log('\ntechnique                 set     found  groups  extra  false-alarm  $/photo  $/insp(live)')
+  // flagged: damaged photos with any damage reported · found: with a right group ·
+  // lenient: counting look-alike groups (puncture/tear, lamp/glass) as right
+  console.log('\ntechnique                      set    flagged  found  lenient groups  extra  false-alarm  $/photo  $/insp(live)')
   for (const m of rows) {
-    console.log(`${m.technique.padEnd(25)} ${m.set.padEnd(7)} ${pct(m.photoRecall)}  ${pct(m.groupRecall)}  ${pct(m.extraGroupRate)}  ${pct(m.falseAlarmRate).padStart(11)}  ${m.costPerPhotoUsd.toFixed(4)}  ${m.costPerInspectionUsd.toFixed(3).padStart(8)}${m.failed ? `  (${m.failed} failed)` : ''}`)
+    console.log(`${m.technique.padEnd(30)} ${m.set.padEnd(6)} ${pct(m.flaggedRate ?? 0)}  ${pct(m.photoRecall)}  ${pct(m.lenientPhotoRecall ?? 0)}  ${pct(m.groupRecall)}  ${pct(m.extraGroupRate)}  ${pct(m.falseAlarmRate).padStart(11)}  ${m.costPerPhotoUsd.toFixed(4)}  ${m.costPerInspectionUsd.toFixed(3).padStart(8)}${m.failed ? `  (${m.failed} failed)` : ''}`)
   }
 }

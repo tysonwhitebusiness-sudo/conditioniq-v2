@@ -20,7 +20,7 @@ import { score, withAgreement, printTable, type ItemResult, type Metrics } from 
 
 const MAX_FALSE_ALARM = 0.15
 const MAX_COST = 0.08
-const THRESHOLDS = [0.5, 0.6, 0.7, 0.8]
+const THRESHOLDS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 
 const set = process.argv[2] ?? 'tuning'
 const runs = readdirSync(RUNS_DIR)

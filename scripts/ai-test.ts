@@ -39,10 +39,12 @@ async function main() {
   const { data: company } = await admin.from('companies').select('id, ai_enabled').limit(1).single()
   const { data: settings } = await admin.from('ai_settings').select('kill_switch').single()
   const request = (feature: 'summary' | 'photo_check') => ({
-    feature, promptVersion: 'test', companyId: company!.id, inspectionId: null,
+    feature, promptVersion: runTag, companyId: company!.id, inspectionId: null,
     system: 'test', messages: [{ role: 'user' as const, content: 'test' }], maxTokens: 10,
   })
-  const since = new Date().toISOString()
+  // Rows are found by a tag unique to this run, not by time: the database's
+  // clock and this machine's can differ by enough to miss a row.
+  const runTag = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
   try {
     const noKey = await runAi(request('summary'))
@@ -58,7 +60,7 @@ async function main() {
     check('an account with AI off is skipped', !off.ok && off.reason === 'account_off')
     await admin.from('companies').update({ ai_enabled: company!.ai_enabled }).eq('id', company!.id)
 
-    const { data: logged } = await admin.from('ai_calls').select('status, cost_usd').gte('created_at', since).eq('prompt_version', 'test')
+    const { data: logged } = await admin.from('ai_calls').select('status, cost_usd').eq('prompt_version', runTag)
     const statuses = (logged ?? []).map(r => r.status).sort().join(',')
     check('every skip is logged with its reason', statuses === 'skipped_account_off,skipped_kill_switch,skipped_not_configured')
     check('skipped calls cost nothing', (logged ?? []).every(r => Number(r.cost_usd) === 0))
@@ -66,7 +68,7 @@ async function main() {
     // Leave the live settings exactly as they were, and remove the test rows.
     await admin.from('ai_settings').update({ kill_switch: settings!.kill_switch }).eq('id', true)
     await admin.from('companies').update({ ai_enabled: company!.ai_enabled }).eq('id', company!.id)
-    await admin.from('ai_calls').delete().gte('created_at', since).eq('prompt_version', 'test')
+    await admin.from('ai_calls').delete().eq('prompt_version', runTag)
   }
 
   console.log(hadKey ? '\n(an API key is configured; it was not used)' : '\n(no API key configured: live calls untested)')

@@ -9,7 +9,12 @@ import {
 } from '@/lib/pricing'
 import { checkUsageState } from '@/lib/usage-actions'
 import { submitUpgradeRequest } from '@/lib/contact-actions'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import dynamic from 'next/dynamic'
+// Loaded on demand — the chart library is far larger than the chart.
+const UsageSparkline = dynamic(() => import('./usage-sparkline'), {
+  ssr: false,
+  loading: () => <div style={{ height: 80, background: '#F0F4F8', borderRadius: 8 }} />,
+})
 import { TrendingUp, Download, ExternalLink, CreditCard, ArrowUp, X, Check } from 'lucide-react'
 import type { UsageState } from '@/lib/usage-actions'
 
@@ -194,14 +199,7 @@ export default function BillingDashboard() {
       {sparklineData.length > 0 && (
         <div className="bg-white rounded-2xl p-5 border border-gray-200">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-4">Reports — Last 14 Days</p>
-          <ResponsiveContainer width="100%" height={80}>
-            <BarChart data={sparklineData} barCategoryGap={2}>
-              <Bar dataKey="count" fill="#1e3a5f" radius={[2, 2, 0, 0]} />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip formatter={(v: any) => [`${v} reports`, '']} />
-            </BarChart>
-          </ResponsiveContainer>
+          <UsageSparkline data={sparklineData} />
         </div>
       )}
 

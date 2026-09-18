@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
@@ -32,7 +33,8 @@ import { defaultSizeClassForTemplate } from '@/lib/work-order-status'
 import { createCheckpoint } from '@/lib/checkpoint-actions'
 import { uploadCheckpointPhoto } from '@/lib/checkpoint-server-actions'
 import { checkUsageState } from '@/lib/usage-actions'
-import CameraCapture from '@/components/ui/camera-capture'
+// The camera pulls in the capture and barcode code; it loads when it opens.
+const CameraCapture = dynamic(() => import('@/components/ui/camera-capture'), { ssr: false })
 import AddVehicleChoice from '@/components/inventory/add-vehicle-choice'
 import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_TEXT, DANGER_LIGHT, DANGER_BORDER, SUCCESS, SUCCESS_LIGHT, SUCCESS_DARK, WARN, WARN_LIGHT, WARN_DARK, AMBER_DARK, PURPLE_LIGHT, PURPLE_DARK, INFO_LIGHT, INFO_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 

@@ -7,7 +7,16 @@ import {
   getWeeklyEmailVolume, getReplyRateTrend, getPipelineStageSummary,
   getCompanyBreakdown, updateGoalTargets,
 } from '@/lib/crm-actions'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts'
+import dynamic from 'next/dynamic'
+// Loaded on demand (see components/crm/crm-charts.tsx).
+const WeeklyVolumeChart = dynamic(() => import('./crm-charts').then(m => m.WeeklyVolumeChart), {
+  ssr: false,
+  loading: () => <div style={{ height: 180, background: '#F0F4F8', borderRadius: 8 }} />,
+})
+const ReplyRateChart = dynamic(() => import('./crm-charts').then(m => m.ReplyRateChart), {
+  ssr: false,
+  loading: () => <div style={{ height: 180, background: '#F0F4F8', borderRadius: 8 }} />,
+})
 import { Mail, Phone, Link2, Check, ChevronDown, ChevronRight } from 'lucide-react'
 
 const COMPANY_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -152,31 +161,11 @@ export default function CRMDashboard() {
       <div className="adm-g2" style={{ gap: 16, marginBottom: 20 }}>
         <Card>
           <SH>Weekly Email Volume</SH>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={weeklyVol}>
-              <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={30} />
-              <Tooltip contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
-              <Bar dataKey="count" fill="#00B4D8" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <WeeklyVolumeChart data={weeklyVol} />
         </Card>
         <Card>
           <SH>Reply Rate Trend</SH>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={replyTrend}>
-              <defs>
-                <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={30} tickFormatter={v => `${v}%`} />
-              <Tooltip formatter={(v) => typeof v === 'number' ? [`${v}%`, 'Reply Rate'] as [string, string] : ''} contentStyle={{ background: '#0D1B2A', border: 'none', borderRadius: 8, color: '#FFF', fontSize: 12 }} />
-              <Area type="monotone" dataKey="rate" stroke="#10B981" strokeWidth={2} fill="url(#rg)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <ReplyRateChart data={replyTrend} />
         </Card>
       </div>
 

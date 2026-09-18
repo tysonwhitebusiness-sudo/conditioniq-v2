@@ -3,7 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAdminStats, getOverageTracker, getMRRByMonth, getRecentCustomerActivity, getPayPerUseOverview, type PayPerUseAccountRow } from '@/lib/admin-actions'
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import dynamic from 'next/dynamic'
+// Loaded on demand (see components/admin/admin-charts.tsx).
+const MrrChart = dynamic(() => import('./admin-charts').then(m => m.MrrChart), {
+  ssr: false,
+  loading: () => <div style={{ height: 220, background: '#F0F4F8', borderRadius: 8 }} />,
+})
+const PlanBreakdownChart = dynamic(() => import('./admin-charts').then(m => m.PlanBreakdownChart), {
+  ssr: false,
+  loading: () => <div style={{ height: 160, background: '#F0F4F8', borderRadius: 8 }} />,
+})
 import { DollarSign, Users, FileText, TrendingUp, Activity, AlertTriangle, CheckCircle, ChevronRight, Receipt } from 'lucide-react'
 import { PRIMARY, AMBER_DARK, SUCCESS, SUCCESS_DARK, SUCCESS_LIGHT, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
@@ -166,25 +175,11 @@ export default function AdminOverview() {
       <div className="adm-g32" style={{ gap: 16, marginBottom: 24 }}>
         <Card>
           <SH>Subscription MRR, Last 12 Months</SH>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={mrrHistory} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: GRAY_500 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: GRAY_500 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} width={52} />
-              <Tooltip formatter={(v) => typeof v === 'number' ? [`$${v.toLocaleString()}`, 'MRR'] as [string, string] : ''} contentStyle={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 8, color: GRAY_900, fontSize: 12 }} />
-              <Bar dataKey="mrr" fill={PRIMARY} activeBar={{ fill: '#0097B2' }} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <MrrChart data={mrrHistory} />
         </Card>
         <Card>
           <SH>Plan Breakdown</SH>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie data={planData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65}>
-                {planData.map((entry, i) => <Cell key={i} fill={PLAN_COLORS[entry.name] ?? GRAY_500} />)}
-              </Pie>
-              <Tooltip contentStyle={{ background: WHITE, border: `1px solid ${GRAY_300}`, borderRadius: 8, color: GRAY_900, fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
+          <PlanBreakdownChart data={planData} colors={PLAN_COLORS} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', marginTop: 8 }}>
             {planData.map(p => (
               <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

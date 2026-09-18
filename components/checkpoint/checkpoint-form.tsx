@@ -1,10 +1,12 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Minus, Plus, Camera, Trash2, Loader2 } from 'lucide-react'
 import DamageTaggerToggle from '@/components/damage/damage-tagger-toggle'
 import { vehicleDamageStore } from '@/lib/damage-store'
-import CameraCapture from '@/components/ui/camera-capture'
+// The camera pulls in the capture and barcode code; it loads when it opens.
+const CameraCapture = dynamic(() => import('@/components/ui/camera-capture'), { ssr: false })
 import SectionCard from '@/components/ui/section-card'
 import {
   getCheckpoint, createCheckpoint, deleteCheckpoint,

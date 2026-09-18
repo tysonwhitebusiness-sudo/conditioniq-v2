@@ -1,11 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import type { VehicleTemplate } from '@/lib/damage-actions'
 import type { DamageStore } from '@/lib/damage-store'
 import { PRIMARY, WHITE, GRAY_100, GRAY_700, GRAY_500 } from '@/lib/design-tokens'
 import Damage2DTagger from './damage-2d-tagger'
-import Damage3DTagger from './damage-3d-tagger'
+// Loaded on demand: three.js and its helpers are the largest thing in the app,
+// and most inspections never leave the 2D diagram.
+const Damage3DTagger = dynamic(() => import('./damage-3d-tagger'), {
+  ssr: false,
+  loading: () => (
+    <div style={{ aspectRatio: '4 / 3', background: GRAY_100, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GRAY_500, fontSize: 13 }}>
+      Loading 3D model…
+    </div>
+  ),
+})
 
 // Phase 12 (2D/3D Toggle): the user-facing choice between Phase 10's and Phase
 // 11's already-complete taggers. Purely a selection/wrapper layer — no new

@@ -21,7 +21,8 @@ function parseFilter(status: string | null, tab: string | null): StatusFilter {
 import BottomNav from '@/components/ui/bottom-nav'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { createClient } from '@/lib/supabase/client'
-import { fetchFullInspectionAction, getReportSignedUrlAction } from '@/lib/inspection-server-actions'
+import { fetchFullInspectionAction } from '@/lib/inspection-server-actions'
+import { openReport } from '@/lib/pdf-generator'
 import { useAuth } from '@/contexts/auth-context'
 import StartInspectionSheet, { type InspectionStartSelection } from '@/components/inspections/start-inspection-sheet'
 import { setPendingInspectionStart } from '@/lib/pending-inspection-start'
@@ -66,15 +67,9 @@ function InspectionsContent() {
 
   const handleViewReport = async (item: any) => {
     try {
-      if (item.report_url) {
-        const url = item.report_url.startsWith('http')
-          ? item.report_url
-          : await getReportSignedUrlAction(item.report_url)
-        if (url) { window.open(url, '_blank'); return }
-      }
-      // The report is built on the server from the inspection id alone.
-      const { generateReport } = await import('@/lib/pdf-generator')
-      await generateReport(item.id)
+      // Opens the stored report, or builds it on the server when there is none
+      // or it was drawn with an earlier layout.
+      await openReport(item)
     } catch (e) {
       console.error('[inspections] pdf error', e)
     }

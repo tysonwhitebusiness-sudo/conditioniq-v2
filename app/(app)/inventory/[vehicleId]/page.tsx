@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { createClient } from '@/lib/supabase/client'
-import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, getReportSignedUrlAction, fetchFullInspectionAction, loadInspectionForResume, findInProgressInspection, markStaleInProgressAsAbandoned } from '@/lib/inspection-server-actions'
+import { fetchInspectionsByIds, fetchInspectionsByVin, fetchInspectorNames, updateVehicleLifecycleStatusAction, fetchFullInspectionAction, loadInspectionForResume, findInProgressInspection, markStaleInProgressAsAbandoned } from '@/lib/inspection-server-actions'
 import { checkUsageState, abandonInspection, type UsageState } from '@/lib/usage-actions'
 import UsageConfirmationModal from '@/components/ui/usage-confirmation-modal'
 import { type StepId } from '@/components/inspection-wizard/inspection-wizard'
@@ -19,6 +19,7 @@ import AssignSpotModal from '@/components/inventory/assign-spot-modal'
 import SetTemplateModal from '@/components/inventory/set-template-modal'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import EmptyState from '@/components/ui/empty-state'
+import { openReport } from '@/lib/pdf-generator'
 import DamageComparisonView from '@/components/checkpoint/damage-comparison'
 import {
   Download, Eye, ClipboardList, Plus,
@@ -697,10 +698,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
 
   // ── PDF download for a single inspection
   const downloadPDF = async (inspId: string) => {
-    try {
-      const { generateReport } = await import('@/lib/pdf-generator')
-      await generateReport(inspId)
-    } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
+    try { await openReport({ id: inspId }) }
+    catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
   }
 
   // ── Wizard mode
@@ -916,11 +915,20 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     {reportUrl && (
                       <button
+                        title="Build the report again from the recorded inspection"
                         onClick={async () => {
-                          try {
-                            const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
-                            if (url) window.open(url, '_blank')
-                          } catch (e: any) { setErrorMsg('View failed: ' + e.message) }
+                          try { await openReport({ id: insp.id, report_url: reportUrl }, { rebuild: true }) }
+                          catch (e: any) { setErrorMsg('Rebuild failed: ' + e.message) }
+                        }}
+                        style={{ height: 32, padding: '0 10px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_900, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <RefreshCw size={12} />Rebuild
+                      </button>
+                    )}
+                    {reportUrl && (
+                      <button
+                        onClick={async () => {
+                          try { await openReport({ id: insp.id, report_url: reportUrl }) }
+                          catch (e: any) { setErrorMsg('View failed: ' + e.message) }
                         }}
                         style={{ height: 32, padding: '0 12px', borderRadius: 8, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_900, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Eye size={12} />View
@@ -928,14 +936,8 @@ export default function VehicleDetailPage({ params }: { params: { vehicleId: str
                     )}
                     <button
                       onClick={async () => {
-                        try {
-                          if (reportUrl) {
-                            const url = reportUrl.startsWith('http') ? reportUrl : await getReportSignedUrlAction(reportUrl)
-                            if (url) { window.open(url, '_blank'); return }
-                          }
-                          const { generateReport } = await import('@/lib/pdf-generator')
-                          await generateReport(insp.id)
-                        } catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
+                        try { await openReport({ id: insp.id, report_url: reportUrl }) }
+                        catch (e: any) { setErrorMsg('PDF failed: ' + e.message) }
                       }}
                       style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Download size={12} />Download PDF

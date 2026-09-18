@@ -165,9 +165,12 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     }
 
     // Rendered on the server from what was just saved; it records the report's
-    // location on the inspection itself, so there is nothing to save here.
-    const { generateReport } = await import('@/lib/pdf-generator')
-    await generateReport(inspectionId)
+    // location on the inspection itself, so there is nothing to save here. It
+    // runs alongside the rest of completion: a report that fails to build can be
+    // opened again later, and must never stop the inspection from finishing.
+    import('@/lib/pdf-generator')
+      .then(({ generateReport }) => generateReport(inspectionId))
+      .catch(e => console.error('[report] build after completion failed', e))
 
     // Silently sync to storage inventory — never blocks completion
     if (effectiveCompany?.id) {

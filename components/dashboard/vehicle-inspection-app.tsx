@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Lock, ChevronRight, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
+import { openReport } from '@/lib/pdf-generator'
 import { PRIMARY, PRIMARY_LIGHT, PRIMARY_PILL_TEXT, WHITE, DANGER, DANGER_LIGHT, SUCCESS_LIGHT, SUCCESS_DARK, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import BottomNav from '@/components/ui/bottom-nav'
@@ -173,8 +174,7 @@ export default function VehicleInspectionApp() {
   const handleViewReport = useCallback(async (item: any) => {
     if (!item?.id) return
     try {
-      const { generateReport } = await import('@/lib/pdf-generator')
-      await generateReport(item.id)
+      await openReport(item)
     } catch (e: any) {
       setErrorMsg('Could not generate report: ' + (e.message ?? 'Unknown error'))
     }

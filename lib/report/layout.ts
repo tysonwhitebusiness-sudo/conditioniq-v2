@@ -77,3 +77,24 @@ export function reportVerifyUrl(reportNo: string): string {
 export function reportVerifyText(reportNo: string): string {
   return `Verify at ${REPORT_VERIFY_HOST}/r/${reportNo}`
 }
+
+// R5 · Which layout a stored report was drawn with.
+//
+// The version is part of the stored file name, so a report drawn with an
+// earlier layout is recognised and rebuilt the next time anyone opens it.
+// Bump this when the layout changes and every report follows on its next open.
+export const REPORT_LAYOUT_VERSION = 3
+
+export function reportStoragePath(inspectionId: string): string {
+  return `${inspectionId}.v${REPORT_LAYOUT_VERSION}.pdf`
+}
+
+/** The inspection a stored report belongs to, from any version's file name. */
+export function inspectionIdFromReportPath(path: string): string {
+  return path.replace(/(\.v\d+)?\.pdf$/, '')
+}
+
+/** True when the stored report was drawn with the current layout. */
+export function isCurrentReport(inspectionId: string, reportUrl: string | null | undefined): boolean {
+  return !!reportUrl && reportUrl === reportStoragePath(inspectionId)
+}

@@ -289,7 +289,7 @@ export async function getCompanyInspections(companyId: string, limit = 10) {
   const supabase = createClient()
   const { data } = await supabase
     .from('vehicle_inspections')
-    .select('id, vin, make, model, year, created_at, status, usage_status, vehicle_score, inspector:user_profiles!inspector_id(full_name)')
+    .select('id, vin, make, model, year, created_at, status, usage_status, vehicle_score, report_url, inspector:user_profiles!inspector_id(full_name)')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(limit)

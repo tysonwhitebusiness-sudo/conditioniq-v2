@@ -14,6 +14,7 @@ import {
   type AdminActivityRow, type AccountNote, type AdminActionType,
 } from '@/lib/admin-activity-actions'
 import { useAuth } from '@/contexts/auth-context'
+import { openReport } from '@/lib/pdf-generator'
 import type { Company } from '@/contexts/auth-context'
 import { ArrowLeft, Ghost, Plus, Lock, LayoutGrid, Clock } from 'lucide-react'
 import { PRIMARY, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
@@ -551,6 +552,13 @@ export default function AdminCustomerDetail() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${STATUS_COLORS[st] ?? GRAY_500}20`, color: STATUS_COLORS[st] ?? GRAY_500 }}>{st}</span>
                   {Boolean(ins.vehicle_score) && <span style={{ fontSize: 13, fontWeight: 700, color: GRAY_900 }}>{ins.vehicle_score as number}</span>}
+                  {st === 'completed' && (
+                    // R5 · Admin preview: the report exactly as the customer gets it.
+                    <button
+                      onClick={() => { openReport({ id: ins.id as string, report_url: (ins.report_url as string | null) ?? null }).catch(e => console.error('[admin] report', e)) }}
+                      style={{ height: 26, padding: '0 10px', borderRadius: 7, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_900, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >Report</button>
+                  )}
                 </div>
               </div>
             )

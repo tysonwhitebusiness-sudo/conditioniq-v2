@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
 import { renderReportToBuffer } from './render-document'
 import { buildReportModel } from './model'
-import { reportVerifyUrl } from './layout'
+import { reportVerifyUrl, reportStoragePath } from './layout'
 import { loadReportImage, loadDiagramImage, type ReportImage } from './photos'
 import ReportDocument, { type ReportDiagram } from './report-document'
 import type { ReportDamagePin } from '@/lib/damage-server-actions'
@@ -157,7 +157,7 @@ export async function renderInspectionReport(inspectionId: string): Promise<Rend
     }) as any,
   )
 
-  return { buffer, path: `${inspectionId}.pdf`, bytes: buffer.length }
+  return { buffer, path: reportStoragePath(inspectionId), bytes: buffer.length }
 }
 
 /** Renders, stores and returns a link to the report. */

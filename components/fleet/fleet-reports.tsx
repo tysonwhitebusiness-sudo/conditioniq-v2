@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { getFMCReports, getFMCLocations } from '@/lib/fleet-actions'
 import { Search, Download } from 'lucide-react'
-import { generateReport } from '@/lib/pdf-generator'
+import { openReport } from '@/lib/pdf-generator'
 
 export default function FleetReports() {
   const { effectiveCompany } = useAuth()
@@ -29,7 +29,7 @@ export default function FleetReports() {
 
   // Built on the server from the inspection id; the list row only supplies it.
   const handleDownload = async (report: any) => {
-    await generateReport(report.id)
+    await openReport(report)
   }
 
   return (

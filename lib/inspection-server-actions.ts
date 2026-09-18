@@ -5,6 +5,7 @@ import { createAdminClient } from './supabase/admin'
 import { logVehicleEvent } from './vehicle-events-actions'
 import { authorizeInspectionAccess, authorizeCompanyAccess } from './inspection-auth'
 import { type WorkOrderStatus, WORK_ORDER_STATUS_LABEL, toLegacyColumns } from './work-order-status'
+import { inspectionIdFromReportPath } from './report/layout'
 
 // ── DB helpers use the session-based server client (respects RLS for the
 // authenticated user's own company — no service role key required).
@@ -220,7 +221,7 @@ export async function createSignedUploadUrlAction(path: string): Promise<{ token
 }
 
 export async function getReportSignedUrlAction(storagePath: string): Promise<string | null> {
-  const inspectionId = storagePath.replace(/\.pdf$/, '')
+  const inspectionId = inspectionIdFromReportPath(storagePath)
   const { ok } = await authorizeInspectionAccess(inspectionId)
   if (!ok) return null
 

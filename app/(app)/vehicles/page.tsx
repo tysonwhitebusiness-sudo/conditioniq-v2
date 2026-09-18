@@ -13,7 +13,8 @@ import {
   getStorageLocations, bulkInsertVehicles, deleteStorageVehicle,
 } from '@/lib/storage-actions'
 import { getCustomers, createCustomer, type Customer } from '@/lib/customer-actions'
-import { getReportSignedUrlAction, fetchInspectionsByIds } from '@/lib/inspection-server-actions'
+import { fetchInspectionsByIds } from '@/lib/inspection-server-actions'
+import { openReport } from '@/lib/pdf-generator'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import MobilePageHeader from '@/components/layout/mobile-page-header'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
@@ -1369,10 +1370,7 @@ export default function VehiclesPage() {
                         {pdfUrl ? (
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                             <button
-                              onClick={async () => {
-                                const url = pdfUrl.startsWith('http') ? pdfUrl : await getReportSignedUrlAction(pdfUrl)
-                                if (url) window.open(url, '_blank')
-                              }}
+                              onClick={() => { openReport({ id: r.id, report_url: pdfUrl }).catch(e => console.error('[vehicles] report', e)) }}
                               style={{ height: 28, padding: '0 10px', borderRadius: 7, border: 'none', background: PRIMARY, color: WHITE, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
                             >View PDF</button>
                           </div>

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { INSPECTION_LIST_COLUMNS } from '@/lib/inspection-columns'
 
 export async function getFMCLocations(fmcAccountId: string) {
   const supabase = createClient()
@@ -105,7 +106,9 @@ export async function getFMCReports(fmcAccountId: string, filters?: { locationId
   const supabase = createClient()
   let q = supabase
     .from('vehicle_inspections')
-    .select('*, user_profiles(full_name)')
+    // List columns only — the report download fetches the full inspection for
+    // the one row it needs (see INSPECTION_LIST_COLUMNS).
+    .select(`${INSPECTION_LIST_COLUMNS}, user_profiles(full_name)`)
     .eq('company_id', fmcAccountId)
     .eq('status', 'completed')
 

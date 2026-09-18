@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { INSPECTION_LIST_COLUMNS } from './inspection-columns'
 
 // One status axis for everything an operator thinks of as "an inspection",
 // wherever the record physically lives:
@@ -44,6 +45,8 @@ export interface InspectionRow {
 // capped too: they are only needed recent enough to tag the inspections above.
 const COMPLETED_LIMIT = 50
 const LINK_LIMIT = 200
+
+export { INSPECTION_LIST_COLUMNS } from './inspection-columns'
 
 // A used link is not listed on its own — the inspection it produced carries it,
 // tagged viaLink. Listing both would show the same work twice.
@@ -109,10 +112,10 @@ export async function loadInspectionRows(companyId: string): Promise<InspectionR
       .select('id, vin, year, make, model, notes, token, expires_at, used_at, report_id, created_at')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false }).limit(LINK_LIMIT),
-    supabase.from('vehicle_inspections').select('*')
+    supabase.from('vehicle_inspections').select(INSPECTION_LIST_COLUMNS)
       .eq('company_id', companyId).eq('status', 'in_progress')
       .order('created_at', { ascending: false }),
-    supabase.from('vehicle_inspections').select('*')
+    supabase.from('vehicle_inspections').select(INSPECTION_LIST_COLUMNS)
       .eq('company_id', companyId).eq('status', 'completed')
       .order('created_at', { ascending: false }).limit(COMPLETED_LIMIT),
   ])

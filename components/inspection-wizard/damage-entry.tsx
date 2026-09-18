@@ -159,7 +159,7 @@ function SeverityBadge({ value }: { value: string }) {
 function Thumbnail({ url, onRetake, failed }: { url: string; onRetake: () => void; failed?: boolean }) {
   return (
     <div style={{ position: 'relative', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', flexShrink: 0, outline: failed ? '2px solid #F59E0B' : 'none' }}>
-      <img src={url} alt="Damage" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      <img loading="lazy" decoding="async" src={url} alt="Damage" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       {failed && (
         <span style={{
           position: 'absolute', top: 3, left: 3,
@@ -310,7 +310,7 @@ export default function DamageEntry({ damages, onChange, locationType = 'exterio
                 }}
               >
                 {d.photo && (
-                  <img
+                  <img loading="lazy" decoding="async"
                     src={d.photo}
                     alt=""
                     style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}

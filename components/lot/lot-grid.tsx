@@ -412,7 +412,7 @@ export default function LotGrid({
     >
       {/* Background image with pan + rotation */}
       {bgUrl && (
-        <img
+        <img loading="lazy" decoding="async"
           src={bgUrl}
           alt=""
           style={{

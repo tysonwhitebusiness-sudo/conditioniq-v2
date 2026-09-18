@@ -74,7 +74,7 @@ function PhotoSlotCard({ label, value, onTap, failed }: { label: string; value?:
       <p style={{ fontSize: 12, fontWeight: 500, color: '#374151', margin: '0 0 5px' }}>{label}</p>
       {value ? (
         <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', outline: failed ? '2px solid #F59E0B' : 'none' }}>
-          <img src={value} alt={label} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+          <img loading="lazy" decoding="async" src={value} alt={label} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
           {failed && (
             <span style={{
               position: 'absolute', top: 6, left: 6,
@@ -281,6 +281,10 @@ export default function StepExterior({ data, onChange, onNext, onBack, inspectio
           onCapture={(key, url) => {
             setFailedKeys(prev => { if (!prev.has(key)) return prev; const next = new Set(prev); next.delete(key); return next })
             onChange({ ...data, [key]: url })
+          }}
+          // The photo lands in its slot immediately; the upload follows.
+          onPendingCapture={(key, dataUrl) => {
+            onChange({ ...data, [key]: dataUrl })
           }}
           onUploadError={(key, dataUrl) => {
             setFailedKeys(prev => new Set(prev).add(key))

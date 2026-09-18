@@ -204,7 +204,7 @@ export default function AdminFeedback() {
                           <p style={{ fontSize: 11, fontWeight: 700, color: GRAY_500, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Screenshot</p>
                           {screenshotUrl ? (
                             <a href={screenshotUrl} target="_blank" rel="noreferrer">
-                              <img
+                              <img loading="lazy" decoding="async"
                                 src={screenshotUrl}
                                 alt="feedback screenshot"
                                 style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 10, border: `1px solid ${GRAY_300}`, display: 'block', objectFit: 'contain', cursor: 'pointer' }}

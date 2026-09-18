@@ -27,7 +27,7 @@ export default function PhotoField({ label, value, onChange, required, inspectio
 
       {value ? (
         <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', outline: uploadFailed ? '2px solid #F59E0B' : 'none' }}>
-          <img src={value} alt={label} style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+          <img loading="lazy" decoding="async" src={value} alt={label} style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
           {uploadFailed && (
             <span style={{
               position: 'absolute', top: 8, left: 8,

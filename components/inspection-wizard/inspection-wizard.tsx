@@ -115,6 +115,12 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
   }, [])
 
   const handleComplete = useCallback(async (signature: string) => {
+    // Photos upload in the background while the inspector works (L4). Any that
+    // are still in flight finish here, so the saved inspection always points at
+    // stored photos rather than device-only copies.
+    const { awaitPendingUploads } = await import('@/lib/photo-uploads')
+    await awaitPendingUploads()
+
     const allData = {
       vehicleInfo: data.vehicleInfo,
       bol_data: data.bol_data,

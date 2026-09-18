@@ -70,7 +70,7 @@ export default function DamageMarkerDetail({
 
       {marker.photo_url && (
         <div style={{ position: 'relative', width: 120 }}>
-          <img src={marker.photo_url} alt="Damage close-up" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+          <img loading="lazy" decoding="async" src={marker.photo_url} alt="Damage close-up" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
           {editable && (
             <button onClick={removePhoto} disabled={busy} aria-label="Remove photo"
               style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: 12, border: 'none', background: 'rgba(13,27,42,0.7)', color: WHITE, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

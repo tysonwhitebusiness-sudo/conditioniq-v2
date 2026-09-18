@@ -19,10 +19,21 @@ const nextConfig = {
     // them and every report fails with "Font family not registered".
     outputFileTracingIncludes: {
       '/api/reports': ['./lib/report/fonts/**'],
+      // S · The plate and VIN reader loads its models from disk.
+      '/api/scan': ['./node_modules/@gutenye/ocr-models/assets/**'],
     },
-    // The PDF renderer and image resizer stay as ordinary Node modules on the
-    // server rather than being bundled.
-    serverComponentsExternalPackages: ['@react-pdf/renderer', 'sharp'],
+    // The reader's runtime ships a binary for every platform (about 290 MB);
+    // the server runs on Linux x64, so the rest stay out of the function.
+    outputFileTracingExcludes: {
+      '/api/scan': [
+        './node_modules/onnxruntime-node/bin/napi-v*/darwin/**',
+        './node_modules/onnxruntime-node/bin/napi-v*/win32/**',
+        './node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**',
+      ],
+    },
+    // The PDF renderer, image resizer and text reader stay as ordinary Node
+    // modules on the server rather than being bundled.
+    serverComponentsExternalPackages: ['@react-pdf/renderer', 'sharp', '@gutenye/ocr-node', '@gutenye/ocr-common', 'onnxruntime-node', '@techstark/opencv-js'],
   },
   images: {
     remotePatterns: [

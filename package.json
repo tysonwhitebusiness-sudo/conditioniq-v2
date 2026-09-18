@@ -11,12 +11,14 @@
     "perf": "node scripts/perf-budget.mjs",
     "perf:payload": "node --experimental-strip-types --no-warnings scripts/payload-check.mjs",
     "report:test": "tsx scripts/report-test.mjs",
-    "ai:test": "tsx scripts/ai-test.ts"
+    "ai:test": "tsx scripts/ai-test.ts",
+    "scan:test": "tsx scripts/scan-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
+    "@gutenye/ocr-node": "^1.4.8",
     "@react-pdf/renderer": "^4.5.1",
     "@react-spring/web": "^10.1.0",
     "@react-three/drei": "^9.122.0",
@@ -38,7 +40,6 @@
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^3.8.1",
-    "tesseract.js": "^7.0.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
@@ -61,5 +62,10 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": "eslint --no-eslintrc --config .eslintrc.hex.json"
+  },
+  "overrides": {
+    "@gutenye/ocr-node": {
+      "sharp": "$sharp"
+    }
   }
 }

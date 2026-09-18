@@ -5,6 +5,8 @@ import { ClipboardList } from 'lucide-react'
 import PhotoField from '@/components/ui/photo-field'
 import VoiceInput from '@/components/ui/voice-input'
 import StepOpener from './step-opener'
+import { scanPhoto, recordSavedScan, type ScanResult } from '@/lib/scan/client'
+import { PRIMARY, PRIMARY_LIGHT, WHITE, GRAY_900, GRAY_700, GRAY_500 } from '@/lib/design-tokens'
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
 
@@ -47,29 +49,33 @@ const label13 = { fontSize: 13, fontWeight: 500, color: '#374151', display: 'blo
 
 export default function StepDocumentation({ data, onChange, onNext, onBack, inspectionId }: Props) {
   const [scanning, setScanning] = useState(false)
-  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null)
+  // S · A plate read from the photo, waiting for the inspector to use or dismiss.
+  const [plateRead, setPlateRead] = useState<ScanResult | null>(null)
 
   const canAdvance = true
 
+  // The plate is read on the server; the result is offered, never filled in on
+  // its own. A failed read just leaves the field for typing.
   const handlePlatePhotoCapture = useCallback(async (url: string) => {
     onChange({ ...data, licensePlatePhoto: url })
+    setPlateRead(null)
     if (!url) return
     setScanning(true)
     try {
-      const { createWorker } = await import('tesseract.js')
-      const worker = await createWorker('eng')
-      const { data: result } = await worker.recognize(url)
-      await worker.terminate()
-      const confidence = result.confidence
-      const raw = result.text.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 8)
-      setOcrConfidence(confidence)
-      if (confidence > 50) onChange({ ...data, licensePlatePhoto: url, licensePlate: raw })
+      setPlateRead(await scanPhoto('plate', url, { state: data.licensePlateState ?? null, inspectionId }))
     } catch {
-      // OCR failed silently
+      setPlateRead({ id: null, value: null, source: null })
     } finally {
       setScanning(false)
     }
-  }, [data, onChange])
+  }, [data, onChange, inspectionId])
+
+  const acceptPlateRead = () => {
+    if (!plateRead?.value) return
+    onChange({ ...data, licensePlate: plateRead.value })
+    recordSavedScan(plateRead.id, plateRead.value)
+    setPlateRead(null)
+  }
 
   return (
     <div style={{ paddingBottom: 140 }}>
@@ -123,11 +129,18 @@ export default function StepDocumentation({ data, onChange, onNext, onBack, insp
         {scanning && (
           <p style={{ fontSize: 12, color: '#00B4D8', marginBottom: 16, marginTop: 4 }}>Scanning plate…</p>
         )}
-        {ocrConfidence !== null && !scanning && (
-          <p style={{ fontSize: 12, marginBottom: 16, marginTop: 4, color: ocrConfidence < 70 ? '#F59E0B' : '#10B981' }}>
-            OCR confidence: {Math.round(ocrConfidence)}%{ocrConfidence < 70 ? ' — please verify manually' : ''}
-          </p>
-        )}
+        {plateRead && !scanning && (plateRead.value ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: PRIMARY_LIGHT, borderRadius: 10, padding: '10px 12px', margin: '6px 0 16px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 12, color: GRAY_700, margin: 0 }}>Read from the photo — check it matches</p>
+              <p style={{ fontSize: 16, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.08em', color: GRAY_900, margin: '2px 0 0' }}>{plateRead.value}</p>
+            </div>
+            <button type="button" onClick={acceptPlateRead} style={{ height: 36, padding: '0 14px', borderRadius: 8, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Use</button>
+            <button type="button" onClick={() => { recordSavedScan(plateRead.id, data.licensePlate ?? ''); setPlateRead(null) }} style={{ height: 36, padding: '0 10px', borderRadius: 8, border: 'none', background: 'transparent', color: GRAY_500, fontSize: 13, cursor: 'pointer' }}>Dismiss</button>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: GRAY_500, margin: '4px 0 16px' }}>Couldn&apos;t read the plate from the photo — type it in above.</p>
+        ))}
 
         {/* Registration */}
         <div style={{ marginBottom: 16 }}>

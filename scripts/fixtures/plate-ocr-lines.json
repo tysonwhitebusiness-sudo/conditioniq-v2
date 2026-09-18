@@ -1,0 +1,735 @@
+[
+ {
+  "name": "plate-1",
+  "expected": "Y8587B",
+  "state": "WI",
+  "lines": [
+   {
+    "text": "Y8587B",
+    "confidence": 0.995,
+    "height": 110
+   },
+   {
+    "text": "YEAR:2026",
+    "confidence": 0.937,
+    "height": 31
+   }
+  ]
+ },
+ {
+  "name": "no-plate-0b7b",
+  "expected": null,
+  "state": "CA",
+  "lines": []
+ },
+ {
+  "name": "no-plate-1014",
+  "expected": null,
+  "state": null,
+  "lines": []
+ },
+ {
+  "name": "plate-2",
+  "expected": "QSS549",
+  "state": null,
+  "lines": [
+   {
+    "text": "NISSAN",
+    "confidence": 0.992,
+    "height": 48
+   },
+   {
+    "text": "NOV 2026",
+    "confidence": 0.981,
+    "height": 33
+   },
+   {
+    "text": "OKLAHOMG",
+    "confidence": 0.79,
+    "height": 7
+   },
+   {
+    "text": "QSS★549",
+    "confidence": 0.924,
+    "height": 129
+   },
+   {
+    "text": "IMAGINE THAT",
+    "confidence": 0.909,
+    "height": 28
+   }
+  ]
+ },
+ {
+  "name": "no-plate-18e7",
+  "expected": null,
+  "state": "CA",
+  "lines": []
+ },
+ {
+  "name": "no-plate-1f33",
+  "expected": null,
+  "state": "MO",
+  "lines": [
+   {
+    "text": "SARS5.6.26",
+    "confidence": 0.946,
+    "height": 17
+   },
+   {
+    "text": "WzPNed8",
+    "confidence": 0.955,
+    "height": 13
+   },
+   {
+    "text": "Draw",
+    "confidence": 0.972,
+    "height": 21
+   },
+   {
+    "text": "Aria 10 4 0",
+    "confidence": 0.834,
+    "height": 16
+   },
+   {
+    "text": "Mege&Center S~% 9",
+    "confidence": 0.761,
+    "height": 27
+   },
+   {
+    "text": "tatus G",
+    "confidence": 0.978,
+    "height": 17
+   },
+   {
+    "text": "17910 55949",
+    "confidence": 0.997,
+    "height": 23
+   },
+   {
+    "text": "SFTP4",
+    "confidence": 0.989,
+    "height": 10
+   }
+  ]
+ },
+ {
+  "name": "no-plate-1f38",
+  "expected": null,
+  "state": "MO",
+  "lines": [
+   {
+    "text": "NEYONL",
+    "confidence": 0.869,
+    "height": 38
+   },
+   {
+    "text": "MSSOUR",
+    "confidence": 0.713,
+    "height": 35
+   },
+   {
+    "text": "XD1-EOW",
+    "confidence": 0.92,
+    "height": 324
+   },
+   {
+    "text": "mMore",
+    "confidence": 0.873,
+    "height": 57
+   },
+   {
+    "text": "MISSOURI",
+    "confidence": 0.982,
+    "height": 49
+   }
+  ]
+ },
+ {
+  "name": "no-plate-263c",
+  "expected": null,
+  "state": null,
+  "lines": [
+   {
+    "text": "JETTA",
+    "confidence": 0.936,
+    "height": 61
+   }
+  ]
+ },
+ {
+  "name": "plate-3",
+  "expected": "BDY99R",
+  "state": "AR",
+  "lines": [
+   {
+    "text": "NISSAN",
+    "confidence": 0.992,
+    "height": 28
+   },
+   {
+    "text": "THFIND",
+    "confidence": 0.962,
+    "height": 64
+   },
+   {
+    "text": "McL ARTYDANIE",
+    "confidence": 0.959,
+    "height": 14
+   },
+   {
+    "text": "Arkansas 03",
+    "confidence": 0.989,
+    "height": 29
+   },
+   {
+    "text": "BDY 99R",
+    "confidence": 0.947,
+    "height": 61
+   }
+  ]
+ },
+ {
+  "name": "plate-4",
+  "expected": "164DQK",
+  "state": "IN",
+  "lines": [
+   {
+    "text": "COCO",
+    "confidence": 0.59,
+    "height": 149
+   },
+   {
+    "text": "164DQK",
+    "confidence": 0.99,
+    "height": 144
+   }
+  ]
+ },
+ {
+  "name": "plate-5",
+  "expected": "EA63809",
+  "state": "IL",
+  "lines": [
+   {
+    "text": "NISSAN",
+    "confidence": 0.972,
+    "height": 25
+   },
+   {
+    "text": "Beaches",
+    "confidence": 0.905,
+    "height": 70
+   },
+   {
+    "text": "EA63809",
+    "confidence": 0.994,
+    "height": 85
+   },
+   {
+    "text": "andals",
+    "confidence": 0.88,
+    "height": 77
+   },
+   {
+    "text": "BEACHES.CO",
+    "confidence": 0.988,
+    "height": 58
+   },
+   {
+    "text": "NDALS.COM",
+    "confidence": 0.989,
+    "height": 43
+   }
+  ]
+ },
+ {
+  "name": "no-plate-4a1e",
+  "expected": null,
+  "state": "AR",
+  "lines": [
+   {
+    "text": "Search",
+    "confidence": 0.961,
+    "height": 22
+   }
+  ]
+ },
+ {
+  "name": "no-plate-4dac",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "no-plate-4e25",
+  "expected": null,
+  "state": "AR",
+  "lines": [
+   {
+    "text": "0 00",
+    "confidence": 0.957,
+    "height": 46
+   }
+  ]
+ },
+ {
+  "name": "no-plate-53d7",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "no-plate-576e",
+  "expected": null,
+  "state": "AR",
+  "lines": []
+ },
+ {
+  "name": "no-plate-5952",
+  "expected": null,
+  "state": null,
+  "lines": []
+ },
+ {
+  "name": "no-plate-5d7b",
+  "expected": null,
+  "state": "MO",
+  "lines": [
+   {
+    "text": "and d",
+    "confidence": 0.999,
+    "height": 27
+   },
+   {
+    "text": "ving r Vega",
+    "confidence": 0.996,
+    "height": 39
+   },
+   {
+    "text": "Maia",
+    "confidence": 0.999,
+    "height": 32
+   },
+   {
+    "text": "ales C Lyra",
+    "confidence": 0.975,
+    "height": 33
+   },
+   {
+    "text": "Mira",
+    "confidence": 0.999,
+    "height": 34
+   },
+   {
+    "text": "ving g Luma.",
+    "confidence": 0.914,
+    "height": 39
+   },
+   {
+    "text": "Sera",
+    "confidence": 0.997,
+    "height": 29
+   },
+   {
+    "text": "anyor Custom",
+    "confidence": 0.983,
+    "height": 37
+   },
+   {
+    "text": "ost co",
+    "confidence": 0.946,
+    "height": 22
+   }
+  ]
+ },
+ {
+  "name": "no-plate-668a",
+  "expected": null,
+  "state": "TX",
+  "lines": []
+ },
+ {
+  "name": "no-plate-72ca",
+  "expected": null,
+  "state": "MO",
+  "lines": [
+   {
+    "text": "ne.Eddi",
+    "confidence": 0.709,
+    "height": 7
+   },
+   {
+    "text": "image.jpeg",
+    "confidence": 0.858,
+    "height": 18
+   },
+   {
+    "text": "Google",
+    "confidence": 0.988,
+    "height": 18
+   },
+   {
+    "text": "5557821537.pd",
+    "confidence": 0.929,
+    "height": 21
+   },
+   {
+    "text": "13Pro",
+    "confidence": 0.816,
+    "height": 7
+   }
+  ]
+ },
+ {
+  "name": "no-plate-7a66",
+  "expected": null,
+  "state": "AK",
+  "lines": []
+ },
+ {
+  "name": "no-plate-81fb",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "no-plate-844d",
+  "expected": null,
+  "state": null,
+  "lines": []
+ },
+ {
+  "name": "plate-6",
+  "expected": "164DQK",
+  "state": "IN",
+  "lines": [
+   {
+    "text": "164DQK",
+    "confidence": 0.991,
+    "height": 49
+   }
+  ]
+ },
+ {
+  "name": "plate-7",
+  "expected": "EXX6252",
+  "state": "MI",
+  "lines": [
+   {
+    "text": "PURE/MICHIGAN",
+    "confidence": 0.87,
+    "height": 24
+   },
+   {
+    "text": "EXX6252",
+    "confidence": 0.982,
+    "height": 67
+   }
+  ]
+ },
+ {
+  "name": "plate-8",
+  "expected": "QOE110",
+  "state": "OK",
+  "lines": [
+   {
+    "text": "2027 YJ12",
+    "confidence": 0.774,
+    "height": 34
+   },
+   {
+    "text": "04OK OKLAHOMA",
+    "confidence": 0.941,
+    "height": 52
+   },
+   {
+    "text": "Q0E★110",
+    "confidence": 0.887,
+    "height": 136
+   }
+  ]
+ },
+ {
+  "name": "no-plate-9fa5",
+  "expected": null,
+  "state": "TX",
+  "lines": []
+ },
+ {
+  "name": "no-plate-ab15",
+  "expected": null,
+  "state": "AL",
+  "lines": []
+ },
+ {
+  "name": "plate-9",
+  "expected": "QOE750",
+  "state": "OK",
+  "lines": [
+   {
+    "text": "Q0E★750",
+    "confidence": 0.909,
+    "height": 171
+   }
+  ]
+ },
+ {
+  "name": "no-plate-ad85",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "plate-10",
+  "expected": "EXX6252",
+  "state": "MI",
+  "lines": [
+   {
+    "text": "EXX6252",
+    "confidence": 0.997,
+    "height": 60
+   }
+  ]
+ },
+ {
+  "name": "no-plate-b188",
+  "expected": null,
+  "state": null,
+  "lines": [
+   {
+    "text": "Maker's",
+    "confidence": 0.881,
+    "height": 74
+   },
+   {
+    "text": "Mark",
+    "confidence": 0.828,
+    "height": 49
+   }
+  ]
+ },
+ {
+  "name": "plate-11",
+  "expected": "U143038",
+  "state": "IN",
+  "lines": [
+   {
+    "text": "④ INDIANA",
+    "confidence": 0.871,
+    "height": 50
+   },
+   {
+    "text": "U143038",
+    "confidence": 0.997,
+    "height": 163
+   },
+   {
+    "text": "Dealer No. XP",
+    "confidence": 0.976,
+    "height": 40
+   },
+   {
+    "text": "2000422 E",
+    "confidence": 0.997,
+    "height": 37
+   },
+   {
+    "text": "Y 08-20-2026",
+    "confidence": 0.763,
+    "height": 54
+   }
+  ]
+ },
+ {
+  "name": "no-plate-c0da",
+  "expected": null,
+  "state": "GA",
+  "lines": []
+ },
+ {
+  "name": "plate-12",
+  "expected": "Y8587B",
+  "state": "WI",
+  "lines": [
+   {
+    "text": "Y8587B",
+    "confidence": 0.995,
+    "height": 169
+   },
+   {
+    "text": "NISS",
+    "confidence": 0.985,
+    "height": 23
+   },
+   {
+    "text": "ROGUI 07-02-2",
+    "confidence": 0.916,
+    "height": 82
+   },
+   {
+    "text": "TSOFVIN: 7",
+    "confidence": 0.96,
+    "height": 43
+   }
+  ]
+ },
+ {
+  "name": "plate-13",
+  "expected": "RNJ351",
+  "state": "OK",
+  "lines": [
+   {
+    "text": "NISSAN",
+    "confidence": 0.983,
+    "height": 36
+   },
+   {
+    "text": "2027",
+    "confidence": 0.991,
+    "height": 30
+   },
+   {
+    "text": "RNJ★351",
+    "confidence": 0.955,
+    "height": 140
+   },
+   {
+    "text": "R EISELMAN",
+    "confidence": 0.994,
+    "height": 70
+   }
+  ]
+ },
+ {
+  "name": "no-plate-cda9",
+  "expected": null,
+  "state": "AR",
+  "lines": []
+ },
+ {
+  "name": "plate-14",
+  "expected": "TRW552",
+  "state": "OK",
+  "lines": [
+   {
+    "text": "We U OKC",
+    "confidence": 0.935,
+    "height": 33
+   },
+   {
+    "text": "TRW★552",
+    "confidence": 0.956,
+    "height": 93
+   },
+   {
+    "text": "IMAGINE THAT",
+    "confidence": 0.953,
+    "height": 24
+   }
+  ]
+ },
+ {
+  "name": "no-plate-d626",
+  "expected": null,
+  "state": null,
+  "lines": [
+   {
+    "text": "HATTE",
+    "confidence": 0.652,
+    "height": 8
+   },
+   {
+    "text": "Southoak",
+    "confidence": 0.952,
+    "height": 17
+   }
+  ]
+ },
+ {
+  "name": "no-plate-d789",
+  "expected": null,
+  "state": "ID",
+  "lines": []
+ },
+ {
+  "name": "no-plate-dacd",
+  "expected": null,
+  "state": "IL",
+  "lines": []
+ },
+ {
+  "name": "plate-15",
+  "expected": "TRW552",
+  "state": "OK",
+  "lines": [
+   {
+    "text": "OKLAHOMA",
+    "confidence": 0.974,
+    "height": 21
+   },
+   {
+    "text": "TRW★552",
+    "confidence": 0.977,
+    "height": 149
+   },
+   {
+    "text": "IMAGINE THAT",
+    "confidence": 0.96,
+    "height": 21
+   }
+  ]
+ },
+ {
+  "name": "no-plate-e060",
+  "expected": null,
+  "state": "MO",
+  "lines": [
+   {
+    "text": "KLA",
+    "confidence": 0.539,
+    "height": 112
+   }
+  ]
+ },
+ {
+  "name": "no-plate-e49a",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "no-plate-f570",
+  "expected": null,
+  "state": "IA",
+  "lines": []
+ },
+ {
+  "name": "no-plate-f8e0",
+  "expected": null,
+  "state": "MO",
+  "lines": []
+ },
+ {
+  "name": "plate-16",
+  "expected": "U143046",
+  "state": "IN",
+  "lines": [
+   {
+    "text": "INDIANA",
+    "confidence": 0.997,
+    "height": 52
+   },
+   {
+    "text": "U143046",
+    "confidence": 0.997,
+    "height": 142
+   },
+   {
+    "text": "RES",
+    "confidence": 0.993,
+    "height": 42
+   }
+  ]
+ }
+]

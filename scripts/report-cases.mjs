@@ -188,6 +188,43 @@ export const REPORT_CASES = [
     diagram: 'diagram-1',
   },
   {
+    name: 'recorded extras',
+    // R4 · Everything recorded that the report once left out: list-form damage
+    // with close-ups, glass pane, uneven tread, engine flags, the odometer
+    // photo, asset, check-in, start and sign times, GPS and a stored video.
+    ...withPhotos(
+      baseInspection({
+        asset_id: 'BRP-0042',
+        initiated_at: '2026-09-01T14:41:00.000Z',
+        signed_at: '2026-09-01T15:09:00.000Z',
+        gps_end: { lat: 38.62727, lng: -90.19789 },
+        exterior_data: {
+          ...baseInspection().exterior_data,
+          glassCondition: 'chipped', glassDamagedPane: 'Windshield',
+          tireFrontRight: { treadDepth: '7', unevenWear: true },
+          damages: [
+            { id: 111, type: 'scratch', location: 'Passenger Front Fender', severity: 'minor', description: 'Scratch' },
+            { id: 222, type: 'dent', location: 'Driver Rear Door', severity: 'moderate', description: 'Door ding, paint intact' },
+          ],
+          damage_photo_111: photo('damage_photo_111'),
+          damage_photo_222: photo('damage_photo_222'),
+        },
+        interior_data: {
+          ...baseInspection().interior_data,
+          odometerPhoto: photo('odometerPhoto'),
+          damages: [{ id: 333, type: 'tear', location: 'Driver Seat', severity: 'minor', description: 'Tear' }],
+        },
+        engine_data: { ...baseInspection().engine_data, visibleLeaks: true, leakDescription: 'Oil seep at pan gasket', checkEngineLight: false, unusualNoise: true, noiseType: 'ticking' },
+        vehicle_function_data: { tests: ALL_TESTS, engineStartVideo: 'https://example.test/videos/start.mp4' },
+      }),
+      FULL_SLOTS,
+      'tall',
+    ),
+    photoShapesExtra: { [photo('damage_photo_111')]: 'square', [photo('damage_photo_222')]: 'wide', [photo('odometerPhoto')]: 'wide' },
+    inspectionType: 'check_in',
+    expect: ['Windshield', 'Uneven', 'Oil seep at pan gasket', 'Ticking', 'BRP-0042', 'Started', 'Signed on site', 'Engine start video', 'Door ding, paint intact', 'Interior · Driver Seat', 'Odometer'],
+  },
+  {
     name: 'assist filled',
     // Every AI slot the layout reserves, filled, so the phase C output has a
     // place to land that is already known to fit.

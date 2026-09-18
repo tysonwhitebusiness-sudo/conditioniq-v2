@@ -151,11 +151,11 @@ async function measure(name, buffer) {
 async function renderCase(testCase) {
   const images = {}
   const diagrams = []
-  for (const [src, shape] of Object.entries(testCase.photoShapes ?? {})) {
+  for (const [src, shape] of Object.entries({ ...(testCase.photoShapes ?? {}), ...(testCase.photoShapesExtra ?? {}) })) {
     images[src] = samplePhoto(...PHOTO_SHAPES[shape])
   }
   const score = calculateVehicleScore(testCase.inspection)
-  const model = buildReportModel(testCase.inspection, score, testCase.pins ?? [], { companyName: testCase.companyName, inspectorName: testCase.inspectorName })
+  const model = buildReportModel(testCase.inspection, score, testCase.pins ?? [], { companyName: testCase.companyName, inspectorName: testCase.inspectorName, inspectionType: testCase.inspectionType })
   for (const pin of testCase.pins ?? []) if (pin.photoUrl && !images[pin.photoUrl]) images[pin.photoUrl] = samplePhoto(...PHOTO_SHAPES.square)
   if (testCase.diagram) {
     const image = samplePhoto(800, 420, '#DDE3E8')
@@ -165,7 +165,7 @@ async function renderCase(testCase) {
   const qr = { data: await QRCode.toBuffer(`https://conditioniq.app/r/${model.reportNo}`, { margin: 0, width: 240 }), format: 'png' }
   const buffer = await renderReportToBuffer(React.createElement(ReportDocument, { model, images, diagrams, qr }))
   if (KEEP) writeFileSync(join(OUT, `${testCase.name}.pdf`), buffer)
-  return { buffer, expected: expectedText(model) }
+  return { buffer, expected: [...expectedText(model), ...(testCase.expect ?? [])] }
 }
 
 const failures = []

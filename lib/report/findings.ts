@@ -37,6 +37,22 @@ export function isFlat(exterior: Record<string, any>, position: string): boolean
   return !!(exterior?.[position]?.flat ?? (short ? exterior?.[short] : false))
 }
 
+const LEGACY_SUFFIX: Record<string, string> = { tireFrontLeft: 'FL', tireFrontRight: 'FR', tireRearLeft: 'RL', tireRearRight: 'RR' }
+
+export function isUneven(exterior: Record<string, any>, position: string): boolean {
+  return !!(exterior?.[position]?.unevenWear ?? exterior?.[`tireUneven${LEGACY_SUFFIX[position]}`])
+}
+
+/** What was noted about one tire besides its tread: flat, uneven, or the older form's condition. */
+export function tireNotes(exterior: Record<string, any>, position: string): string[] {
+  const notes: string[] = []
+  if (isFlat(exterior, position)) notes.push('Flat')
+  if (isUneven(exterior, position)) notes.push('Uneven')
+  const legacy = exterior?.[`tireCondition${LEGACY_SUFFIX[position]}`]
+  if (typeof legacy === 'string' && legacy && legacy !== 'good' && !notes.length) notes.push(legacy.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()))
+  return notes
+}
+
 const pretty = (v: unknown) => String(v).replace(/_/g, ' ').toLowerCase()
 
 export function needsAttention(model: ReportModel): Finding[] {
@@ -57,8 +73,9 @@ export function needsAttention(model: ReportModel): Finding[] {
     if (isFlat(e, position)) add(`Tire ${name} flat`, 'risk', 'Tires')
     const tread = treadDepth(e, position)
     if (tread !== null && tread < 4) add(`Tire ${name} tread ${tread}/32"`, tread < 3 ? 'risk' : 'warn', 'Tires')
+    if (isUneven(e, position)) add(`Tire ${name} uneven wear`, 'note', 'Tires')
   }
-  if (model.pins.length) add(`${model.pins.length} exterior damage ${model.pins.length === 1 ? 'item' : 'items'}`, 'warn', 'Damage')
+  if (model.pins.length) add(`${model.pins.length} damage ${model.pins.length === 1 ? 'item' : 'items'} recorded`, 'warn', 'Damage')
   if (n.interiorOdor) add(`Odor present${n.odorType && n.odorType !== 'other' ? ` (${pretty(n.odorType)})` : ''}`, 'warn', 'Interior')
   for (const [key, name] of [['frontSeats', 'Front seats'], ['rearSeats', 'Rear seats'], ['headliner', 'Headliner'], ['carpetFloor', 'Carpet'], ['carpet', 'Carpet'], ['dashboard', 'Dashboard'], ['steeringWheel', 'Steering wheel']]) {
     const v = n[key]

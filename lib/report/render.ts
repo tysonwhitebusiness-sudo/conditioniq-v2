@@ -107,18 +107,27 @@ export async function renderInspectionReport(inspectionId: string): Promise<Rend
   const { data: inspection, error } = await admin.from('vehicle_inspections').select('*').eq('id', inspectionId).single()
   if (error || !inspection) throw new Error(`Inspection ${inspectionId} not found`)
 
-  const [{ pins, diagrams }, branding, inspector] = await Promise.all([
+  const [{ pins, diagrams }, branding, inspector, inspectionType] = await Promise.all([
     loadDamage(inspectionId),
     loadBranding(inspection.company_id),
     inspection.inspector_id
       ? admin.from('user_profiles').select('full_name').eq('id', inspection.inspector_id).maybeSingle().then(r => r.data?.full_name ?? null)
       : Promise.resolve(null),
+    // Whether this was a check-in or check-out is kept on the vehicle, not the
+    // inspection.
+    admin.from('storage_vehicles')
+      .select('checkin_inspection_id, checkout_inspection_id')
+      .or(`checkin_inspection_id.eq.${inspectionId},checkout_inspection_id.eq.${inspectionId}`)
+      .limit(1)
+      .maybeSingle()
+      .then(r => (r.data?.checkin_inspection_id === inspectionId ? 'check_in' as const : r.data?.checkout_inspection_id === inspectionId ? 'check_out' as const : null)),
   ])
 
   const score = calculateVehicleScore(inspection)
   const model = buildReportModel(inspection, score, pins, {
     companyName: branding.companyName,
     inspectorName: inspector ?? inspection.inspector_name ?? null,
+    inspectionType,
   })
 
   // Every photo the document can draw, fetched and resized once.

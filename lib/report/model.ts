@@ -89,6 +89,14 @@ export interface ReportModel {
   photos: ReportPhoto[]
   leadPhotoSrc: string | null
   signatureSrc: string | null
+  /** When the inspector signed, if recorded; the report date otherwise. */
+  signedAt: Date | null
+  /** When the inspection was started, if recorded. */
+  startedAt: Date | null
+  /** Where the inspector was when signing, if the device shared it. */
+  signedFrom: { lat: number; lng: number } | null
+  /** A stored engine-start video, if one was uploaded. */
+  engineStartVideoUrl: string | null
   /** Filled by the AI plan when it runs; empty until then. */
   assist: ReportAssist
   /** True when the vehicle details came from a NHTSA VIN decode. */
@@ -115,11 +123,15 @@ const PHOTO_SLOTS: Array<[ReportPhoto['group'], keyof ReportModel['sections'], s
   ['interior', 'interior', 'interiorRearPassengerDoorPhoto', 'Rear passenger door'],
   ['interior', 'interior', 'interiorPassengerDoorPhoto', 'Passenger door'],
   ['interior', 'interior', 'dashboardPhoto', 'Dashboard'],
+  // Recorded by an earlier version of the interior step.
+  ['interior', 'interior', 'interiorFrontPhoto', 'Interior front'],
+  ['interior', 'interior', 'interiorRearPhoto', 'Interior rear'],
   // The wizard saves the engine bay as engineBayPhoto; the old report looked for
   // enginePhoto, so this photo never printed. Both names are read here.
   ['engine', 'engine', 'engineBayPhoto', 'Engine bay'],
   ['engine', 'engine', 'enginePhoto', 'Engine bay'],
   ['engine', 'engine', 'leakPhoto', 'Leak'],
+  ['documents', 'interior', 'odometerPhoto', 'Odometer'],
   ['documents', 'documentation', 'licensePlatePhoto', 'License plate'],
   ['documents', 'documentation', 'registrationPhoto', 'Registration'],
   ['documents', 'documentation', 'insurancePhoto', 'Insurance'],
@@ -136,6 +148,45 @@ const EXTRA_PHOTO_PREFIXES: Array<[RegExp, ReportPhoto['group'], string]> = [
 const isPhoto = (v: unknown): v is string =>
   typeof v === 'string' && (v.startsWith('data:image') || /^https?:/.test(v) || v.includes('/storage/'))
 
+// R4 · Damage recorded on the list form (before the damage diagram, or on a
+// vehicle without one) prints alongside diagram pins. Its close-up is saved on
+// the section as damage_photo_<id>, so it prints with its damage rather than as
+// a loose photo.
+function listDamage(sections: ReportModel['sections'], firstNumber: number): { pins: ReportDamagePin[]; photos: Set<string> } {
+  const pins: ReportDamagePin[] = []
+  const photos = new Set<string>()
+  const words = (v: unknown) => (str(v) ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  for (const [side, section] of [['exterior', sections.exterior], ['interior', sections.interior]] as const) {
+    const items: any[] = Array.isArray(section?.damages) ? section.damages : []
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue
+      const photo = item.id != null ? section[`damage_photo_${item.id}`] : null
+      if (isPhoto(photo)) photos.add(photo)
+      const type = words(item.type) || null
+      const description = str(item.description)
+      pins.push({
+        number: firstNumber + pins.length,
+        area: [side === 'interior' ? 'Interior' : null, words(item.location) || null].filter(Boolean).join(' · ') || null,
+        type: description && type && description.toLowerCase() !== type.toLowerCase() ? `${type} — ${description}` : type ?? description,
+        severity: words(item.severity) || null,
+        severityCode: null,
+        assetType: null,
+        view: null,
+        x: 0,
+        y: 0,
+        photoUrl: isPhoto(photo) ? photo : isPhoto(item.photo) ? item.photo : null,
+        modelAssetId: null,
+      })
+    }
+  }
+  return { pins, photos }
+}
+
+const gpsPoint = (v: any): { lat: number; lng: number } | null => {
+  const lat = Number(v?.lat ?? v?.latitude), lng = Number(v?.lng ?? v?.lon ?? v?.longitude)
+  return isFinite(lat) && isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : null
+}
+
 function engineFrom(decoded: Record<string, any>): string | null {
   const litres = str(decoded.displacementL ?? decoded.displacement_l ?? decoded.DisplacementL)
   const cylinders = str(decoded.engineCylinders ?? decoded.engine_cylinders ?? decoded.EngineCylinders)
@@ -148,7 +199,7 @@ export function buildReportModel(
   inspection: Record<string, any>,
   score: ScoreResult,
   pins: ReportDamagePin[],
-  extras: { companyName?: string | null; inspectorName?: string | null } = {},
+  extras: { companyName?: string | null; inspectorName?: string | null; inspectionType?: 'standard' | 'check_in' | 'check_out' | null } = {},
 ): ReportModel {
   const vehicleInfo: Record<string, any> = inspection.vehicleInfo ?? {}
   // What the VIN lookup returned, wherever it was stored.
@@ -180,8 +231,12 @@ export function buildReportModel(
   const makeText = make && make === make.toUpperCase() && make.length > 3 ? make.charAt(0) + make.slice(1).toLowerCase() : make
   const title = [year, makeText, model, trimText].filter(Boolean).join(' ') || 'Unknown Vehicle'
 
+  const listed = listDamage(sections, pins.length + 1)
+  const allPins = [...pins, ...listed.pins]
+
   const photos: ReportPhoto[] = []
-  const seen = new Set<string>()
+  // A list-form damage close-up prints with its damage, not in the gallery.
+  const seen = new Set<string>(listed.photos)
   let number = 0
   for (const [group, section, key, label] of PHOTO_SLOTS) {
     const value = (sections as any)[section]?.[key]
@@ -208,6 +263,8 @@ export function buildReportModel(
     null
 
   const created = inspection.created_at ?? inspection.timestamp ?? inspection.inspection_date
+  const typeCode = extras.inspectionType ?? str(vehicleInfo.inspectionType)
+  const video = str(sections.function.engineStartVideo)
   const id = str(inspection.inspectionId ?? inspection.id) ?? ''
 
   return {
@@ -230,15 +287,19 @@ export function buildReportModel(
     odometer: str(inspection.odometer) ?? str(vehicleInfo.odometer),
     location: str(inspection.location) ?? str(vehicleInfo.location) ?? str(inspection.inspection_location),
     assetId: str(inspection.asset_id) ?? str(vehicleInfo.assetId),
-    inspectionType: str(vehicleInfo.inspectionType) === 'check_in' ? 'Check-in'
-      : str(vehicleInfo.inspectionType) === 'check_out' ? 'Check-out' : 'Standard',
+    inspectionType: typeCode === 'check_in' ? 'Check-in' : typeCode === 'check_out' ? 'Check-out' : 'Standard',
     sections,
     tests,
     score,
-    pins,
+    pins: allPins,
     photos,
     leadPhotoSrc,
     signatureSrc: isPhoto(inspection.signature_url) ? inspection.signature_url : null,
+    signedAt: inspection.signed_at ? new Date(inspection.signed_at) : null,
+    startedAt: inspection.initiated_at ? new Date(inspection.initiated_at) : null,
+    signedFrom: gpsPoint(inspection.gps_end) ?? gpsPoint(inspection.gps_start),
+    // Videos saved as blob: links only ever existed on the recording device.
+    engineStartVideoUrl: video && /^https?:/.test(video) ? video : null,
     assist: {},
     decodedByNhtsa: !!(vehicleInfo.advancedInfo ?? inspection.advancedInfo),
   }

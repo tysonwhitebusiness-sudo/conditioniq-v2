@@ -1,9 +1,9 @@
 import React from 'react'
-import { Document, Page, View, Text, Image, Svg, Circle, Rect } from '@react-pdf/renderer'
+import { Document, Page, View, Text, Image, Link, Svg, Circle, Rect } from '@react-pdf/renderer'
 import type { ReportModel, ReportPhoto, RecommendationUrgency } from './model'
 import type { ReportImage } from './photos'
 import { PAGE, CONTENT_WIDTH, photoBox, columnWidth, PHOTO_BOXES, REPORT_TIME_ZONE, reportVerifyText } from './layout'
-import { needsAttention, checkedOk, treadDepth, isFlat, TIRE_POSITIONS, vinCheckDigitValid, DISCLOSURE, AI_DISCLOSURE, type FindingLevel } from './findings'
+import { needsAttention, checkedOk, treadDepth, isFlat, tireNotes, TIRE_POSITIONS, vinCheckDigitValid, DISCLOSURE, AI_DISCLOSURE, type FindingLevel } from './findings'
 
 // R3 · The approved layout ("A4"), drawn from what the inspection recorded.
 //
@@ -217,7 +217,9 @@ function TireCar({ exterior, width = 170 }: { exterior: Record<string, any>; wid
       <View style={{ width: 44, alignItems: 'center' }}>
         <Text style={{ fontSize: 6.5, color: C.ink3 }}>{name}</Text>
         <Text style={{ fontSize: 11, fontWeight: 800, color: treadColor(tread) }}>{tread == null ? '—' : `${tread}/32"`}</Text>
-        {isFlat(exterior, position) ? <Text style={{ fontSize: 6.5, color: C.risk, fontWeight: 700 }}>Flat</Text> : null}
+        {tireNotes(exterior, position).length ? (
+          <Text style={{ fontSize: 6.5, color: isFlat(exterior, position) ? C.risk : C.warn, fontWeight: 700 }}>{tireNotes(exterior, position).join(' · ')}</Text>
+        ) : null}
       </View>
     )
   }
@@ -288,6 +290,7 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
     has(sections.keys, ['mechanicalKeys', 'keyFobs']) ||
     documentPhotos.length > 0
   const documentNotes = sections.documentation.documentationNotes ?? sections.documentation.docNotes
+  const glassPane = sections.exterior.glassDamagedPane ?? sections.exterior.glassDamageLocation
   // Documents sit in one row beside the details, narrowing when there are many.
   const documentRowWidth = CONTENT_WIDTH - 200 - 16
   const documentWidth = Math.min(PHOTO_BOXES.document.width, (documentRowWidth - 7 * (documentPhotos.length - 1)) / Math.max(1, documentPhotos.length))
@@ -403,8 +406,9 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
           {hasExterior && (
             <>
               <Text style={{ ...S.label, marginBottom: 2 }}>Exterior</Text>
-              {[['Overall', sections.exterior.overallCondition ?? sections.exterior.overallExterior], ['Paint', sections.exterior.paintCondition], ['Glass', sections.exterior.glassCondition]]
+              {[['Overall', sections.exterior.overallCondition ?? sections.exterior.overallExterior], ['Paint', sections.exterior.paintCondition]]
                 .map(([k, v]) => <Row key={k as string} k={k as string} v={label(v)} color={conditionColor(v)} />)}
+              <Row k="Glass" v={glassPane && sections.exterior.glassCondition !== 'good' ? `${label(sections.exterior.glassCondition)} · ${glassPane}` : label(sections.exterior.glassCondition)} color={conditionColor(sections.exterior.glassCondition)} />
             </>
           )}
           {hasTires && (
@@ -418,6 +422,15 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
               <Text style={{ ...S.label, marginTop: hasExterior || hasTires ? 7 : 0, marginBottom: 2 }}>Under hood</Text>
               {[['Oil', 'oilLevel'], ['Coolant', 'coolantLevel'], ['Brake fluid', 'brakeFluid'], ['Transmission fluid', 'transmissionFluid'], ['Battery', 'batteryCondition'], ['Belts', 'beltCondition'], ['Hoses', 'hoseCondition']]
                 .map(([k, key]) => <Row key={k} k={k} v={label(sections.engine[key])} color={conditionColor(sections.engine[key])} />)}
+              {sections.engine.checkEngineLight !== undefined ? (
+                <Row k="Check engine light" v={sections.engine.checkEngineLight ? 'On' : 'Off'} color={sections.engine.checkEngineLight ? C.risk : C.ok} />
+              ) : null}
+              {sections.engine.visibleLeaks !== undefined ? (
+                <Row k="Leaks" v={sections.engine.visibleLeaks ? (sections.engine.leakDescription ? `Yes · ${sections.engine.leakDescription}` : 'Yes') : 'None seen'} color={sections.engine.visibleLeaks ? C.risk : C.ok} />
+              ) : null}
+              {sections.engine.unusualNoise !== undefined ? (
+                <Row k="Engine noise" v={sections.engine.unusualNoise ? (sections.engine.noiseType ? label(sections.engine.noiseType) : 'Unusual') : 'Normal'} color={sections.engine.unusualNoise ? C.risk : C.ok} />
+              ) : null}
               {sections.engine.engineNotes ? <Text style={S.note}>{`Notes: ${sections.engine.engineNotes}`}</Text> : null}
             </>
           )}
@@ -448,6 +461,9 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                 ))}
               </View>
               {sections.function.functionNotes ? <Text style={S.note}>{`Notes: ${sections.function.functionNotes}`}</Text> : null}
+              {model.engineStartVideoUrl ? (
+                <Link src={model.engineStartVideoUrl} style={{ ...S.note, color: C.accent, textDecoration: 'none' }}>Engine start video recorded · open video</Link>
+              ) : null}
             </>
           )}
         </View>
@@ -594,15 +610,24 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                   : <View style={{ height: 26, borderBottomWidth: 0.75, borderBottomColor: C.ink }} />}
                 <Text style={{ ...S.k, marginTop: 3 }}>{`${model.inspectorName ?? '—'}  ·  signature`}</Text>
               </View>
+              {model.startedAt ? (
+                <View>
+                  <Text style={S.k}>Started</Text>
+                  <Text style={{ fontWeight: 600 }}>{fmtTime(model.startedAt)}</Text>
+                </View>
+              ) : null}
               <View>
                 <Text style={S.k}>Signed</Text>
-                <Text style={{ fontWeight: 600 }}>{`${fmtDate(model.date)}, ${fmtTime(model.date)}`}</Text>
+                <Text style={{ fontWeight: 600 }}>{`${fmtDate(model.signedAt ?? model.date)}, ${fmtTime(model.signedAt ?? model.date)}`}</Text>
               </View>
               <View>
                 <Text style={S.k}>Report ID</Text>
                 <Text style={{ fontSize: 7.5 }}>{model.reportNo}</Text>
               </View>
             </View>
+            {model.signedFrom ? (
+              <Text style={{ ...S.k, marginTop: 6 }}>{`Signed on site at ${model.signedFrom.lat.toFixed(5)}, ${model.signedFrom.lng.toFixed(5)}`}</Text>
+            ) : null}
           </View>
           {qr ? (
             <View style={{ width: 60, alignItems: 'center' }}>
@@ -644,6 +669,7 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                 ['Inspected', `${fmtDate(model.date)}, ${fmtTime(model.date)}`],
                 ['Location', model.location ?? '—'],
                 ['Inspector', model.inspectorName ?? '—'],
+                ...(model.assetId ? [['Asset', model.assetId]] : []),
               ].map(([k, v]) => (
                 <View key={k}>
                   <Text style={S.k}>{k}</Text>

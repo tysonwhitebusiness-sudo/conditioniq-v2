@@ -14,6 +14,15 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '4mb',
     },
+    // The report renderer reads its fonts from disk at runtime, which the build
+    // cannot trace on its own. Without this the report route deploys without
+    // them and every report fails with "Font family not registered".
+    outputFileTracingIncludes: {
+      '/api/reports': ['./lib/report/fonts/**'],
+    },
+    // The PDF renderer and image resizer stay as ordinary Node modules on the
+    // server rather than being bundled.
+    serverComponentsExternalPackages: ['@react-pdf/renderer', 'sharp'],
   },
   images: {
     remotePatterns: [

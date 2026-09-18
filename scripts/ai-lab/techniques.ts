@@ -119,4 +119,35 @@ export const tunedThink: Technique = {
   } as any),
 }
 
-export const TECHNIQUES: Record<string, Technique> = { plain, guide, examples: withExamples, tuned, 'tuned-think': tunedThink }
+// Step 5: the guide and the tuned rules together. The guide comes first (and
+// is cached); the tuned rules come last so they take priority where the two
+// disagree. The softened variant drops the guide's two lines that tell the
+// model to be cautious, which clash with tuned rule 1.
+const TUNED_ONLY_RULES = TUNED_RULES
+const SOFT_GUIDE = DAMAGE_GUIDE
+  .split('\n')
+  .filter(line => !/When unsure, give a lower confidence/.test(line) && !/do not guess at fine scratches/.test(line))
+  .join('\n')
+
+function combined(name: string, guideText: string): Technique {
+  return {
+    name,
+    promptVersion: `damage-tuned-v1+${name}`,
+    maxTokens: 400,
+    build: (_item: DamageItem, image: string) => ({
+      system: [
+        { type: 'text', text: `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\n${guideText}`, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: `Rules (these take priority over the guide):\n${TUNED_ONLY_RULES}\n\n${ANSWER_FORMAT}` },
+      ],
+      thinking: { type: 'disabled' },
+      messages: [{ role: 'user', content: [photo(image), { type: 'text', text: 'Report the damage in this photo.' }] }],
+    }),
+  }
+}
+
+export const tunedGuide = combined('tuned-guide', DAMAGE_GUIDE)
+export const tunedGuideSoft = combined('tuned-guide-soft', SOFT_GUIDE)
+
+export const TECHNIQUES: Record<string, Technique> = {
+  'tuned-guide': tunedGuide,
+  'tuned-guide-soft': tunedGuideSoft, plain, guide, examples: withExamples, tuned, 'tuned-think': tunedThink }

@@ -24,7 +24,7 @@ const THRESHOLDS = [0.5, 0.6, 0.7, 0.8]
 
 const set = process.argv[2] ?? 'tuning'
 const runs = readdirSync(RUNS_DIR)
-  .filter(f => f.endsWith(`--${set}.json`) && !f.includes('+agree'))
+  .filter(f => f.endsWith(`--${set}.json`) && !f.includes('+agree') && !f.startsWith('decision'))
   .map(f => JSON.parse(readFileSync(join(RUNS_DIR, f), 'utf8')) as { metrics: Metrics; results: ItemResult[] })
 
 const rows: Metrics[] = []

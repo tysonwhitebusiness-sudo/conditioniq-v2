@@ -83,4 +83,37 @@ export const withExamples: Technique = {
   }),
 }
 
-export const TECHNIQUES: Record<string, Technique> = { plain, guide, examples: withExamples }
+// Step 4: prompt tuning from the tuning-set errors. The full guide made the
+// model cautious (fewer scratches and dents found, no fewer false alarms), and
+// holes were called tears. So: the plain prompt plus three short rules aimed at
+// exactly those errors.
+const TUNED_RULES = [
+  'Report every damage you can see, including small ones. Confidence is how sure you are that it is real damage, not how serious it is.',
+  'A hole through a panel, bumper or glass is "puncture" even when its edges are torn; use "tear" only for splits and cracks without a hole.',
+  'Panel seams, door gaps, body lines, badges and reflections of trees, buildings or other vehicles are not damage.',
+].map(r => `- ${r}`).join('\n')
+
+export const tuned: Technique = {
+  name: 'tuned',
+  promptVersion: 'damage-tuned-v1',
+  maxTokens: 400,
+  build: (_item: DamageItem, image: string) => ({
+    system: `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${TUNED_RULES}\n\n${ANSWER_FORMAT}`,
+    thinking: { type: 'disabled' },
+    messages: [{ role: 'user', content: [photo(image), { type: 'text', text: 'Report the damage in this photo.' }] }],
+  }),
+}
+
+/** The tuned prompt with thinking on at low effort: does reasoning pay for its extra output? */
+export const tunedThink: Technique = {
+  name: 'tuned-think',
+  promptVersion: 'damage-tuned-v1-think-low',
+  maxTokens: 2000,
+  build: (item: DamageItem, image: string) => ({
+    ...tuned.build(item, image),
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'low' },
+  } as any),
+}
+
+export const TECHNIQUES: Record<string, Technique> = { plain, guide, examples: withExamples, tuned, 'tuned-think': tunedThink }

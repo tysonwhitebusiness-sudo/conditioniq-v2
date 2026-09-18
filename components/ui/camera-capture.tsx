@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { X, RotateCcw, Check, Upload, Camera, Loader2 } from 'lucide-react'
+import ReportPhotoPreview, { type ReportPreviewSpec } from './report-photo-preview'
 
 // The one camera. Every photo in the app (intake, outtake, the full inspection's
 // steps, damage close-ups) is taken here, so every photo gets the same confirm
@@ -31,6 +32,10 @@ interface CameraCaptureProps {
   mode?: CameraMode
   // Heading for a single shot; a sequence shows its own labels.
   title?: string
+  // P1 · How the photo at this position in the sequence (0 for a single shot)
+  // will print. When given, the confirm step shows the photo in that report
+  // box instead of the bare frame. Without it, the box follows the camera mode.
+  reportPreview?: (index: number) => ReportPreviewSpec | null
 }
 
 // Framing guide geometry, as a share of the viewfinder box.
@@ -63,6 +68,7 @@ export default function CameraCapture({
   onSequenceCapture,
   mode = 'full',
   title,
+  reportPreview,
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -234,6 +240,12 @@ export default function CameraCapture({
   const handleClose = () => { if (saving) return; stopCamera(); onClose() }
 
   const label = photoSequence ? photoSequence[seqIdx] : title
+  // Every photo confirms against its report box. Callers that know the field
+  // say which box; otherwise the camera mode decides — a square close-up prints
+  // as a damage close-up, anything else in the photo gallery.
+  const preview: ReportPreviewSpec | null = reportPreview
+    ? reportPreview(seqIdx)
+    : { box: mode === 'square' ? 'damage' : 'gallery', caption: label ?? 'Photo' }
   const progress = photoSequence && photoSequence.length > 1 ? `${seqIdx + 1} / ${photoSequence.length}` : undefined
   const guide = box ? guideBox(mode, box.W, box.H) : null
   const hint = mode === 'square' ? 'Center the damage in the frame' : mode === 'vehicle' ? 'Position the vehicle in the frame' : null
@@ -329,11 +341,15 @@ export default function CameraCapture({
       ) : captured ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, animation: 'camera-capture-view-fade-in 240ms ease' }}>
           <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <img
-              src={captured}
-              alt="Preview"
-              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-            />
+            {preview ? (
+              <ReportPhotoPreview src={captured} spec={preview} />
+            ) : (
+              <img
+                src={captured}
+                alt="Preview"
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+              />
+            )}
             {(saving || notice) && (
               <div role="status" style={{
                 position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

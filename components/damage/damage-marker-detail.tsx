@@ -91,6 +91,7 @@ export default function DamageMarkerDetail({
 
       {capturing && (
         <CameraCapture
+          reportPreview={() => ({ box: 'damage', caption: 'Damage close-up' })}
           mode="square"
           title="Damage close-up"
           onCapture={dataUrl => { setCapturing(false); savePhoto(dataUrl) }}

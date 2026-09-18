@@ -547,6 +547,7 @@ function AddExistingVehicleSlideOver({ companyId, userId, isFMC, locations, onCl
         <CameraCapture
           onCapture={dataUrl => { setPhotos(prev => ({ ...prev, [activePhotoKey]: dataUrl })); setActivePhotoKey(null) }}
           onClose={() => setActivePhotoKey(null)}
+          title={BACKFILL_PHOTO_SLOTS.find(s => s.key === activePhotoKey)?.label}
         />
       )}
     </div>

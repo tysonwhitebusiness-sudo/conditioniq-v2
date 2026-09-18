@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from 'react'
 import CameraCapture from './camera-capture'
+import { reportBoxForField } from '@/lib/report/layout'
 
 // Photo slots for the full inspection (exterior walk-around, interior, damage
 // close-ups, documents). The camera itself is the shared CameraCapture, so these
@@ -102,6 +103,8 @@ export default function InspectionCamera({
       mode={mode}
       photoSequence={order.map(s => s.label)}
       currentSequenceIndex={0}
+      // Each slot confirms against the report box its field prints in.
+      reportPreview={i => (order[i] ? { box: mode === 'square' ? 'damage' : reportBoxForField(order[i].key), caption: order[i].label } : null)}
       onSequenceCapture={save}
       onClose={onClose}
     />

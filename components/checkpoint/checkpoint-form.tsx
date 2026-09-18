@@ -366,7 +366,11 @@ export default function CheckpointForm({
       )}
 
       {activePhotoKey && (
-        <CameraCapture onCapture={handlePhotoCapture} onClose={() => setActivePhotoKey(null)} />
+        <CameraCapture
+          onCapture={handlePhotoCapture}
+          onClose={() => setActivePhotoKey(null)}
+          title={REQUIRED_PHOTO_SLOTS.find(s => s.key === activePhotoKey)?.label}
+        />
       )}
     </div>
   )

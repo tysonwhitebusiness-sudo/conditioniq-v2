@@ -37,3 +37,27 @@ export function photoBox(kind: PhotoBox, width?: number) {
   const w = width ?? box.width ?? (box.columns ? columnWidth(box.columns, box.gap ?? 0) : CONTENT_WIDTH)
   return { width: w, height: w / box.ratio, fit: box.fit, radius: box.radius }
 }
+
+// P1 · Camera confirm.
+//
+// The camera's confirm screen shows each photo inside the box it will print in,
+// so the shapes are defined once, here, and read by both the camera and the
+// report. Change a box and both follow.
+export type ReportBoxKind = 'gallery' | 'lead' | 'damage' | 'document'
+
+export const REPORT_BOX_PREVIEW: Record<ReportBoxKind, { ratio: number; fit: 'cover' | 'contain' }> = {
+  gallery: { ratio: PHOTO_BOXES.gallery.ratio, fit: PHOTO_BOXES.gallery.fit },
+  lead: { ratio: PHOTO_BOXES.lead.ratio, fit: PHOTO_BOXES.lead.fit },
+  damage: { ratio: PHOTO_BOXES.damage.ratio, fit: PHOTO_BOXES.damage.fit },
+  document: { ratio: PHOTO_BOXES.document.ratio, fit: PHOTO_BOXES.document.fit },
+}
+
+const DOCUMENT_FIELDS = new Set(['licensePlatePhoto', 'registrationPhoto', 'insurancePhoto', 'bolPhoto', 'keysPhoto'])
+
+/** Which report box a photo field prints in. Mirrors the grouping in model.ts. */
+export function reportBoxForField(fieldKey: string): ReportBoxKind {
+  if (DOCUMENT_FIELDS.has(fieldKey)) return 'document'
+  if (fieldKey === 'baselinePhoto' || fieldKey === 'vehiclePhoto') return 'lead'
+  if (/^damage/i.test(fieldKey)) return 'damage'
+  return 'gallery'
+}

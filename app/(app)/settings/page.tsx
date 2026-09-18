@@ -63,6 +63,14 @@ export default function SettingsPage() {
       accessible: isAdmin && !!whiteLabelEnabled,
     },
     {
+      icon: <Sparkles size={20} />,
+      title: 'AI assistance',
+      description: 'Turn AI help on or off for your account',
+      lockedLabel: 'Admin access required',
+      route: '/settings/ai',
+      accessible: isAdmin,
+    },
+    {
       icon: <Receipt size={20} />,
       title: 'Fee Structure',
       description: 'Set report costs and manage custom fee types',

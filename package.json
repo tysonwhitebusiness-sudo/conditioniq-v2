@@ -10,9 +10,11 @@
     "prepare": "husky",
     "perf": "node scripts/perf-budget.mjs",
     "perf:payload": "node --experimental-strip-types --no-warnings scripts/payload-check.mjs",
-    "report:test": "tsx scripts/report-test.mjs"
+    "report:test": "tsx scripts/report-test.mjs",
+    "ai:test": "tsx scripts/ai-test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@react-pdf/renderer": "^4.5.1",

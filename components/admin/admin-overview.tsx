@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAdminStats, getOverageTracker, getMRRByMonth, getRecentCustomerActivity, getPayPerUseOverview, type PayPerUseAccountRow } from '@/lib/admin-actions'
 import dynamic from 'next/dynamic'
+import AiKillSwitch from './ai-kill-switch'
 // Loaded on demand (see components/admin/admin-charts.tsx).
 const MrrChart = dynamic(() => import('./admin-charts').then(m => m.MrrChart), {
   ssr: false,
@@ -169,6 +170,8 @@ export default function AdminOverview() {
           </div>
         ))}
       </div>
+
+      <AiKillSwitch />
 
       {payPerUse && <PayPerUsePanel data={payPerUse} onOpen={id => router.push(`/admin/customers/${id}`)} />}
 

@@ -50,6 +50,8 @@ export interface ReportAssist {
   recalls?: ReportRecall[]
   complaints?: { count: number; topAreas: string[] }
   photoCheck?: string
+  /** True when any of the above was written by AI; the report then says so in its small print. */
+  aiWritten?: boolean
 }
 
 export interface ReportModel {

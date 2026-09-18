@@ -61,5 +61,17 @@ check('a downgraded urgency fails', !validateRecommendations(downgraded, small).
 check('prose is not an answer', !validateRecommendations('You should fix the brakes.', small).ok)
 check('the plain grouping covers every rule', groupRules(fired).length > 0 && groupRules(fired).every(r => r.source))
 
-if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }
-console.log('\nAll rulebook checks passed.')
+// ── Written summary guards (phase C) ───────────────────────────────────────
+import('../../lib/ai/report-assist').then(({ numbersAreRecorded, makesUnsupportedClaim }) => {
+  const facts = { odometerMiles: '69279', rules: ['Tire LF tread 2/32"'] }
+  check('recorded numbers pass', numbersAreRecorded('Recorded at 69,279 miles; LF tread 2/32".', facts))
+  check('an invented number fails', !numbersAreRecorded('About 3 years old.', facts))
+  check('"mechanically sound" is refused', makesUnsupportedClaim('Mechanically sound with good tires.'))
+  check('"safe to drive" is refused', makesUnsupportedClaim('The vehicle is safe to drive.'))
+  check('"no issues" is refused', makesUnsupportedClaim('No issues found.'))
+  check('"safety" alone is allowed', !makesUnsupportedClaim('Brake fluid is low, a safety item to fix first.'))
+  check('a plain description is allowed', !makesUnsupportedClaim('Paint and glass are good; brake fluid is low.'))
+  if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }
+  console.log('\nAll rulebook checks passed.')
+  process.exit(0)
+})

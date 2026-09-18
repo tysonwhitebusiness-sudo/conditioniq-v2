@@ -26,6 +26,8 @@ export interface AiRequest {
   /** Off for reading and classifying, where thinking only adds cost. Adaptive when omitted. */
   thinking?: 'off' | 'adaptive'
   effort?: 'low' | 'medium' | 'high'
+  /** A JSON schema the answer must follow, so it always parses. */
+  jsonSchema?: Record<string, unknown>
 }
 
 export type AiResult =
@@ -126,7 +128,12 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
         system: req.system,
         messages: req.messages,
         ...(req.thinking === 'off' ? { thinking: { type: 'disabled' as const } } : {}),
-        ...(req.effort ? { output_config: { effort: req.effort } } : {}),
+        ...(req.effort || req.jsonSchema ? {
+          output_config: {
+            ...(req.effort ? { effort: req.effort } : {}),
+            ...(req.jsonSchema ? { format: { type: 'json_schema', schema: req.jsonSchema } } : {}),
+          },
+        } : {}),
       } as Anthropic.MessageCreateParamsNonStreaming)
       const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, cacheReadTokens: message.usage.cache_read_input_tokens ?? 0 }
       const costUsd = costOf(AI_MODEL, usage)

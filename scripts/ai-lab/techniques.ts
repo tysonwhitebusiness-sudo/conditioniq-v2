@@ -171,5 +171,6 @@ export const TECHNIQUES: Record<string, Technique> = {
   'v2': v2('v2'),
   'v2-hires': v2('v2-hires', { imageEdge: 2048 }),
   'v2-hires-opus': v2('v2-hires-opus', { imageEdge: 2048, model: 'claude-opus-5' }),
+  'v2-opus': v2('v2-opus', { model: 'claude-opus-5' }),
   'tuned-guide': tunedGuide,
   'tuned-guide-soft': tunedGuideSoft, plain, guide, examples: withExamples, tuned, 'tuned-think': tunedThink }

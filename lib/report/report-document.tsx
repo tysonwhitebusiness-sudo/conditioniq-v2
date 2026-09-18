@@ -298,7 +298,9 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
   const recommendations = assist.recommendations ?? []
   const fallbackRecommendations = recommendations.length ? [] : model.score.recommendations ?? []
   const recall = assist.recalls?.[0]
-  const hasAssist = !!(assist.summary || assist.verdict?.length || recommendations.length || assist.photoCheck)
+  // The AI line in the small print appears only when AI wrote something here;
+  // rule-based recommendations and NHTSA recalls are not AI-written.
+  const hasAssist = assist.aiWritten ?? !!(assist.summary || assist.verdict?.length || recommendations.length || assist.photoCheck)
 
   // Page 1 is built around the lead photo. Without one it is too short to stand
   // alone, so the evidence follows straight on rather than leaving it half empty.

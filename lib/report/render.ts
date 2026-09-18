@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
 import { renderReportToBuffer } from './render-document'
 import { buildReportModel } from './model'
+import { buildReportAssist, assistInputHash, REPORT_ASSIST_VERSION, type StoredAssist } from '@/lib/ai/report-assist'
 import { reportVerifyUrl, reportStoragePath } from './layout'
 import { loadReportImage, loadDiagramImage, type ReportImage } from './photos'
 import ReportDocument, { type ReportDiagram } from './report-document'
@@ -108,8 +109,12 @@ async function loadBranding(companyId: string | null | undefined) {
   return { companyName: company.name ?? null, logo, headerColor: company.brand_header_color ?? null, accentColor: company.brand_accent_color ?? null }
 }
 
-/** Renders one inspection's report. Does not upload it. */
-export async function renderInspectionReport(inspectionId: string): Promise<RenderedReport> {
+/**
+ * Renders one inspection's report. Does not upload it.
+ * saveAssist: false builds the summary and recommendations without storing
+ * them on the inspection (for tests against real inspections).
+ */
+export async function renderInspectionReport(inspectionId: string, options: { saveAssist?: boolean } = {}): Promise<RenderedReport> {
   const admin = createAdminClient()
 
   const { data: inspection, error } = await admin.from('vehicle_inspections').select('*').eq('id', inspectionId).single()
@@ -137,6 +142,22 @@ export async function renderInspectionReport(inspectionId: string): Promise<Rend
     inspectorName: inspector ?? inspection.inspector_name ?? null,
     inspectionType,
   })
+
+  // C · The summary and recommendations. Reused when they were written by AI
+  // from the same recorded answers; otherwise built (again), so a report made
+  // while AI was off picks up the written summary once it is back on.
+  const inputHash = assistInputHash(model)
+  const stored = inspection.report_assist as StoredAssist | null
+  if (stored?.inputHash === inputHash && stored.assist?.aiWritten) {
+    model.assist = stored.assist
+  } else {
+    model.assist = await buildReportAssist(model, { companyId: inspection.company_id ?? null, inspectionId })
+    if (options.saveAssist !== false) {
+      const record: StoredAssist = { version: REPORT_ASSIST_VERSION, inputHash, builtAt: new Date().toISOString(), assist: model.assist }
+      const { error: saveError } = await admin.from('vehicle_inspections').update({ report_assist: record }).eq('id', inspectionId)
+      if (saveError) console.error('[report] could not keep the summary', saveError.message)
+    }
+  }
 
   // Every photo the document can draw, fetched and resized once.
   const sources = new Set<string>()

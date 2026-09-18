@@ -204,7 +204,7 @@ for (const testCase of REPORT_CASES) {
 
 if (ONE_ID) {
   const { renderInspectionReport } = await import('../lib/report/render.ts')
-  const { buffer } = await renderInspectionReport(ONE_ID)
+  const { buffer } = await renderInspectionReport(ONE_ID, { saveAssist: false })
   if (KEEP) writeFileSync(join(OUT, `real-${ONE_ID}.pdf`), buffer)
   const m = await measure(`real-${ONE_ID}`, buffer)
   rows.push({ name: `real:${ONE_ID.slice(0, 8)}`, ...m })

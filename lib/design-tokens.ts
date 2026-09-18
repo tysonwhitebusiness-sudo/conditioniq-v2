@@ -96,3 +96,19 @@ export const hairlineCard = {
 export function pillStyle(textColor: string, tint: string) {
   return { background: tint, color: textColor, fontWeight: 700 } as const
 }
+
+// L2 · Loading skeletons. The shapes a screen shows before its data arrives:
+// a page ground, a card surface and its border, and two weights of "bone" for
+// headings and secondary lines.
+export const SKELETON_GROUND = '#F0F4F8'
+export const SKELETON_SURFACE = WHITE
+export const SKELETON_BORDER = '#E1E8F0'
+export const SKELETON_BONE = '#E4EAF1'
+export const SKELETON_BONE_LIGHT = '#EFF3F8'
+// The dark header band a token page (inspector link, invoice) opens with.
+export const SKELETON_HEADER = '#0D1B2A'
+export const SKELETON_HEADER_BONE = 'rgba(255,255,255,0.18)'
+export const SKELETON_HEADER_BONE_LIGHT = 'rgba(255,255,255,0.1)'
+
+// The navy used by the older dashboard screens and their charts.
+export const LEGACY_NAVY = '#1e3a5f'

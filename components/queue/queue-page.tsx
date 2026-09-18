@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -10,6 +10,7 @@ import { createShareToken } from '@/lib/usage-actions'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import { downloadInspectionHistory } from '@/lib/inspection-export'
 import { usePlan } from '@/hooks/use-plan'
+import { useCachedScreenData } from '@/lib/screen-cache'
 import {
   loadInspectionRows, countByStatus, INSPECTION_STATUSES, INSPECTION_STATUS_LABEL,
   type InspectionRow, type InspectionStatus,
@@ -507,9 +508,6 @@ export default function QueuePage({
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const [filter, setFilter] = useState<StatusFilter>(initialFilter)
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [rows, setRows] = useState<InspectionRow[]>([])
   const [shareSuccessId, setShareSuccessId] = useState<string | null>(null)
   const [showAddToQueue, setShowAddToQueue] = useState(false)
   const [sendSheet, setSendSheet] = useState<SendSheetState>({ open: openSendSheet, vin: sendVin })
@@ -520,20 +518,13 @@ export default function QueuePage({
   const supabase = createClient()
   const companyId = effectiveCompany?.id ?? ''
 
-  const load = useCallback(async () => {
-    if (!companyId) return
-    setLoading(true)
-    setLoadError(null)
-    try {
-      setRows(await loadInspectionRows(companyId))
-    } catch (e: any) {
-      setLoadError(e?.message ?? 'Could not load inspections')
-    } finally {
-      setLoading(false)
-    }
-  }, [companyId])
-
-  useEffect(() => { load() }, [load])
+  // Cached per company: coming back to this screen shows the list it had while
+  // a fresh copy loads underneath, instead of emptying out and fetching again.
+  const { data, loading, error: loadError, reload: load } = useCachedScreenData(
+    companyId ? `inspections:${companyId}` : null,
+    () => loadInspectionRows(companyId),
+  )
+  const rows = useMemo(() => data ?? [], [data])
 
   // Full history, not the capped list on screen.
   const handleExport = async () => {
@@ -552,7 +543,9 @@ export default function QueuePage({
 
   const deleteQueueItem = async (id: string) => {
     await supabase.from('inspection_queue').delete().eq('id', id)
-    setRows(prev => prev.filter(r => r.key !== `queue:${id}`))
+    // Drop it from the cached list too, so it does not reappear when this
+    // screen is opened again from the cache.
+    await load()
   }
 
   const handleShare = async (inspectionId: string) => {

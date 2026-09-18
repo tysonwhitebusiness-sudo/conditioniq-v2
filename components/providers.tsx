@@ -1,12 +1,12 @@
 'use client'
 
-import { AuthProvider } from '@/contexts/auth-context'
+import { AuthProvider, type AuthInitialData } from '@/contexts/auth-context'
 import { OfflineProvider } from '@/contexts/offline-context'
 import GhostBanner from '@/components/ui/ghost-banner'
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({ children, initialAuth }: { children: React.ReactNode; initialAuth?: AuthInitialData }) {
   return (
-    <AuthProvider>
+    <AuthProvider initial={initialAuth}>
       <OfflineProvider>
         <GhostBanner />
         {children}

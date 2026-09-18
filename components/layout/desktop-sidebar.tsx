@@ -10,6 +10,7 @@ import {
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import { usePlanUsage } from '@/hooks/use-plan-usage'
 import { usePlan } from '@/hooks/use-plan'
+import { usePrefetch } from '@/hooks/use-prefetch'
 import { PRIMARY, AMBER, DANGER, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
 
 export type NavTab = 'home' | 'queue' | 'history' | 'account'
@@ -40,6 +41,8 @@ export default function DesktopSidebar({
 }: Props) {
   const pathname = usePathname()
   const router = useRouter()
+  // Warms a route while the pointer is still travelling toward it.
+  const prefetch = usePrefetch()
   const { user, userProfile, effectiveCompany, isOwnerUser, companyRole, signOut, impersonatedCompany } = useAuth()
 
   // Auto-collapse when an inspection starts
@@ -223,7 +226,7 @@ export default function DesktopSidebar({
           {inspItems.map(item => {
             const locked = itemLocked[item.id] ?? false
             return (
-              <button key={item.id} onClick={() => handleClick(item)} title={item.label + (locked ? ' (locked)' : '')} style={collapsedItemStyle(isActive(item))}>
+              <button key={item.id} onClick={() => handleClick(item)} {...prefetch(item.type === 'route' ? item.route : null)} title={item.label + (locked ? ' (locked)' : '')} style={collapsedItemStyle(isActive(item))}>
                 <div style={{ position: 'relative', display: 'inline-flex' }}>
                   {item.icon}
                   {locked && <Lock size={8} color={GRAY_500} style={{ position: 'absolute', bottom: -2, right: -3 }} />}
@@ -236,7 +239,7 @@ export default function DesktopSidebar({
             <>
               <div style={divider()} />
               {fleetItems.map(item => (
-                <button key={item.id} onClick={() => handleClick(item)} title={item.label} style={collapsedItemStyle(isActive(item))}>
+                <button key={item.id} onClick={() => handleClick(item)} {...prefetch(item.type === 'route' ? item.route : null)} title={item.label} style={collapsedItemStyle(isActive(item))}>
                   {item.icon}
                 </button>
               ))}
@@ -259,7 +262,7 @@ export default function DesktopSidebar({
           {inspItems.map(item => {
             const locked = itemLocked[item.id] ?? false
             return (
-              <button key={item.id} onClick={() => handleClick(item)} style={expandedItemStyle(isActive(item))}>
+              <button key={item.id} onClick={() => handleClick(item)} {...prefetch(item.type === 'route' ? item.route : null)} style={expandedItemStyle(isActive(item))}>
                 {item.icon}
                 <span style={{ flex: 1 }}>{item.label}</span>
                 {locked && <Lock size={12} color={GRAY_500} />}
@@ -271,7 +274,7 @@ export default function DesktopSidebar({
             <>
               <p style={sectionLabel}>Fleet</p>
               {fleetItems.map(item => (
-                <button key={item.id} onClick={() => handleClick(item)} style={expandedItemStyle(isActive(item))}>
+                <button key={item.id} onClick={() => handleClick(item)} {...prefetch(item.type === 'route' ? item.route : null)} style={expandedItemStyle(isActive(item))}>
                   {item.icon}
                   <span>{item.label}</span>
                 </button>

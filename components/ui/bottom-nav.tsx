@@ -5,6 +5,7 @@ import { Home, Car, Plus, LayoutGrid, ClipboardList, Lock, Settings } from 'luci
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useFeatureFlag } from '@/hooks/use-feature-flag'
 import { usePlan } from '@/hooks/use-plan'
+import { usePrefetch } from '@/hooks/use-prefetch'
 
 // NavTab kept for backward-compat imports
 export type NavTab = 'home' | 'vehicles' | 'dispatch' | 'account'
@@ -19,6 +20,8 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
   const router = useRouter()
   const lotMapEnabled = useFeatureFlag('lot_map')
   const { plan } = usePlan()
+  // A tab is warmed on touch-down, before the tap completes.
+  const prefetch = usePrefetch()
 
   if (isDesktop) return null
 
@@ -32,7 +35,7 @@ export default function BottomNav({ onStartPress: _onStartPress }: BottomNavProp
   const tabBtn = (id: string, Icon: React.ElementType, label: string, route: string, locked = false) => {
     const active = isActive(route)
     return (
-      <button key={id} onClick={() => router.push(route)}
+      <button key={id} onClick={() => router.push(route)} {...prefetch(route)}
         style={{
           flex: 1, height: '100%',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,

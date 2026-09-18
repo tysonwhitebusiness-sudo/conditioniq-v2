@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import type { PlatformRole, CompanyRole } from '@/lib/roles'
@@ -84,16 +84,34 @@ export const AuthContext = createContext<AuthContextValue>({
   refreshProfile: async () => {},
 })
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+// What the server already resolved while the page rendered (see
+// lib/auth-bootstrap.ts). When it is present the context starts with the user,
+// profile, company and role in hand, so screens begin loading their own data on
+// the first render instead of after three round trips.
+export interface AuthInitialData {
+  user: any | null
+  userProfile: any | null
+  company: any | null
+  rawRole: string | null
+}
+
+export function AuthProvider({ children, initial }: { children: ReactNode; initial?: AuthInitialData }) {
   const supabase = createClient()
-  const [user, setUser] = useState<User | null>(null)
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [company, setCompany] = useState<Company | null>(null)
-  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(null)
-  const [isCompanyOwner, setIsCompanyOwner] = useState(false)
+  const [user, setUser] = useState<User | null>(initial?.user ?? null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(initial?.userProfile ?? null)
+  const [company, setCompany] = useState<Company | null>(initial?.company ?? null)
+  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(
+    initial?.rawRole ? ((initial.rawRole === 'owner' ? 'admin' : initial.rawRole) as CompanyRole) : null,
+  )
+  const [isCompanyOwner, setIsCompanyOwner] = useState(initial?.rawRole === 'owner')
   const [impersonatedCompany, setImpersonatedCompany] = useState<Company | null>(null)
   const [impersonatedAt, setImpersonatedAt] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Nothing to wait for when the server already answered.
+  const [loading, setLoading] = useState(!initial?.user)
+  // Supabase fires an initial session event the moment we subscribe. It carries
+  // the same user the server already resolved, so that first event is ignored
+  // rather than refetching the profile and company we were just handed.
+  const skipFirstSessionEvent = useRef<string | null>(initial?.user?.id ?? null)
 
   const clearGhostStorage = useCallback(() => {
     try { localStorage.removeItem(GHOST_MODE_STORAGE_KEY) } catch { /* ignore */ }
@@ -156,18 +174,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadProfile(session.user).finally(() => setLoading(false))
-      } else {
-        setLoading(false)
-      }
-    })
+    // Already hydrated by the server: skip the opening round trips. The
+    // subscription below still registers, so signing in or out behaves the same.
+    if (!(initial?.user && initial?.userProfile)) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadProfile(session.user).finally(() => setLoading(false))
+        } else {
+          setLoading(false)
+        }
+      })
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
+        if (skipFirstSessionEvent.current === session.user.id) {
+          skipFirstSessionEvent.current = null
+          return
+        }
         loadProfile(session.user)
       } else {
         setUserProfile(null)

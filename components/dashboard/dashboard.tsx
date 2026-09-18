@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { Share2, Send, Play, Plus, Upload, Search, AlertTriangle } from 'lucide-react'
 import { checkUsageState, createShareToken, createInspectionRequest } from '@/lib/usage-actions'
+import { INSPECTION_LIST_COLUMNS } from '@/lib/inspection-columns'
+import { useCachedScreenData } from '@/lib/screen-cache'
 
 type Tab = 'queue' | 'in-progress' | 'history' | 'team'
 
@@ -17,37 +19,32 @@ interface DashboardProps {
 export default function Dashboard({ onStartInspection, onResumeInspection, onViewReport }: DashboardProps) {
   const { user, userProfile, effectiveCompany, isOwnerUser } = useAuth()
   const [tab, setTab] = useState<Tab>('queue')
-  const [queue, setQueue] = useState<any[]>([])
-  const [history, setHistory] = useState<any[]>([])
-  const [team, setTeam] = useState<any[]>([])
-  const [usageState, setUsageState] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [shareSuccess, setShareSuccess] = useState<string | null>(null)
   const [infoMsg, setInfoMsg] = useState<string | null>(null)
 
   const supabase = createClient()
 
-  const load = useCallback(async () => {
-    if (!effectiveCompany) return
-    setLoading(true)
-    try {
+  // Kept per company for the session: reopening the dashboard shows what it had
+  // while the refresh runs underneath.
+  const { data, loading } = useCachedScreenData(
+    effectiveCompany ? `dashboard:${effectiveCompany.id}` : null,
+    async () => {
+      const companyId = effectiveCompany!.id
       const [qRes, hRes, tRes, uRes] = await Promise.all([
-        supabase.from('inspection_queue').select('*').eq('company_id', effectiveCompany.id).eq('status', 'queued').order('created_at', { ascending: false }),
-        supabase.from('vehicle_inspections').select('*').eq('company_id', effectiveCompany.id).eq('status', 'completed').order('created_at', { ascending: false }).limit(50),
-        supabase.from('user_profiles').select('*').eq('company_id', effectiveCompany.id),
-        checkUsageState(effectiveCompany.id),
+        supabase.from('inspection_queue').select('id, vin, year, make, model, notes, created_at, status').eq('company_id', companyId).eq('status', 'queued').order('created_at', { ascending: false }),
+        supabase.from('vehicle_inspections').select(INSPECTION_LIST_COLUMNS).eq('company_id', companyId).eq('status', 'completed').order('created_at', { ascending: false }).limit(50),
+        supabase.from('user_profiles').select('id, full_name, email, role, company_id').eq('company_id', companyId),
+        checkUsageState(companyId),
       ])
-      setQueue(qRes.data ?? [])
-      setHistory(hRes.data ?? [])
-      setTeam(tRes.data ?? [])
-      setUsageState(uRes)
-    } finally {
-      setLoading(false)
-    }
-  }, [effectiveCompany])
-
-  useEffect(() => { load() }, [load])
+      // The column list is built at runtime, so Supabase can't type these rows.
+      return { queue: (qRes.data ?? []) as any[], history: (hRes.data ?? []) as any[], team: (tRes.data ?? []) as any[], usageState: uRes }
+    },
+  )
+  const queue = data?.queue ?? []
+  const history = data?.history ?? []
+  const team = data?.team ?? []
+  const usageState = data?.usageState ?? null
 
   const handleShare = async (inspectionId: string) => {
     try {

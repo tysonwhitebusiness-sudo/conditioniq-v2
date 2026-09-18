@@ -65,7 +65,7 @@ async function main() {
     byGroup.set(main, [...(byGroup.get(main) ?? []), { ...img, regions }])
   }
   const damage: Manifest['damage'] = { examples: [], tuning: [], test: [] }
-  for (const [group, images] of byGroup) {
+  for (const [group, images] of Array.from(byGroup)) {
     const picked = shuffle(images, 11)
     let at = 0
     for (const split of ['examples', 'tuning', 'test'] as const) {
@@ -79,7 +79,7 @@ async function main() {
           id: `v-${img.name.replace(/\.jpg$/i, '')}`,
           file: rel,
           source: 'vehide',
-          groups: [...new Set(img.regions.map(r => VEHIDE_CLASS[r.class]))],
+          groups: Array.from(new Set(img.regions.map(r => VEHIDE_CLASS[r.class]))),
           boxes: img.regions.map(r => ({
             group: VEHIDE_CLASS[r.class],
             x: Math.min(...r.all_x) / w, y: Math.min(...r.all_y) / h,

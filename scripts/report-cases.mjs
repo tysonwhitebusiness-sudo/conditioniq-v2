@@ -68,15 +68,19 @@ function withPhotos(inspection, slots, shape) {
 const FULL_SLOTS = [...EXTERIOR_SLOTS, ...INTERIOR_SLOTS, 'engineBayPhoto', ...DOC_SLOTS, 'bolPhoto', 'keysPhoto']
 
 function pins(count) {
-  const areas = ['Bumper Rear', 'Door Front Left', 'Hood', 'Fender Rear Right', 'Roof', 'Door Rear Right']
-  const types = ['Scratched - Except Glass', 'Dented - Paint/Chrome Broken', 'Chipped - Except Glass and Panel Edge', 'Gouged']
+  // With their AIAG numbers (A0), so the five-digit code prints as it will live.
+  const areas = [['Bumper Rear', 4], ['Door Front Left', 10], ['Hood', 27], ['Fender Rear Right', 83], ['Roof', 37], ['Door Rear Right', 13]]
+  const types = [['Scratched - Except Glass', 12], ['Dented - Paint/Chrome Broken', 4], ['Chipped - Except Glass and Panel Edge', 5], ['Gouged', 7]]
   const severities = [['Up to 1 inch', 1], ['1-3 inches', 2], ['3-6 inches', 3], ['6-12 inches', 4], ['Over 12 inches', 5]]
   return Array.from({ length: count }, (_, i) => {
     const [severity, severityCode] = severities[i % severities.length]
+    const [area, areaCode] = areas[i % areas.length]
+    const [type, typeCode] = types[i % types.length]
     return {
       number: i + 1,
-      area: areas[i % areas.length],
-      type: types[i % types.length],
+      area,
+      type,
+      aiagCode: `${String(areaCode).padStart(2, '0')}${String(typeCode).padStart(2, '0')}${severityCode}`,
       severity,
       severityCode,
       assetType: '2d',
@@ -182,6 +186,7 @@ export const REPORT_CASES = [
   },
   {
     name: 'four damage pins',
+    expect: ['04121', '10042'],
     // The most damage that still prints as cards; one more and it is a table.
     ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
     pins: pins(4),

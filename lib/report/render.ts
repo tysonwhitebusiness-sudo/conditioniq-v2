@@ -28,11 +28,18 @@ export interface RenderedReport {
   bytes: number
 }
 
+// A0 · The five-digit AIAG damage code: area (2), type (2), severity (1).
+// Printed only when all three parts are known.
+function aiagCode(area: number | null | undefined, type: number | null | undefined, severity: number | null | undefined): string | null {
+  if (area == null || type == null || severity == null) return null
+  return `${String(area).padStart(2, '0')}${String(type).padStart(2, '0')}${severity}`
+}
+
 async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin[]; diagrams: ReportDiagram[] }> {
   const admin = createAdminClient()
   const { data: markers } = await admin
     .from('damage_markers')
-    .select('id, area:area_code_id(label), type:type_code_id(label), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path')
+    .select('id, area:area_code_id(label, aiag_code), type:type_code_id(label, aiag_code), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path')
     .eq('inspection_id', inspectionId)
     .order('created_at', { ascending: true })
 
@@ -48,6 +55,7 @@ async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin
       type: m.type?.label ?? null,
       severity: m.severity?.label ?? null,
       severityCode: m.severity?.code ?? null,
+      aiagCode: aiagCode(m.area?.aiag_code, m.type?.aiag_code, m.severity?.code),
       assetType: m.asset_type,
       view: m.view,
       x: Number(m.x_position),

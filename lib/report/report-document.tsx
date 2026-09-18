@@ -342,7 +342,7 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                   <Text style={{ fontSize: 13, fontWeight: 800 }}>{pin.area ?? 'Area not recorded'}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 22, marginTop: 8 }}>
-                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ['Found by', 'Inspector']].map(([k, v]) => (
+                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ...(pin.aiagCode ? [['AIAG', pin.aiagCode]] : []), ['Found by', 'Inspector']].map(([k, v]) => (
                     <View key={k}>
                       <Text style={S.label}>{k}</Text>
                       <Text style={{ fontWeight: 600, marginTop: 2 }}>{v}</Text>
@@ -378,7 +378,7 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
               </View>
             )}
             <View style={{ flexDirection: 'row', paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: C.ink }}>
-              {([['#', 22], ['Area', 120], ['Damage', 170], ['Severity', 120], ['Close-up', 60]] as Array<[string, number]>).map(([t, w]) => (
+              {([['#', 22], ['Area', 115], ['Damage', 160], ['Severity', 95], ['AIAG', 55], ['Close-up', 60]] as Array<[string, number]>).map(([t, w]) => (
                 <Text key={t} style={{ width: w, fontSize: 7, fontWeight: 600, color: C.ink3 }}>{t}</Text>
               ))}
             </View>
@@ -386,9 +386,10 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
           {model.pins.map(pin => (
             <View key={pin.number} wrap={false} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderBottomWidth: 0.5, borderBottomColor: C.line }}>
               <View style={{ width: 22 }}><PinBadge number={pin.number} size={13} /></View>
-              <Text style={{ width: 120, fontWeight: 600 }}>{pin.area ?? '—'}</Text>
-              <Text style={{ width: 170 }}>{pin.type ?? '—'}</Text>
-              <Text style={{ width: 120 }}>{pin.severity ?? '—'}</Text>
+              <Text style={{ width: 115, paddingRight: 8, fontWeight: 600 }}>{pin.area ?? '—'}</Text>
+              <Text style={{ width: 160, paddingRight: 8 }}>{pin.type ?? '—'}</Text>
+              <Text style={{ width: 95, paddingRight: 8 }}>{pin.severity ?? '—'}</Text>
+              <Text style={{ width: 55, color: C.ink2 }}>{pin.aiagCode ?? '—'}</Text>
               {pin.photoUrl ? <Photo img={images[pin.photoUrl]} kind="damageThumb" /> : <Text style={{ color: C.ink3 }}>—</Text>}
             </View>
           ))}

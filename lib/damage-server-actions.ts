@@ -309,6 +309,8 @@ export interface ReportDamagePin {
   severity: string | null
   // damage_severity_codes.code: 1 (up to 1 inch) through 6 (missing/major damage)
   severityCode: number | null
+  /** AIAG area-type-severity, e.g. "04121"; null when a part has no AIAG code. */
+  aiagCode?: string | null
   assetType: '2d' | '3d' | null
   view: DamageMarkerView | null
   x: number

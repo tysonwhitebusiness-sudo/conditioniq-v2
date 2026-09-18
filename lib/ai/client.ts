@@ -43,8 +43,8 @@ async function loadSettings(admin: ReturnType<typeof createAdminClient>) {
   const { data } = await admin.from('ai_settings').select('kill_switch, per_inspection_ceiling_usd, summary_reserve_usd').maybeSingle()
   return {
     killSwitch: data?.kill_switch ?? false,
-    ceiling: Number(data?.per_inspection_ceiling_usd ?? 0.2),
-    summaryReserve: Number(data?.summary_reserve_usd ?? 0.05),
+    ceiling: Number(data?.per_inspection_ceiling_usd ?? 0.1),
+    summaryReserve: Number(data?.summary_reserve_usd ?? 0.02),
   }
 }
 

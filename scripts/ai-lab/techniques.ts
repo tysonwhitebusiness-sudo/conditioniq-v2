@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DAMAGE_GROUPS, SETS_DIR, type DamageItem } from './config'
 import { readManifest, type Technique } from './harness'
 import { DAMAGE_GUIDE, DAMAGE_GUIDE_VERSION } from '../../lib/ai/damage-guide'
+import { DAMAGE_SYSTEM, DAMAGE_USER_TEXT } from '../../lib/ai/damage-setup'
 
 // Example photos are shrunk to 512 px. Done in a child process because the
 // technique builders are synchronous and sharp is not.
@@ -97,10 +98,12 @@ export const tuned: Technique = {
   name: 'tuned',
   promptVersion: 'damage-tuned-v1',
   maxTokens: 400,
+  // The winning setup lives in lib/ai/damage-setup.ts so the app uses exactly
+  // what was measured; this builds the same request from it.
   build: (_item: DamageItem, image: string) => ({
-    system: `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${TUNED_RULES}\n\n${ANSWER_FORMAT}`,
+    system: DAMAGE_SYSTEM,
     thinking: { type: 'disabled' },
-    messages: [{ role: 'user', content: [photo(image), { type: 'text', text: 'Report the damage in this photo.' }] }],
+    messages: [{ role: 'user', content: [photo(image), { type: 'text', text: DAMAGE_USER_TEXT }] }],
   }),
 }
 

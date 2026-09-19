@@ -19,16 +19,27 @@ const nextConfig = {
     // them and every report fails with "Font family not registered".
     outputFileTracingIncludes: {
       '/api/reports': ['./lib/report/fonts/**'],
-      // S · The plate and VIN reader loads its models from disk.
-      '/api/scan': ['./node_modules/@gutenye/ocr-models/assets/**'],
+      // S · The plate and VIN reader loads its models from disk, and its Linux
+      // runtime loads libonnxruntime.so.1 beside the binding, which the trace
+      // does not see.
+      '/api/scan': [
+        './node_modules/@gutenye/ocr-models/assets/**',
+        './node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1',
+        './node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node',
+      ],
     },
     // The reader's runtime ships a binary for every platform (about 290 MB);
-    // the server runs on Linux x64, so the rest stay out of the function.
+    // the server runs on Linux x64, so the rest stay out of the function. On
+    // Linux its install script also downloads CUDA and TensorRT libraries
+    // (hundreds of MB, skipped in .npmrc but possibly in Vercel's cached
+    // node_modules); the reader runs on the CPU and never loads them. With them
+    // the function was 389 MB, over Vercel's 250 MB limit.
     outputFileTracingExcludes: {
       '/api/scan': [
         './node_modules/onnxruntime-node/bin/napi-v*/darwin/**',
         './node_modules/onnxruntime-node/bin/napi-v*/win32/**',
         './node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**',
+        './node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_*',
       ],
     },
     // The PDF renderer, image resizer and text reader stay as ordinary Node

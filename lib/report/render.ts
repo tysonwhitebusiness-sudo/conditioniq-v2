@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateVehicleScore } from '@/lib/vehicle-score'
 import { renderReportToBuffer } from './render-document'
 import { buildReportModel } from './model'
+import { photoCheckLine, type StoredPhotoCheck } from './photo-check-line'
 import { buildReportAssist, assistInputHash, REPORT_ASSIST_VERSION, type StoredAssist } from '@/lib/ai/report-assist'
 import { reportVerifyUrl, reportStoragePath } from './layout'
 import { loadReportImage, loadDiagramImage, type ReportImage } from './photos'
@@ -143,6 +144,11 @@ export async function renderInspectionReport(inspectionId: string, options: { sa
     inspectionType,
   })
 
+  // D · The photo check line: always read fresh, since photos can be retaken
+  // without the recorded answers changing.
+  const { data: checks } = await admin.from('photo_checks').select('slot, problems, right_subject, framed, note').eq('inspection_id', inspectionId)
+  const photoLine = photoCheckLine((checks ?? []) as StoredPhotoCheck[])
+
   // C · The summary and recommendations. Reused when they were written by AI
   // from the same recorded answers; otherwise built (again), so a report made
   // while AI was off picks up the written summary once it is back on.
@@ -157,6 +163,9 @@ export async function renderInspectionReport(inspectionId: string, options: { sa
       const { error: saveError } = await admin.from('vehicle_inspections').update({ report_assist: record }).eq('id', inspectionId)
       if (saveError) console.error('[report] could not keep the summary', saveError.message)
     }
+  }
+  if (photoLine.text) {
+    model.assist = { ...model.assist, photoCheck: photoLine.text, aiWritten: model.assist.aiWritten || photoLine.usedAi }
   }
 
   // Every photo the document can draw, fetched and resized once.

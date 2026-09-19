@@ -234,3 +234,46 @@ export function printTable(rows: Metrics[]) {
     console.log(`${m.technique.padEnd(30)} ${m.set.padEnd(6)} ${pct(m.flaggedRate ?? 0)}  ${pct(m.photoRecall)}  ${pct(m.lenientPhotoRecall ?? 0)}  ${pct(m.groupRecall)}  ${pct(m.extraGroupRate)}  ${pct(m.falseAlarmRate).padStart(11)}  ${m.costPerPhotoUsd.toFixed(4)}  ${m.costPerInspectionUsd.toFixed(3).padStart(8)}${m.failed ? `  (${m.failed} failed)` : ''}`)
   }
 }
+
+/**
+ * Sends any list of requests as one batch, with the same cache and budget as
+ * run(), and returns each answer's text and cost by key. For labs that are not
+ * damage detection (photo checks, gauges).
+ */
+export async function batchTexts(label: string, entries: Array<{ key?: string; params: Anthropic.MessageCreateParamsNonStreaming }>): Promise<Map<string, { text: string; costUsd: number }>> {
+  const client = new Anthropic()
+  mkdirSync(CACHE_DIR, { recursive: true })
+  const keyed = entries.map(e => ({ ...e, key: hashOf(e.params) }))
+  const todo = keyed.filter(e => !existsSync(join(CACHE_DIR, `${e.key}.json`)))
+  if (todo.length) {
+    const model = todo[0].params.model
+    const sample = await client.messages.countTokens({ model, system: todo[0].params.system, messages: todo[0].params.messages })
+    const worst = todo.length * costOf(model, { inputTokens: sample.input_tokens * 1.15, outputTokens: todo[0].params.max_tokens }) * BATCH_DISCOUNT
+    console.log(`${label}: ${todo.length} to send (${keyed.length - todo.length} cached), worst case $${worst.toFixed(2)}; spent $${spent().toFixed(2)} of $${LAB_BUDGET_USD}`)
+    if (spent() + worst > LAB_BUDGET_USD) throw new Error(`Refused: would pass the lab budget of $${LAB_BUDGET_USD}`)
+    const batch = await client.messages.batches.create({ requests: todo.map(e => ({ custom_id: e.key, params: e.params })) })
+    process.stdout.write(`batch ${batch.id} `)
+    let status = batch
+    while (status.processing_status !== 'ended') {
+      await new Promise(r => setTimeout(r, 20_000))
+      status = await client.messages.batches.retrieve(batch.id)
+      process.stdout.write('.')
+    }
+    let cost = 0
+    for await (const result of await client.messages.batches.results(batch.id)) {
+      if (result.result.type !== 'succeeded') continue
+      const m = result.result.message
+      const usd = costOf(model, { inputTokens: m.usage.input_tokens, outputTokens: m.usage.output_tokens, cacheReadTokens: m.usage.cache_read_input_tokens ?? 0 }) * BATCH_DISCOUNT
+      cost += usd
+      writeFileSync(join(CACHE_DIR, `${result.custom_id}.json`), JSON.stringify({ text: m.content.map(b => (b.type === 'text' ? b.text : '')).join(''), costUsd: usd }))
+    }
+    addSpend(cost)
+    console.log(` done, $${cost.toFixed(4)}`)
+  }
+  const out = new Map<string, { text: string; costUsd: number }>()
+  entries.forEach((e, i) => {
+    const path = join(CACHE_DIR, `${keyed[i].key}.json`)
+    if (existsSync(path)) out.set(e.key ?? keyed[i].key, JSON.parse(readFileSync(path, 'utf8')))
+  })
+  return out
+}

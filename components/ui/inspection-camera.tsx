@@ -104,7 +104,7 @@ export default function InspectionCamera({
       photoSequence={order.map(s => s.label)}
       currentSequenceIndex={0}
       // Each slot confirms against the report box its field prints in.
-      reportPreview={i => (order[i] ? { box: mode === 'square' ? 'damage' : reportBoxForField(order[i].key), caption: order[i].label } : null)}
+      reportPreview={i => (order[i] ? { box: mode === 'square' ? 'damage' : reportBoxForField(order[i].key), caption: order[i].label, slotKey: order[i].key, inspectionId } : null)}
       onSequenceCapture={save}
       onClose={onClose}
     />

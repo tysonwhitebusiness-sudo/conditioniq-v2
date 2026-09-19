@@ -21,6 +21,9 @@ const BOX_NAME: Record<ReportBoxKind, string> = {
 export interface ReportPreviewSpec {
   box: ReportBoxKind
   caption: string
+  /** D · The inspection slot this photo fills, so its photo check knows what to expect. */
+  slotKey?: string
+  inspectionId?: string
 }
 
 export default function ReportPhotoPreview({ src, spec }: { src: string; spec: ReportPreviewSpec }) {

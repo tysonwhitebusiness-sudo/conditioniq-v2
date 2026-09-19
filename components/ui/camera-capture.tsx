@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { X, RotateCcw, Check, Upload, Camera, Loader2 } from 'lucide-react'
 import ReportPhotoPreview, { type ReportPreviewSpec } from './report-photo-preview'
+import PhotoCheckNotice from './photo-check-notice'
 
 // The one camera. Every photo in the app (intake, outtake, the full inspection's
 // steps, damage close-ups) is taken here, so every photo gets the same confirm
@@ -350,6 +351,8 @@ export default function CameraCapture({
                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
               />
             )}
+            {/* D · Blur, darkness, wrong slot or framing, flagged before Use Photo. Never blocking. */}
+            {!saving && !notice && <PhotoCheckNotice src={captured} slotKey={preview?.slotKey} inspectionId={preview?.inspectionId} />}
             {(saving || notice) && (
               <div role="status" style={{
                 position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

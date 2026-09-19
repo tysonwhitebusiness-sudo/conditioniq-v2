@@ -141,6 +141,9 @@ const PHOTO_SLOTS: Array<[ReportPhoto['group'], keyof ReportModel['sections'], s
   ['documents', 'keys', 'keysPhoto', 'Keys'],
 ]
 
+/** The caption each photo slot prints with, by field name. */
+export const PHOTO_SLOT_LABELS: Record<string, string> = Object.fromEntries(PHOTO_SLOTS.map(([, , key, label]) => [key, label]))
+
 const EXTRA_PHOTO_PREFIXES: Array<[RegExp, ReportPhoto['group'], string]> = [
   [/^extra_ext_photo_/, 'exterior', 'Additional exterior'],
   [/^extra_int_photo_/, 'interior', 'Additional interior'],

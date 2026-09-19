@@ -169,7 +169,23 @@ function v2(name: string, extra: Partial<Technique> = {}): Technique {
   }
 }
 
+// Round 3: Opus's false alarms at lower cutoffs were mostly "missing license
+// plate" on new lot vehicles. One more rule to rule that out.
+const PLATE_RULE = '- A missing license plate or an empty plate bracket is not damage; vehicles on lots often have no plate.'
+export const v3Opus: Technique = {
+  name: 'v3-opus',
+  promptVersion: 'damage-tuned-v3-claude-opus-5',
+  maxTokens: 400,
+  model: 'claude-opus-5',
+  build: (_item: DamageItem, image: string) => ({
+    system: DAMAGE_SYSTEM.replace('\n\nReply with JSON only:', `\n${PLATE_RULE}\n\nReply with JSON only:`),
+    thinking: { type: 'disabled' },
+    messages: [{ role: 'user', content: [photo(image), { type: 'text', text: DAMAGE_USER_TEXT }] }],
+  }),
+}
+
 export const TECHNIQUES: Record<string, Technique> = {
+  'v3-opus': v3Opus,
   'v2': v2('v2'),
   'v2-hires': v2('v2-hires', { imageEdge: 2048 }),
   'v2-hires-opus': v2('v2-hires-opus', { imageEdge: 2048, model: 'claude-opus-5' }),

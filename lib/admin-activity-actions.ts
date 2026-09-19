@@ -1,6 +1,11 @@
 'use server'
 
 import { createAdminClient } from './supabase/admin'
+import { requirePlatformAdmin } from './action-guards'
+
+// Platform admins only: the log and notes are read and written with the
+// service role, so each action checks the caller. The actor is always the
+// signed-in admin, whatever the caller passes.
 
 export type AdminActionType =
   | 'flag_toggled'
@@ -32,22 +37,25 @@ export interface AdminActivityRow extends AdminActivityEntry {
 // admin action it's describing.
 export async function logAdminActivity({
   accountId,
-  actorId,
   actionType,
   description,
   metadata,
 }: {
   accountId?: string | null
+  /** Ignored: the actor is the signed-in admin. Kept so existing callers compile. */
   actorId?: string | null
   actionType: AdminActionType
   description: string
   metadata?: Record<string, unknown> | null
 }): Promise<void> {
   try {
+    // Fire-and-forget from the admin screens: anyone else is quietly ignored.
+    const me = await requirePlatformAdmin().catch(() => null)
+    if (!me) return
     const supabase = createAdminClient()
     const { error } = await supabase.from('admin_activity_log').insert({
       account_id: accountId ?? null,
-      actor_id: actorId ?? null,
+      actor_id: me,
       action_type: actionType,
       description,
       metadata: metadata ?? null,
@@ -79,6 +87,7 @@ async function resolveNames(
 }
 
 export async function getAccountActivityLog(accountId: string, limit = 50): Promise<AdminActivityRow[]> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('admin_activity_log')
@@ -96,6 +105,7 @@ export async function getAllActivityLog(opts: {
   limit?: number
   offset?: number
 } = {}): Promise<{ rows: AdminActivityRow[]; total: number }> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   let q = supabase.from('admin_activity_log').select('*', { count: 'exact' }).order('created_at', { ascending: false })
   if (opts.actionType) q = q.eq('action_type', opts.actionType)
@@ -121,6 +131,7 @@ export interface AccountNote {
 }
 
 export async function getAccountNotes(accountId: string): Promise<AccountNote[]> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('account_notes')
@@ -138,7 +149,8 @@ export async function getAccountNotes(accountId: string): Promise<AccountNote[]>
   return data.map(n => ({ ...n, authorName: n.author_id ? (names[n.author_id] ?? 'Unknown') : null }))
 }
 
-export async function addAccountNote(accountId: string, authorId: string | null, noteText: string): Promise<AccountNote | null> {
+export async function addAccountNote(accountId: string, _authorId: string | null, noteText: string): Promise<AccountNote | null> {
+  const authorId = await requirePlatformAdmin()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('account_notes')

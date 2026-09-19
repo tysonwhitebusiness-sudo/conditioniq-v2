@@ -1,5 +1,6 @@
 'use server'
 
+import { requireCompanyAccess } from './action-guards'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getFeatureFlags } from '@/lib/feature-flags'
@@ -58,8 +59,11 @@ export async function getCompanyLogo(companyId: string): Promise<{
 }
 
 export async function createLogoUploadUrl(companyId: string, ext: string): Promise<{ path: string; token: string } | null> {
+  await requireCompanyAccess(companyId)
+  const type = ext.toLowerCase()
+  if (!['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(type)) return null
   const admin = createAdminClient()
-  const path = `${companyId}/logo.${ext}`
+  const path = `${companyId}/logo.${type}`
   const { data, error } = await admin.storage
     .from(BRANDING_BUCKET)
     .createSignedUploadUrl(path)
@@ -73,6 +77,7 @@ export async function saveLogoPath(companyId: string, path: string): Promise<voi
 }
 
 export async function removeLogo(companyId: string): Promise<void> {
+  await requireCompanyAccess(companyId)
   const supabase = createClient()
   const { data: company } = await supabase
     .from('companies')
@@ -89,6 +94,9 @@ export async function removeLogo(companyId: string): Promise<void> {
 }
 
 export async function getLogoSignedUrl(path: string): Promise<string | null> {
+  // Logos live under <company id>/; only that company's staff (or a platform admin) may sign one.
+  if (!path || path.includes('..')) return null
+  await requireCompanyAccess(path.split('/')[0])
   const admin = createAdminClient()
   const { data, error } = await admin.storage.from(BRANDING_BUCKET).createSignedUrl(path, 3600)
   if (error) return null

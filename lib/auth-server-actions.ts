@@ -1,5 +1,6 @@
 'use server'
 
+import { requireSelfOrPlatformAdmin } from './action-guards'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { RawCompanyRole } from '@/lib/roles'
 
@@ -13,6 +14,7 @@ export async function getUserCompanyRole(
   companyId: string,
 ): Promise<RawCompanyRole | null> {
   if (!userId || !companyId) return null
+  await requireSelfOrPlatformAdmin(userId)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('company_members')

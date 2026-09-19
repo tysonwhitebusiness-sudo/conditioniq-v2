@@ -20,6 +20,9 @@ import { readWithAi } from '@/lib/scan/ai-fallback'
 // plate must fit a plate format. Nothing is saved to the inspection here: the
 // inspector confirms every read.
 
+/** AI reads per account per hour for scans outside an inspection. */
+const SCAN_AI_PER_HOUR = 60
+
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
@@ -70,13 +73,26 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
   let companyId: string | null = null
+  // The AI fallback costs money. Inside an inspection it is held to that
+  // inspection's ceiling. Outside one (the scan before an inspection starts) it
+  // is only for staff of an account, and at most SCAN_AI_PER_HOUR reads an hour
+  // per account: an anonymous session, which anyone can open, gets the free
+  // on-device reader only.
+  let aiAllowed = true
   if (inspectionId) {
     const auth = await authorizeInspectionAccess(inspectionId)
     if (!auth.ok) return NextResponse.json({ error: 'Not authorized for this inspection' }, { status: 403 })
     companyId = auth.companyId
   } else {
     const { data: profile } = await admin.from('user_profiles').select('company_id').eq('id', user.id).maybeSingle()
-    companyId = profile?.company_id ?? null
+    companyId = user.is_anonymous ? null : profile?.company_id ?? null
+    if (!companyId) aiAllowed = false
+    else {
+      const { count } = await admin.from('ai_calls').select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId).eq('feature', 'scan').is('inspection_id', null)
+        .gte('created_at', new Date(Date.now() - 3600_000).toISOString())
+      if ((count ?? 0) >= SCAN_AI_PER_HOUR) aiAllowed = false
+    }
   }
 
   const loaded = await loadImage(body.image)
@@ -103,7 +119,7 @@ export async function POST(request: Request) {
     console.error('[scan] reader failed', e)
   }
 
-  if (!value) {
+  if (!value && aiAllowed) {
     const aiRead = await readWithAi({ kind, imageJpeg: await prepareImage(loaded.buffer, 1568), state, companyId, inspectionId })
     value = kind === 'vin' ? await validVin(aiRead) : validPlate(aiRead, state)
     if (value) { source = 'ai'; confidence = null }

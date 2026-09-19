@@ -1,5 +1,6 @@
 'use server'
 
+import { requireCompanyAccess } from './action-guards'
 import { createClient } from '@/lib/supabase/server'
 import { captureHighSeverityError } from '@/lib/sentry'
 import { logVehicleEvent } from '@/lib/vehicle-events-actions'
@@ -33,10 +34,18 @@ const NOT_YET_COMPLETED = 'usage_status.is.null,usage_status.neq.completed'
 
 export async function checkExistingInspection(
   companyId: string,
-  vin: string
+  vin: string,
+  /** A link inspector is not company staff; the link's token stands in for that. */
+  requestToken?: string,
 ): Promise<{ inspectionId: string; startedAt: string } | null> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
+  if (requestToken) {
+    const { data: req } = await supabase.from('inspection_requests').select('company_id, vin').eq('token', requestToken).maybeSingle()
+    if (!req || req.company_id !== companyId || (req.vin ?? '').trim().toUpperCase() !== vin.trim().toUpperCase()) return null
+  } else {
+    await requireCompanyAccess(companyId)
+  }
   const { data } = await supabase
     .from('vehicle_inspections')
     .select('id, initiated_at')
@@ -186,15 +195,23 @@ export async function initiateFMCInspection({
   token,
   companyId,
   requestId,
-  vin,
 }: {
   token: string
   companyId: string
   requestId: string
-  vin: string
+  vin?: string
 }): Promise<{ inspectionId: string }> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
+
+  // The link is the only credential the person holding it has: it must match
+  // the request and account, be unexpired, and not have started an inspection.
+  const { data: req } = await supabase.from('fmc_inspection_requests')
+    .select('id, fmc_account_id, vin, link_expires_at, report_id').eq('link_token', token).maybeSingle()
+  if (!req || req.id !== requestId || req.fmc_account_id !== companyId) throw new Error('This link is not valid')
+  if (req.link_expires_at && new Date(req.link_expires_at) < new Date()) throw new Error('This link has expired')
+  if (req.report_id) throw new Error('This link has already been used')
+  const vin = req.vin ?? ''
 
   const blockReason = (await computeUsageState(supabase, companyId)).blockReason
   if (blockReason) throw new Error(blockReason)
@@ -285,10 +302,12 @@ export async function completeFMCInspection({
 }
 
 export async function initiateInspectionRequest({
+  token,
   requestId,
   companyId,
-  vin,
+  vin: typedVin,
 }: {
+  token: string
   requestId: string
   companyId: string
   vin?: string
@@ -296,6 +315,15 @@ export async function initiateInspectionRequest({
   try {
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const supabase = createAdminClient()
+
+    // The link is the only credential the person holding it has: it must match
+    // the request and account, be unexpired, and not have been used.
+    const { data: req } = await supabase.from('inspection_requests')
+      .select('id, company_id, vin, expires_at, used_at').eq('token', token).maybeSingle()
+    if (!req || req.id !== requestId || req.company_id !== companyId) return { inspectionId: null, error: 'This link is not valid.' }
+    if (req.used_at) return { inspectionId: null, error: 'This link has already been used.' }
+    if (req.expires_at && new Date(req.expires_at) < new Date()) return { inspectionId: null, error: 'This link has expired.' }
+    const vin = req.vin || typedVin
 
     // The remote inspector is not signed in, so the page cannot check this for
     // itself; the admin client can.

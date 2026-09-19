@@ -1,5 +1,6 @@
 'use server'
 
+import { requireCompanyAccess, requirePlatformAdmin } from './action-guards'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -61,6 +62,7 @@ export async function getAllFeedback(filters?: {
   category?: FeedbackCategory | ''
   status?: FeedbackStatus | ''
 }): Promise<CustomerFeedback[]> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   let query = supabase
     .from('customer_feedback')
@@ -79,6 +81,7 @@ export async function updateFeedbackStatus(
   feedbackId: string,
   status: FeedbackStatus,
 ): Promise<void> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   await supabase
     .from('customer_feedback')
@@ -90,8 +93,11 @@ export async function createScreenshotUploadUrl(
   companyId: string,
   ext: string,
 ): Promise<{ token: string; path: string } | null> {
+  await requireCompanyAccess(companyId)
+  const type = ext.toLowerCase()
+  if (!['png', 'jpg', 'jpeg', 'webp', 'gif', 'heic'].includes(type)) return null
   const supabase = createAdminClient()
-  const path = `feedback/${companyId}/${Date.now()}.${ext}`
+  const path = `feedback/${companyId}/${Date.now()}.${type}`
   const { data, error } = await supabase.storage
     .from('feedback-screenshots')
     .createSignedUploadUrl(path)
@@ -100,6 +106,7 @@ export async function createScreenshotUploadUrl(
 }
 
 export async function getScreenshotSignedUrl(path: string): Promise<string | null> {
+  await requirePlatformAdmin()
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage
     .from('feedback-screenshots')

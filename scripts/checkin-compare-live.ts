@@ -114,9 +114,13 @@ async function main() {
     console.log(`Cost: $${(calls ?? []).reduce((s, c) => s + Number(c.cost_usd ?? 0), 0).toFixed(4)} over ${calls?.length ?? 0} comparisons`)
   } finally {
     if (paths.length) await admin.storage.from('inspection-photos').remove(paths)
-    if (vehicle) await admin.from('storage_vehicles').delete().eq('id', vehicle.id)
+    // Inspections first: the check-out points at the vehicle, which blocks deleting it.
     const ids = [checkout?.id, checkin?.id].filter((x): x is string => !!x)
     if (ids.length) await admin.from('vehicle_inspections').delete().in('id', ids)
+    if (vehicle) {
+      const { error } = await admin.from('storage_vehicles').delete().eq('id', vehicle.id)
+      if (error) console.error(`Could not remove the throwaway vehicle ${vehicle.id}: ${error.message}`)
+    }
     console.log('Removed the throwaway vehicle, inspections and photos.')
   }
   if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }

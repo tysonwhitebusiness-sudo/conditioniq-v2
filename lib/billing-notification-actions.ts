@@ -1,5 +1,6 @@
 'use server'
 
+import { requireCompanyAccess, requireSelfOrPlatformAdmin } from './action-guards'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export interface BillingNotification {
@@ -14,6 +15,7 @@ export interface BillingNotification {
 }
 
 export async function getUnreadBillingNotifications(companyId: string): Promise<BillingNotification[]> {
+  await requireCompanyAccess(companyId)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('billing_notifications')
@@ -27,6 +29,9 @@ export async function getUnreadBillingNotifications(companyId: string): Promise<
 
 export async function dismissBillingNotification(notificationId: string): Promise<void> {
   const supabase = createAdminClient()
+  const { data: row } = await supabase.from('billing_notifications').select('company_id').eq('id', notificationId).maybeSingle()
+  if (!row) return
+  await requireCompanyAccess(row.company_id)
   await supabase
     .from('billing_notifications')
     .update({ is_read: true, read_at: new Date().toISOString() })
@@ -34,6 +39,7 @@ export async function dismissBillingNotification(notificationId: string): Promis
 }
 
 export async function getBillingSchedule(companyId: string): Promise<number | null> {
+  await requireCompanyAccess(companyId)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('companies')
@@ -47,6 +53,8 @@ export async function saveBillingSchedule(
   companyId: string,
   day: number | null,
 ): Promise<{ error: string | null }> {
+  await requireCompanyAccess(companyId)
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) return { error: 'Pick a day from 1 to 31' }
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('companies')
@@ -56,6 +64,7 @@ export async function saveBillingSchedule(
 }
 
 export async function getBillingReminderPreference(userId: string): Promise<boolean> {
+  await requireSelfOrPlatformAdmin(userId)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('notification_settings')
@@ -69,6 +78,7 @@ export async function saveBillingReminderPreference(
   userId: string,
   enabled: boolean,
 ): Promise<void> {
+  await requireSelfOrPlatformAdmin(userId)
   const supabase = createAdminClient()
   await supabase
     .from('notification_settings')

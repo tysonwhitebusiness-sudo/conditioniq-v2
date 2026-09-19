@@ -4,7 +4,8 @@ import { releaseInspectionOnlyVehicles } from '@/lib/inspection-vehicle'
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('Authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Refuse outright when the secret is missing, or "Bearer undefined" would pass.
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

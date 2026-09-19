@@ -108,6 +108,7 @@ export default function InspectTokenPage() {
   async function doInitiate() {
     if (!request) return
     const result = await initiateInspectionRequest({
+      token,
       requestId: request.id,
       companyId: request.company_id,
       vin: request.vin ?? undefined,
@@ -132,7 +133,7 @@ export default function InspectTokenPage() {
 
       // Check for an existing in-progress inspection for this VIN
       if (request.vin) {
-        const existing = await checkExistingInspection(request.company_id, request.vin)
+        const existing = await checkExistingInspection(request.company_id, request.vin, token)
         if (existing) {
           setExistingInspection(existing)
           setStatus('intake')

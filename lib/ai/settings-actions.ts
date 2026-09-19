@@ -1,24 +1,13 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { currentUserId, isPlatformAdmin } from './admin-auth'
 
 // A · The account's AI switch and the platform kill switch.
 //
 // Reading the account switch is open to anyone in the company; changing it
 // needs the company's owner or an admin. The kill switch is for platform
 // admins only. All writes go through the service role after the check here.
-
-async function currentUserId(): Promise<string | null> {
-  const { data: { user } } = await createClient().auth.getUser()
-  return user?.id ?? null
-}
-
-async function isPlatformAdmin(): Promise<boolean> {
-  const session = createClient()
-  const [{ data: owner }, { data: admin }] = await Promise.all([session.rpc('is_platform_owner'), session.rpc('is_admin')])
-  return Boolean(owner) || Boolean(admin)
-}
 
 async function isCompanyAdmin(userId: string, companyId: string): Promise<boolean> {
   const { data } = await createAdminClient()

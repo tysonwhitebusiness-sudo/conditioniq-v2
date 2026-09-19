@@ -160,6 +160,8 @@ export function storagePathFromPhotoUrl(url: unknown): string | null {
 //   16 junk and different-vehicle pairs: all 16 "not comparable"
 //   20 real pairs with a damage crop pasted onto the check-out photo: 6 found at 0.5, 3 at 0.7
 //     (a floor: several crops landed on the ground, not the vehicle)
+// Opus 5 with the same prompt: also no false alarms, but found 1 of the 20, at
+// about 2.6 times the cost, so Sonnet it is.
 // About $0.006 a side live, $0.024 a check-out. Painting damage out of VehiDE
 // photos was tried as a recall set and dropped: the damage stayed visible.
 // Real check-outs with confirmed new damage are the recall set; every "Add"

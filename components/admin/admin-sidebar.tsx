@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import {
   Car, BarChart2, Users, Target, List, UserCheck, Columns2,
-  ChevronLeft, ShieldCheck, LogOut, MessageSquare, Inbox, Clock,
+  ChevronLeft, ShieldCheck, LogOut, MessageSquare, Inbox, Clock, Sparkles,
 } from 'lucide-react'
 import { PRIMARY, PRIMARY_TINT, AMBER_DARK, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300 } from '@/lib/design-tokens'
 
@@ -12,6 +12,7 @@ const OPS_ITEMS = [
   { href: '/admin/overview',  label: 'Overview',       icon: BarChart2     },
   { href: '/admin/customers', label: 'Customers',      icon: Users         },
   { href: '/admin/users',     label: 'Users & Roles',  icon: ShieldCheck   },
+  { href: '/admin/ai',        label: 'AI',             icon: Sparkles      },
   { href: '/admin/feedback',  label: 'Feedback',       icon: MessageSquare },
   { href: '/admin/activity',  label: 'Activity Log',   icon: Clock         },
 ]

@@ -341,6 +341,8 @@ export interface ReportDamagePin {
   modelAssetId: string | null
   /** F · Added from an AI suggestion the inspector confirmed. */
   suggested?: boolean
+  /** G · Confirmed as new since the vehicle's check-in. */
+  newSinceCheckin?: boolean
 }
 
 export interface ReportDamageView {
@@ -408,19 +410,44 @@ export interface DamageSuggestion {
   typeCodeId: string | null
   typeLabel: string | null
   view: DamageMarkerView | null
+  /** G · 'new_since_checkin' when a check-out photo showed it and the check-in photo did not. */
+  kind: 'photo' | 'new_since_checkin'
+  /** G · The same photo at check-in, for the before/after thumbnails. */
+  checkinPhotoUrl: string | null
 }
 
-/** The open suggestions worth showing: confident alone, or seen in two photos. */
+/**
+ * The open suggestions worth showing: possible new damage since check-in, then
+ * photo suggestions that are confident alone or seen in two photos.
+ */
 export async function listDamageSuggestions(inspectionId: string): Promise<DamageSuggestion[]> {
   await authorize(inspectionId)
-  const { suggestionsToShow } = await import('./ai/damage-suggest')
-  const { data } = await createAdminClient()
+  const { suggestionsToShowAll } = await import('./ai/damage-suggest')
+  const { COMPARE_THRESHOLD } = await import('./ai/checkin-compare')
+  const admin = createAdminClient()
+  const { data } = await admin
     .from('damage_suggestions')
-    .select('id, slot, damage_group, where_text, confidence, status, area_code_id, type_code_id, view, area:area_code_id(label), type:type_code_id(label)')
+    .select('id, slot, kind, checkin_inspection_id, damage_group, where_text, confidence, status, area_code_id, type_code_id, view, area:area_code_id(label), type:type_code_id(label)')
     .eq('inspection_id', inspectionId)
     .eq('status', 'pending')
     .order('confidence', { ascending: false })
-  return suggestionsToShow((data ?? []).map((r: any) => ({ ...r, confidence: Number(r.confidence) }))).map((r: any) => ({
+  const shown = suggestionsToShowAll((data ?? []).map((r: any) => ({ ...r, confidence: Number(r.confidence) })), COMPARE_THRESHOLD)
+
+  // Before/after thumbnails: the check-in's photo of the same side, signed briefly.
+  const beforeUrls = new Map<string, string | null>()
+  const checkinIds = Array.from(new Set(shown.map((r: any) => r.checkin_inspection_id).filter(Boolean)))
+  if (checkinIds.length) {
+    const { checkinPhotoPath } = await import('./ai/checkin-compare-server')
+    const { data: checkins } = await admin.from('vehicle_inspections').select('id, company_id, created_at, exterior_data').in('id', checkinIds)
+    for (const r of shown as any[]) {
+      const c = checkins?.find(x => x.id === r.checkin_inspection_id)
+      if (!c || beforeUrls.has(`${c.id}:${r.slot}`)) continue
+      const path = checkinPhotoPath({ id: c.id, createdAt: c.created_at, exteriorData: c.exterior_data }, c.company_id, r.slot)
+      const { data: signed } = await admin.storage.from(PHOTO_BUCKET).createSignedUrl(path, PHOTO_URL_TTL)
+      beforeUrls.set(`${c.id}:${r.slot}`, signed?.signedUrl ?? null)
+    }
+  }
+  return shown.map((r: any) => ({
     id: r.id,
     slot: r.slot,
     damageGroup: r.damage_group,
@@ -431,6 +458,8 @@ export async function listDamageSuggestions(inspectionId: string): Promise<Damag
     typeCodeId: r.type_code_id,
     typeLabel: r.type?.label ?? null,
     view: r.view,
+    kind: r.kind === 'new_since_checkin' ? 'new_since_checkin' : 'photo',
+    checkinPhotoUrl: r.checkin_inspection_id ? beforeUrls.get(`${r.checkin_inspection_id}:${r.slot}`) ?? null : null,
   }))
 }
 

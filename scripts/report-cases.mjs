@@ -245,6 +245,31 @@ export const REPORT_CASES = [
     expect: ['Suggested, confirmed by inspector'],
   },
   {
+    name: 'check-out, no check-in',
+    // G · Says plainly that there was nothing to compare.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    inspectionType: 'check_out',
+    checkin: { status: 'none' },
+    expect: ['Nothing to compare: no earlier check-in is on record for this vehicle.'],
+  },
+  {
+    name: 'check-out, new damage',
+    // G · Confirmed new damage: named on the pin, in Needs attention and in the comparison line.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    inspectionType: 'check_out',
+    pins: pins(2).map((p, i) => (i === 1 ? { ...p, suggested: true, newSinceCheckin: true } : p)),
+    diagram: 'diagram-1',
+    checkin: { status: 'compared', date: '2026-09-03T15:00:00Z', reportNo: 'CD3558DC', newPins: [2], unreviewed: 0, notCompared: ['rear'] },
+    expect: ['New since check-in, confirmed by inspector', 'New damage since check-in: pin 2', 'Compared with the check-in on Sep 3, 2026 (report CD3558DC): new damage confirmed by the inspector at pin 2. The rear photo could not be compared.'],
+  },
+  {
+    name: 'check-out, nothing new',
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    inspectionType: 'check_out',
+    checkin: { status: 'compared', date: '2026-09-03T15:00:00Z', reportNo: 'CD3558DC', newPins: [], unreviewed: 0, notCompared: [] },
+    expect: ['Compared with the check-in on Sep 3, 2026 (report CD3558DC): no new damage found.', 'No new damage since check-in'],
+  },
+  {
     name: 'odometer mismatch',
     // E · The photo read a different odometer: flagged beside the reading and in Needs attention.
     ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),

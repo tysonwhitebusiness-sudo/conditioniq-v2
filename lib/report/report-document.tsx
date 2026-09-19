@@ -2,6 +2,7 @@ import React from 'react'
 import { Document, Page, View, Text, Image, Link, Svg, Circle, Rect } from '@react-pdf/renderer'
 import type { ReportModel, ReportPhoto, RecommendationUrgency } from './model'
 import type { ReportImage } from './photos'
+import { checkinLine } from './checkin-line'
 import { PAGE, CONTENT_WIDTH, photoBox, columnWidth, PHOTO_BOXES, REPORT_TIME_ZONE, reportVerifyText } from './layout'
 import { needsAttention, checkedOk, treadDepth, isFlat, tireNotes, TIRE_POSITIONS, vinCheckDigitValid, DISCLOSURE, AI_DISCLOSURE, type FindingLevel } from './findings'
 
@@ -343,8 +344,8 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                   <PinBadge number={pin.number} />
                   <Text style={{ fontSize: 13, fontWeight: 800 }}>{pin.area ?? 'Area not recorded'}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 22, marginTop: 8 }}>
-                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ...(pin.aiagCode ? [['AIAG', pin.aiagCode]] : []), ['Found by', pin.suggested ? 'Suggested, confirmed by inspector' : 'Inspector']].map(([k, v]) => (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 22, rowGap: 6, marginTop: 8 }}>
+                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ...(pin.aiagCode ? [['AIAG', pin.aiagCode]] : []), ['Found by', pin.newSinceCheckin ? 'New since check-in, confirmed by inspector' : pin.suggested ? 'Suggested, confirmed by inspector' : 'Inspector']].map(([k, v]) => (
                     <View key={k}>
                       <Text style={S.label}>{k}</Text>
                       <Text style={{ fontWeight: 600, marginTop: 2 }}>{v}</Text>
@@ -743,6 +744,14 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
             </View>
           )}
         </View>
+
+        {/* G · Check-outs always say what the check-in comparison found, or that there was nothing to compare. */}
+        {model.checkin ? (
+          <View wrap={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 0.75, borderColor: model.checkin.newPins?.length ? C.checkBorder : C.line, backgroundColor: model.checkin.newPins?.length ? C.checkBg : undefined, borderRadius: 4, paddingVertical: 5, paddingHorizontal: 8, marginTop: 10 }}>
+            <Icon level={model.checkin.newPins?.length ? 'risk' : model.checkin.status === 'compared' && !model.checkin.unreviewed ? 'ok' : 'note'} />
+            <Text style={{ flex: 1 }}>{checkinLine(model.checkin)}</Text>
+          </View>
+        ) : null}
       {evidenceStartsPage ? null : evidence}
       </Page>
 

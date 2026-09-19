@@ -3,7 +3,8 @@
 //
 //   npx tsx scripts/damage-suggest-test.ts
 
-import { mapArea, mapType, parseDamageFindings, suggestionsToShow, GROUP_AIAG_TYPE } from '../lib/ai/damage-suggest'
+import { mapArea, mapType, parseDamageFindings, suggestionsToShow, suggestionsToShowAll, GROUP_AIAG_TYPE } from '../lib/ai/damage-suggest'
+import { parseCompare, storagePathFromPhotoUrl } from '../lib/ai/checkin-compare'
 
 const failures: string[] = []
 const check = (name: string, got: unknown, want: unknown) => {
@@ -51,5 +52,34 @@ const shown = suggestionsToShow([
 ]).map(x => x.id)
 check('shows strong or agreeing suggestions only', shown, ['a', 'c', 'd'])
 
+// G · Check-out against check-in
+check('reads a comparison', parseCompare('{"comparable":true,"newDamage":[{"group":"dent","where":"rear door","confidence":0.8}]}')?.newDamage.length, 1)
+check('not comparable drops anything reported', parseCompare('{"comparable":false,"newDamage":[{"group":"dent","where":"x","confidence":0.9}]}')?.newDamage.length, 0)
+check('v2: only damage clearly absent at check-in is new', parseCompare('{"comparable":true,"damage":[{"group":"dent","where":"a","atCheckin":"visible","confidence":0.9},{"group":"glass","where":"b","atCheckin":"not_there","confidence":0.9},{"group":"scratch","where":"c","atCheckin":"cant_see","confidence":0.9}]}')?.newDamage.map(d => d.group), ['glass'])
+check('an unreadable answer is not new damage', parseCompare('sorry'), null)
+check('a public photo link names its path', storagePathFromPhotoUrl('https://x.supabase.co/storage/v1/object/public/inspection-photos/co/insp/exteriorFrontPhoto.jpg'), 'co/insp/exteriorFrontPhoto.jpg')
+check('a signed photo link names its path', storagePathFromPhotoUrl('https://x.supabase.co/storage/v1/object/sign/inspection-photos/co/a%20b.jpg?token=t'), 'co/a b.jpg')
+check('a blob link has no stored photo', storagePathFromPhotoUrl('blob:http://localhost:3000/abc'), null)
+const k = (id: string, slot: string, group: string, confidence: number, kind: string) => ({ ...s(id, slot, group, confidence), kind })
+const all = suggestionsToShowAll([
+  k('p1', 'exteriorFrontPhoto', 'dent', 0.9, 'photo'),              // covered by the comparison card: hidden
+  k('p2', 'exteriorFrontPhoto', 'scratch', 0.9, 'photo'),           // shown
+  k('c1', 'exteriorFrontPhoto', 'dent', 0.8, 'new_since_checkin'),  // shown, first
+  k('c2', 'exteriorRearPhoto', 'scratch', 0.6, 'new_since_checkin'),// below the comparison cutoff: hidden
+], 0.7).map(x => x.id)
+check('new-since-check-in first, and it replaces the same photo suggestion', all, ['c1', 'p2'])
+
+import('../lib/ai/checkin-compare-server').then(({ checkinPhotoPath }) => {
+  const ref = (url: string) => ({ id: 'ci', createdAt: '', exteriorData: { exteriorFrontPhoto: url } })
+  const base = 'https://x.supabase.co/storage/v1/object/public/inspection-photos/'
+  check('follows a check-in photo link inside the company', checkinPhotoPath(ref(base + 'co/old/front.jpg'), 'co', 'exteriorFrontPhoto'), 'co/old/front.jpg')
+  check('never follows a link into another company', checkinPhotoPath(ref(base + 'other/x/front.jpg'), 'co', 'exteriorFrontPhoto'), 'co/ci/exteriorFrontPhoto.jpg')
+  check('never follows a link that climbs out of the folder', checkinPhotoPath(ref(base + 'co/../other/front.jpg'), 'co', 'exteriorFrontPhoto'), 'co/ci/exteriorFrontPhoto.jpg')
+  finish()
+})
+
+function finish() {
 if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }
 console.log('\nAll damage suggestion checks passed.')
+process.exit(0)
+}

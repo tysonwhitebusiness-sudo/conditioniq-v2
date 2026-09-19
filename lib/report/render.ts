@@ -10,6 +10,9 @@ import { reportVerifyUrl, reportStoragePath } from './layout'
 import { loadReportImage, loadDiagramImage, type ReportImage } from './photos'
 import ReportDocument, { type ReportDiagram } from './report-document'
 import type { ReportDamagePin } from '@/lib/damage-server-actions'
+import { findCheckin } from '@/lib/ai/checkin-compare-server'
+import { COMPARE_THRESHOLD } from '@/lib/ai/checkin-compare'
+import { checkinSide, type ReportCheckin } from './checkin-line'
 
 // R1 · Report foundation.
 //
@@ -37,11 +40,30 @@ function aiagCode(area: number | null | undefined, type: number | null | undefin
   return `${String(area).padStart(2, '0')}${String(type).padStart(2, '0')}${severity}`
 }
 
+async function loadCheckin(inspectionId: string, pins: ReportDamagePin[]): Promise<ReportCheckin> {
+  const admin = createAdminClient()
+  const checkin = await findCheckin(admin, inspectionId)
+  if (!checkin) return { status: 'none' }
+  const ref = { date: checkin.createdAt, reportNo: checkin.id.slice(0, 8).toUpperCase() }
+  const [{ data: compares }, { data: open }] = await Promise.all([
+    admin.from('checkin_compares').select('slot, outcome').eq('inspection_id', inspectionId),
+    admin.from('damage_suggestions').select('confidence').eq('inspection_id', inspectionId).eq('kind', 'new_since_checkin').eq('status', 'pending'),
+  ])
+  if (!compares?.some(c => c.outcome === 'compared')) return { status: 'not_compared', ...ref }
+  return {
+    status: 'compared',
+    ...ref,
+    newPins: pins.filter(p => p.newSinceCheckin).map(p => p.number),
+    unreviewed: (open ?? []).filter(o => Number(o.confidence) >= COMPARE_THRESHOLD).length,
+    notCompared: compares.filter(c => c.outcome !== 'compared').map(c => checkinSide(c.slot)),
+  }
+}
+
 async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin[]; diagrams: ReportDiagram[] }> {
   const admin = createAdminClient()
   const { data: markers } = await admin
     .from('damage_markers')
-    .select('id, area:area_code_id(label, aiag_code), type:type_code_id(label, aiag_code), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path, suggestion_id')
+    .select('id, area:area_code_id(label, aiag_code), type:type_code_id(label, aiag_code), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path, suggestion_id, suggestion:suggestion_id(kind)')
     .eq('inspection_id', inspectionId)
     .order('created_at', { ascending: true })
 
@@ -65,6 +87,7 @@ async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin
       photoUrl,
       modelAssetId: m.model_asset_id,
       suggested: !!m.suggestion_id,
+      newSinceCheckin: m.suggestion?.kind === 'new_since_checkin',
     }
   }))
 
@@ -144,6 +167,9 @@ export async function renderInspectionReport(inspectionId: string, options: { sa
     inspectorName: inspector ?? inspection.inspector_name ?? null,
     inspectionType,
   })
+
+  // G · A check-out says what its check-in comparison found, or that there was none.
+  if (inspectionType === 'check_out') model.checkin = await loadCheckin(inspectionId, pins)
 
   // D · The photo check line: always read fresh, since photos can be retaken
   // without the recorded answers changing.

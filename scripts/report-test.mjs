@@ -163,6 +163,7 @@ async function renderCase(testCase) {
   }
   if (testCase.assist) model.assist = testCase.assist
   if (testCase.gauges) model.gauges = testCase.gauges
+  if (testCase.checkin) model.checkin = testCase.checkin
   const qr = { data: await QRCode.toBuffer(`https://conditioniq.app/r/${model.reportNo}`, { margin: 0, width: 240 }), format: 'png' }
   const buffer = await renderReportToBuffer(React.createElement(ReportDocument, { model, images, diagrams, qr }))
   if (KEEP) writeFileSync(join(OUT, `${testCase.name}.pdf`), buffer)

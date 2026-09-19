@@ -4,13 +4,16 @@ import { useEffect, useState } from 'react'
 import { Sparkles, Plus } from 'lucide-react'
 import type { DamageSuggestion } from '@/lib/damage-suggest-client'
 import { suggestionTitle, SLOT_LABEL, type ExteriorSlot } from '@/lib/ai/damage-suggest-labels'
-import { PRIMARY, PRIMARY_LIGHT, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100 } from '@/lib/design-tokens'
+import { PRIMARY, PRIMARY_LIGHT, WHITE, GRAY_900, GRAY_700, GRAY_500, GRAY_300, GRAY_100, WARN_LIGHT, WARN_DARK } from '@/lib/design-tokens'
 
 // F · Damage the AI noticed in the exterior photos, above the damage diagram.
 //
 // Nothing here is recorded. "Add" starts placing a pin with what the AI could
 // fill in; the inspector taps where it is and always sets the severity.
 // "Not damage" dismisses it and is kept as a correction.
+//
+// G · On a check-out, damage that was not in the check-in's photo of the same
+// side comes first, with both photos side by side; "Not new" dismisses it.
 
 const LEAVE_MS = 260
 
@@ -71,6 +74,7 @@ export default function DamageSuggestionPanel({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {suggestions.map(s => {
               const photo = photos[s.slot]
+              const isNew = s.kind === 'new_since_checkin'
               const placing = placingId === s.id
               const place = suggestionPlace(s)
               return (
@@ -81,12 +85,14 @@ export default function DamageSuggestionPanel({
                       border: `1px solid ${placing ? PRIMARY : GRAY_300}`, borderRadius: 12,
                       transition: 'background 200ms ease, border-color 200ms ease',
                     }}>
+                      {isNew && (
+                        <span style={{ display: 'inline-block', marginBottom: 8, fontSize: 11, fontWeight: 700, color: WARN_DARK, background: WARN_LIGHT, borderRadius: 20, padding: '3px 9px', letterSpacing: '0.02em' }}>
+                          New since check-in
+                        </span>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        {typeof photo === 'string' && photo ? (
-                          <img src={photo} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', flexShrink: 0, display: 'block' }} />
-                        ) : (
-                          <span style={{ width: 52, height: 52, borderRadius: 8, background: GRAY_300, flexShrink: 0 }} />
-                        )}
+                        {isNew && <Thumb src={s.checkinPhotoUrl} caption="Check-in" />}
+                        <Thumb src={typeof photo === 'string' ? photo : null} caption={isNew ? 'Check-out' : null} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: GRAY_900 }}>{suggestionTitle(s.damageGroup)}</p>
                           {place && <p style={{ margin: '2px 0 0', fontSize: 13, color: GRAY_700, lineHeight: 1.35 }}>{place}</p>}
@@ -101,7 +107,7 @@ export default function DamageSuggestionPanel({
                         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                           <button type="button" onClick={() => reject(s)} disabled={!!placingId}
                             style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid ${GRAY_300}`, background: WHITE, color: GRAY_700, fontSize: 13, fontWeight: 600, cursor: placingId ? 'default' : 'pointer', opacity: placingId ? 0.5 : 1, transition: 'opacity 200ms ease', fontFamily: 'inherit' }}>
-                            Not damage
+                            {isNew ? 'Not new' : 'Not damage'}
                           </button>
                           <button type="button" onClick={() => onAdd(s)} disabled={!!placingId}
                             style={{ flex: 1, height: 40, borderRadius: 10, border: 'none', background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 700, cursor: placingId ? 'default' : 'pointer', opacity: placingId ? 0.5 : 1, transition: 'opacity 200ms ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}>
@@ -122,6 +128,19 @@ export default function DamageSuggestionPanel({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function Thumb({ src, caption }: { src: string | null; caption: string | null }) {
+  return (
+    <div style={{ flexShrink: 0, textAlign: 'center' }}>
+      {src ? (
+        <img src={src} alt={caption ?? ''} style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
+      ) : (
+        <span style={{ width: 52, height: 52, borderRadius: 8, background: GRAY_300, display: 'block' }} />
+      )}
+      {caption && <span style={{ display: 'block', marginTop: 3, fontSize: 10, fontWeight: 600, color: GRAY_500 }}>{caption}</span>}
     </div>
   )
 }

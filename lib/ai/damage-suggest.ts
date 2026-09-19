@@ -136,3 +136,16 @@ export function suggestionsToShow<T extends StoredSuggestion>(all: T[]): T[] {
     Number(s.confidence) >= DAMAGE_SINGLE_PHOTO_CONFIDENCE ||
     pending.some(o => o.id !== s.id && o.slot !== s.slot && o.damage_group === s.damage_group))
 }
+
+/**
+ * G · Everything to show on an inspection, both kinds. Possible new damage
+ * since check-in comes first and is shown at the comparison's own cutoff; a
+ * plain photo suggestion for the same damage in the same photo is then left
+ * out, since the comparison card already covers it.
+ */
+export function suggestionsToShowAll<T extends StoredSuggestion & { kind?: string }>(all: T[], compareThreshold: number): T[] {
+  const compare = all.filter(s => s.kind === 'new_since_checkin' && s.status === 'pending' && Number(s.confidence) >= compareThreshold)
+  const photo = suggestionsToShow(all.filter(s => (s.kind ?? 'photo') === 'photo'))
+    .filter(s => !compare.some(c => c.slot === s.slot && c.damage_group === s.damage_group))
+  return [...compare, ...photo]
+}

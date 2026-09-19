@@ -134,7 +134,7 @@ export default function InspectionDamagePicker({
     areaCodeId: s.areaCodeId,
     typeCodeId: s.typeCodeId,
     view: s.view ?? 'top',
-    title: suggestionTitle(s.damageGroup),
+    title: s.kind === 'new_since_checkin' ? `${suggestionTitle(s.damageGroup)}, new since check-in` : suggestionTitle(s.damageGroup),
     placeLabel: suggestionPlace(s),
   })
 

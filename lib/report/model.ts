@@ -1,5 +1,6 @@
 import type { ScoreResult } from '@/lib/vehicle-score'
 import type { ReportDamagePin } from '@/lib/damage-server-actions'
+import type { ReportCheckin } from './checkin-line'
 
 // R1 · Report foundation.
 //
@@ -100,6 +101,8 @@ export interface ReportModel {
   /** A stored engine-start video, if one was uploaded. */
   engineStartVideoUrl: string | null
   /** E · The odometer and fuel read from the dashboard or odometer photo, when checked. */
+  /** G · Check-outs only: what the check-in comparison found, or that there was none. */
+  checkin?: ReportCheckin
   gauges?: { odometerStatus: 'verified' | 'mismatch' | 'unreadable'; odometerRead: number | null; unit: string | null; fuel: number | null }
   /** Filled by the AI plan when it runs; empty until then. */
   assist: ReportAssist

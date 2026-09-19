@@ -78,6 +78,10 @@ export function needsAttention(model: ReportModel): Finding[] {
   if (model.gauges?.odometerStatus === 'mismatch' && model.gauges.odometerRead != null) {
     add(`Odometer photo reads ${model.gauges.odometerRead.toLocaleString('en-US')} ${model.gauges.unit ?? 'mi'}`, 'warn', 'Odometer')
   }
+  // G · New damage since check-in outranks everything else on a check-out.
+  const newPins = model.checkin?.newPins ?? []
+  if (newPins.length) add(`New damage since check-in: ${newPins.map(n => `pin ${n}`).join(', ')}`, 'risk', 'Check-in')
+  if (model.checkin?.unreviewed) add(`${model.checkin.unreviewed} possible new damage not reviewed`, 'warn', 'Check-in')
   if (model.pins.length) add(`${model.pins.length} damage ${model.pins.length === 1 ? 'item' : 'items'} recorded`, 'warn', 'Damage')
   if (n.interiorOdor) add(`Odor present${n.odorType && n.odorType !== 'other' ? ` (${pretty(n.odorType)})` : ''}`, 'warn', 'Interior')
   for (const [key, name] of [['frontSeats', 'Front seats'], ['rearSeats', 'Rear seats'], ['headliner', 'Headliner'], ['carpetFloor', 'Carpet'], ['carpet', 'Carpet'], ['dashboard', 'Dashboard'], ['steeringWheel', 'Steering wheel']]) {
@@ -114,6 +118,7 @@ export function checkedOk(model: ReportModel): string[] {
   if (g.oilLevel === 'good' && g.coolantLevel === 'good') ok.push('Oil and coolant good')
   if (['batteryCondition', 'beltCondition', 'hoseCondition'].every(k => g[k] === 'good')) ok.push('Battery, belts, hoses good')
   if (!g.checkEngineLight && g.checkEngineLight !== undefined) ok.push('No check engine light')
+  if (model.checkin?.status === 'compared' && !model.checkin.newPins?.length && !model.checkin.unreviewed) ok.push('No new damage since check-in')
   return ok
 }
 

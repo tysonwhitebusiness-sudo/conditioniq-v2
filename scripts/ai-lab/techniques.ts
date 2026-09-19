@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { DAMAGE_GROUPS, SETS_DIR, type DamageItem } from './config'
 import { readManifest, type Technique } from './harness'
 import { DAMAGE_GUIDE, DAMAGE_GUIDE_VERSION } from '../../lib/ai/damage-guide'
-import { DAMAGE_SYSTEM, DAMAGE_USER_TEXT } from '../../lib/ai/damage-setup'
+import { DAMAGE_SYSTEM, DAMAGE_SYSTEM_V1, DAMAGE_USER_TEXT } from '../../lib/ai/damage-setup'
 
 // Example photos are shrunk to 512 px. Done in a child process because the
 // technique builders are synchronous and sharp is not.
@@ -101,7 +101,7 @@ export const tuned: Technique = {
   // The winning setup lives in lib/ai/damage-setup.ts so the app uses exactly
   // what was measured; this builds the same request from it.
   build: (_item: DamageItem, image: string) => ({
-    system: DAMAGE_SYSTEM,
+    system: DAMAGE_SYSTEM_V1,
     thinking: { type: 'disabled' },
     messages: [{ role: 'user', content: [photo(image), { type: 'text', text: DAMAGE_USER_TEXT }] }],
   }),
@@ -160,7 +160,9 @@ function v2(name: string, extra: Partial<Technique> = {}): Technique {
     maxTokens: 400,
     ...extra,
     build: (_item: DamageItem, image: string) => ({
-      system: `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${TUNED_RULES}\n${V2_RULE}\n\n${ANSWER_FORMAT}`,
+      // The app's damage prompt (lib/ai/damage-setup.ts); identical text, so the
+      // app sends exactly what the lab measured.
+      system: DAMAGE_SYSTEM,
       thinking: { type: 'disabled' },
       messages: [{ role: 'user', content: [photo(image), { type: 'text', text: DAMAGE_USER_TEXT }] }],
     }),

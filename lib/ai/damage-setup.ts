@@ -1,19 +1,25 @@
 // B5 · The damage setup chosen by the lab, for phase F to use as is.
 //
-// Chosen on 18 Sep 2026 by a rule fixed before the results were seen: most
-// damaged photos found, with false alarms at or under 15% and cost at or under
-// $0.08 per inspection. Confidence cutoffs from 0.3 to 0.8 were scored from
-// the same answers; 0.3 won. Scored once on a held-out test set:
+// Chosen 18 Sep 2026 after two rounds on the same held-out test set (84
+// damaged VehiDE photos, 40 clean customer photos), with agreement across an
+// inspection's photos:
 //
-//   85% of damaged photos found, 77% of damage groups, 0% false alarms on
-//   clean customer photos, about $0.019 per inspection (six photos, live).
+//   Opus 5, v2 prompt, 0.5 cutoff (this setup):
+//     99% of damaged photos flagged, 92% with the right damage type,
+//     0% false alarms on clean photos, about $0.052 per inspection (six photos)
+//   Sonnet 5, tuned prompt, 0.3 cutoff (the round-1 winner):
+//     95% flagged, 85% right type, 0% false alarms, about $0.019
 //
-// Beat, on the tuning set at each one's best cutoff: the plain prompt (82%),
-// the full damage guide (81%; it made the model cautious), labelled example
-// photos (74% at 0.5), and the tuned prompt with thinking on (77% at 0.5, at
-// higher cost). Agreement across photos is what brings false alarms to zero.
+// Opus finds far more dents (21/23 vs 16/23) and punctures (11/14 vs 6/14).
+// Lower cutoffs give Opus 94% but bring false alarms back, mostly "missing
+// license plate" on new lot vehicles. Full-size photos gave no gain for 40%
+// more cost (stored photos are at most 1280 px). The long damage guide lost
+// every comparison and is not used.
 
-export const DAMAGE_SETUP_VERSION = 'damage-tuned-v1'
+export const DAMAGE_SETUP_VERSION = 'damage-tuned-v2-opus'
+
+/** The lab's pick. More accurate than Sonnet here, at about 2.7 times the cost. */
+export const DAMAGE_MODEL = 'claude-opus-5'
 
 export const DAMAGE_GROUP_LABELS = {
   scratch: 'Scratch, scuff or chip in paint',
@@ -33,17 +39,22 @@ const RULES = [
   'Panel seams, door gaps, body lines, badges and reflections of trees, buildings or other vehicles are not damage.',
 ].map(r => `- ${r}`).join('\n')
 
+// Added in round 2 for the mix-ups seen in round 1's misses.
+const V2_RULE = '- Scratches, chips and cracks in glass (windshield, windows) are "glass". A broken or cracked headlamp, tail-lamp or marker lens is "lamp".'
+
 const ANSWER_FORMAT = [
   'Reply with JSON only:',
   '{"damage": [{"group": "<one of the group keys>", "where": "<part of the vehicle>", "confidence": <0 to 1>}]}',
   'List each distinct damage once. If you see no damage, reply {"damage": []}.',
 ].join('\n')
 
-export const DAMAGE_SYSTEM = `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${RULES}\n\n${ANSWER_FORMAT}`
+export const DAMAGE_SYSTEM = `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${RULES}\n${V2_RULE}\n\n${ANSWER_FORMAT}`
+/** Round 1's prompt, kept so the lab can reproduce its results. */
+export const DAMAGE_SYSTEM_V1 = `You look at a photo of a vehicle and report visible damage.\n\nDamage groups:\n${GROUP_LIST}\n\nRules:\n${RULES}\n\n${ANSWER_FORMAT}`
 export const DAMAGE_USER_TEXT = 'Report the damage in this photo.'
 export const DAMAGE_MAX_TOKENS = 400
 
 /** Findings below this confidence are not shown. */
-export const DAMAGE_THRESHOLD = 0.3
+export const DAMAGE_THRESHOLD = 0.5
 /** A finding seen in only one of an inspection's photos needs this confidence to be shown. */
 export const DAMAGE_SINGLE_PHOTO_CONFIDENCE = 0.85

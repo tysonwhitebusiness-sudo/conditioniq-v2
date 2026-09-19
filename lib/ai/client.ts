@@ -26,6 +26,8 @@ export interface AiRequest {
   /** Off for reading and classifying, where thinking only adds cost. Adaptive when omitted. */
   thinking?: 'off' | 'adaptive'
   effort?: 'low' | 'medium' | 'high'
+  /** Defaults to Sonnet; damage detection uses Opus, chosen by the lab. */
+  model?: string
   /** A JSON schema the answer must follow, so it always parses. */
   jsonSchema?: Record<string, unknown>
 }
@@ -45,7 +47,7 @@ async function loadSettings(admin: ReturnType<typeof createAdminClient>) {
   const { data } = await admin.from('ai_settings').select('kill_switch, per_inspection_ceiling_usd, summary_reserve_usd').maybeSingle()
   return {
     killSwitch: data?.kill_switch ?? false,
-    ceiling: Number(data?.per_inspection_ceiling_usd ?? 0.1),
+    ceiling: Number(data?.per_inspection_ceiling_usd ?? 0.12),
     summaryReserve: Number(data?.summary_reserve_usd ?? 0.02),
   }
 }
@@ -59,7 +61,7 @@ async function spentOn(admin: ReturnType<typeof createAdminClient>, inspectionId
 /** Input tokens for the request, counted by the API; a generous estimate if counting fails. */
 async function inputTokens(anthropic: Anthropic, req: AiRequest): Promise<number> {
   try {
-    const counted = await anthropic.messages.countTokens({ model: AI_MODEL, system: req.system, messages: req.messages })
+    const counted = await anthropic.messages.countTokens({ model: req.model ?? AI_MODEL, system: req.system, messages: req.messages })
     return counted.input_tokens
   } catch {
     // Four characters a token, doubled, and a full-size image allowance per image.
@@ -71,13 +73,14 @@ async function inputTokens(anthropic: Anthropic, req: AiRequest): Promise<number
 
 export async function runAi(req: AiRequest): Promise<AiResult> {
   const admin = createAdminClient()
+  const model = req.model ?? AI_MODEL
   const started = Date.now()
   const log = (row: Record<string, unknown>) =>
     admin.from('ai_calls').insert({
       company_id: req.companyId,
       inspection_id: req.inspectionId,
       feature: req.feature,
-      model: AI_MODEL,
+      model,
       prompt_version: req.promptVersion,
       duration_ms: Date.now() - started,
       ...row,
@@ -96,7 +99,7 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
     if (!anthropic) { await log({ status: 'skipped_not_configured' }); return { ok: false, reason: 'not_configured' } }
 
     const tokensIn = await inputTokens(anthropic, req)
-    const worstCase = worstCaseCost(AI_MODEL, tokensIn, req.maxTokens)
+    const worstCase = worstCaseCost(model, tokensIn, req.maxTokens)
     const budget: BudgetState = { ceiling: settings.ceiling, summaryReserve: settings.summaryReserve, spent: await spentOn(admin, req.inspectionId) }
     if (!fitsBudget(budget, worstCase, req.feature === 'summary')) {
       await log({ status: 'skipped_ceiling', worst_case_usd: worstCase })
@@ -109,7 +112,7 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
       company_id: req.companyId,
       inspection_id: req.inspectionId,
       feature: req.feature,
-      model: AI_MODEL,
+      model,
       prompt_version: req.promptVersion,
       status: 'pending',
       worst_case_usd: worstCase,
@@ -123,7 +126,7 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
 
     try {
       const message = await anthropic.messages.create({
-        model: AI_MODEL,
+        model,
         max_tokens: req.maxTokens,
         system: req.system,
         messages: req.messages,
@@ -136,7 +139,7 @@ export async function runAi(req: AiRequest): Promise<AiResult> {
         } : {}),
       } as Anthropic.MessageCreateParamsNonStreaming)
       const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens, cacheReadTokens: message.usage.cache_read_input_tokens ?? 0 }
-      const costUsd = costOf(AI_MODEL, usage)
+      const costUsd = costOf(model, usage)
       await settle({
         status: 'ok',
         input_tokens: usage.inputTokens,

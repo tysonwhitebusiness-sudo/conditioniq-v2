@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { measureQuality, qualityProblems, QUALITY_EDGE, PROBLEM_TEXT, type QualityProblem } from '@/lib/photo-quality'
 import { WARN_LIGHT, WARN_DARK } from '@/lib/design-tokens'
+import { GAUGE_SLOTS } from '@/lib/ai/gauges'
 
 // D · Shown on the camera's confirm screen, over the photo, before Use Photo.
 //
@@ -20,7 +21,7 @@ interface Props {
 }
 
 /** A small grayscale copy for measuring, and a small JPEG for the AI check. */
-async function prepare(src: string): Promise<{ gray: Uint8ClampedArray; width: number; height: number; jpeg: string }> {
+async function prepare(src: string, aiEdge: number): Promise<{ gray: Uint8ClampedArray; width: number; height: number; jpeg: string }> {
   const img = new Image()
   img.src = src
   await img.decode()
@@ -35,7 +36,14 @@ async function prepare(src: string): Promise<{ gray: Uint8ClampedArray; width: n
   const rgba = ctx.getImageData(0, 0, width, height).data
   const gray = new Uint8ClampedArray(width * height)
   for (let i = 0, p = 0; i < gray.length; i++, p += 4) gray[i] = 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2]
-  return { gray, width, height, jpeg: canvas.toDataURL('image/jpeg', 0.8) }
+  if (aiEdge <= QUALITY_EDGE) return { gray, width, height, jpeg: canvas.toDataURL('image/jpeg', 0.8) }
+  // Gauge slots: a larger copy so the odometer digits can be read.
+  const big = Math.min(1, aiEdge / Math.max(img.naturalWidth, img.naturalHeight))
+  const large = document.createElement('canvas')
+  large.width = Math.max(1, Math.round(img.naturalWidth * big))
+  large.height = Math.max(1, Math.round(img.naturalHeight * big))
+  large.getContext('2d')!.drawImage(img, 0, 0, large.width, large.height)
+  return { gray, width, height, jpeg: large.toDataURL('image/jpeg', 0.85) }
 }
 
 export default function PhotoCheckNotice({ src, slotKey, inspectionId }: Props) {
@@ -46,7 +54,7 @@ export default function PhotoCheckNotice({ src, slotKey, inspectionId }: Props) 
     let cancelled = false
     setProblems([])
     setNote(null)
-    prepare(src).then(({ gray, width, height, jpeg }) => {
+    prepare(src, slotKey && GAUGE_SLOTS.has(slotKey) ? 1280 : QUALITY_EDGE).then(({ gray, width, height, jpeg }) => {
       if (cancelled) return
       const measure = measureQuality(gray, width, height)
       const found = qualityProblems(measure)

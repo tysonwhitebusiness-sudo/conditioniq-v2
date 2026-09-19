@@ -99,6 +99,8 @@ export interface ReportModel {
   signedFrom: { lat: number; lng: number } | null
   /** A stored engine-start video, if one was uploaded. */
   engineStartVideoUrl: string | null
+  /** E · The odometer and fuel read from the dashboard or odometer photo, when checked. */
+  gauges?: { odometerStatus: 'verified' | 'mismatch' | 'unreadable'; odometerRead: number | null; unit: string | null; fuel: number | null }
   /** Filled by the AI plan when it runs; empty until then. */
   assist: ReportAssist
   /** True when the vehicle details came from a NHTSA VIN decode. */

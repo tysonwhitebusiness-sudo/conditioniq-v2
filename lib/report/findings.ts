@@ -75,6 +75,9 @@ export function needsAttention(model: ReportModel): Finding[] {
     if (tread !== null && tread < 4) add(`Tire ${name} tread ${tread}/32"`, tread < 3 ? 'risk' : 'warn', 'Tires')
     if (isUneven(e, position)) add(`Tire ${name} uneven wear`, 'note', 'Tires')
   }
+  if (model.gauges?.odometerStatus === 'mismatch' && model.gauges.odometerRead != null) {
+    add(`Odometer photo reads ${model.gauges.odometerRead.toLocaleString('en-US')} ${model.gauges.unit ?? 'mi'}`, 'warn', 'Odometer')
+  }
   if (model.pins.length) add(`${model.pins.length} damage ${model.pins.length === 1 ? 'item' : 'items'} recorded`, 'warn', 'Damage')
   if (n.interiorOdor) add(`Odor present${n.odorType && n.odorType !== 'other' ? ` (${pretty(n.odorType)})` : ''}`, 'warn', 'Interior')
   for (const [key, name] of [['frontSeats', 'Front seats'], ['rearSeats', 'Rear seats'], ['headliner', 'Headliner'], ['carpetFloor', 'Carpet'], ['carpet', 'Carpet'], ['dashboard', 'Dashboard'], ['steeringWheel', 'Steering wheel']]) {

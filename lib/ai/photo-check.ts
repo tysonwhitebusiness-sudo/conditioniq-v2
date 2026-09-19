@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { GAUGE_SLOTS, GAUGE_INSTRUCTIONS, GAUGE_SCHEMA_PROPERTIES } from './gauges'
 
 // D · The AI half of the photo check: whether the photo shows what its slot
 // asks for, and whether the subject is fully in frame. Pixels alone cannot
@@ -8,6 +9,16 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 export const PHOTO_CHECK_VERSION = 'photo-check-v2'
 export const PHOTO_CHECK_MODEL = 'claude-sonnet-5'
+
+/**
+ * The model for a slot. E · The dashboard and odometer photos use Opus: on real
+ * cluster photos Sonnet misread two odometers (one was the fuel range), which
+ * would have told inspectors they typed the odometer wrong; Opus made no false
+ * readings and says "not readable" instead. About $0.012 per dashboard photo.
+ */
+export function photoCheckModel(slotKey: string): string {
+  return GAUGE_SLOTS.has(slotKey) ? 'claude-opus-5' : PHOTO_CHECK_MODEL
+}
 /** Longest edge of the copy sent; slot and framing do not need detail. */
 export const PHOTO_CHECK_EDGE = 512
 
@@ -25,7 +36,8 @@ export const SLOT_SUBJECT: Record<string, string> = {
   interiorPassengerDoorPhoto: "the inside of the front passenger door or the passenger's seat area",
   interiorRearPassengerDoorPhoto: 'the inside of the rear passenger-side door or the rear seat on that side',
   interiorTrunkPhoto: 'the open trunk, cargo area or truck bed',
-  dashboardPhoto: 'the dashboard or instrument cluster',
+  // E · The dashboard photo is where the odometer is read.
+  dashboardPhoto: 'the instrument cluster behind the steering wheel, with the odometer reading in view',
   engineBayPhoto: 'the engine compartment with the hood open',
   odometerPhoto: 'the odometer reading on the instrument cluster',
   licensePlatePhoto: 'a license plate',
@@ -64,11 +76,21 @@ export const PHOTO_CHECK_SYSTEM = [
   'Do not judge blur, lighting or damage.',
 ].join('\n')
 
+/** The answer's shape: gauge slots also return the odometer and fuel readings (E). */
+export function photoCheckSchema(slotKey: string): Record<string, unknown> {
+  if (!GAUGE_SLOTS.has(slotKey)) return PHOTO_CHECK_SCHEMA
+  return {
+    ...PHOTO_CHECK_SCHEMA,
+    properties: { ...PHOTO_CHECK_SCHEMA.properties, ...GAUGE_SCHEMA_PROPERTIES },
+    required: [...PHOTO_CHECK_SCHEMA.required, ...Object.keys(GAUGE_SCHEMA_PROPERTIES)],
+  }
+}
+
 export function photoCheckRequest(slotKey: string, imageBase64: string): { system: string; messages: Anthropic.MessageParam[] } | null {
   const subject = SLOT_SUBJECT[slotKey]
   if (!subject) return null
   return {
-    system: PHOTO_CHECK_SYSTEM,
+    system: GAUGE_SLOTS.has(slotKey) ? [PHOTO_CHECK_SYSTEM, GAUGE_INSTRUCTIONS].join('\n\n') : PHOTO_CHECK_SYSTEM,
     messages: [{
       role: 'user',
       content: [

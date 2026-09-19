@@ -37,5 +37,19 @@ check('a known slot gets a request', photoCheckRequest('exteriorFrontPhoto', 'x'
 check('parses a structured answer', parsePhotoCheck('{"rightSubject":false,"framed":true,"note":"Shows the rear"}')?.rightSubject === false)
 check('rejects a malformed answer', parsePhotoCheck('{"rightSubject":"no"}') === null)
 
-if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }
-console.log('\nAll photo check checks passed.')
+// E · Gauges
+import('../lib/ai/gauges').then(({ parseGauges, compareOdometer, fuelText }) => {
+  const read = (odometer: number | null, unit: 'mi' | 'km' | null = 'mi') => ({ odometer, unit, fuel: null })
+  check('an exact odometer is verified', compareOdometer(read(69279), 69279) === 'verified')
+  check('a couple of miles apart is still verified', compareOdometer(read(69281), 69279) === 'verified')
+  check('a different odometer is a mismatch', compareOdometer(read(62104), 69279) === 'mismatch')
+  check('no reading is unreadable, never a mismatch', compareOdometer(read(null), 69279) === 'unreadable')
+  check('no typed value is unreadable', compareOdometer(read(69279), null) === 'unreadable')
+  check('km are converted before comparing', compareOdometer(read(111492, 'km'), 69279) === 'verified')
+  check('parses a reading and rounds fuel to eighths', JSON.stringify(parseGauges({ odometer: 69279.4, odometerUnit: 'mi', fuel: 0.52 })) === '{"odometer":69279,"unit":"mi","fuel":0.5}')
+  check('ignores a negative or non-number odometer', parseGauges({ odometer: -5, fuel: 2 }).odometer === null && parseGauges({ odometer: '69279' }).odometer === null)
+  check('fuel prints as a fraction', fuelText(0.375) === '3/8' && fuelText(null) === null)
+  if (failures.length) { console.error(`\n${failures.length} failed`); process.exit(1) }
+  console.log('\nAll photo check checks passed.')
+  process.exit(0)
+})

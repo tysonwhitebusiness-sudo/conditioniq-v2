@@ -667,16 +667,21 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
             </View>
             {specLine ? <Value text={specLine} color={C.ink3} weight={400} style={{ fontSize: 7.5, marginTop: 4 }} /> : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 6, marginTop: 10 }}>
-              {[
-                ['Odometer', model.odometer && !isNaN(Number(model.odometer)) ? `${Number(model.odometer).toLocaleString('en-US')} mi` : model.odometer ?? '—'],
-                ['Inspected', `${fmtDate(model.date)}, ${fmtTime(model.date)}`],
-                ['Location', model.location ?? '—'],
-                ['Inspector', model.inspectorName ?? '—'],
-                ...(model.assetId ? [['Asset', model.assetId]] : []),
-              ].map(([k, v]) => (
+              {([
+                // E · Whether the typed odometer was checked against the dashboard photo.
+                ['Odometer', model.odometer && !isNaN(Number(model.odometer)) ? `${Number(model.odometer).toLocaleString('en-US')} mi` : model.odometer ?? '—',
+                  model.gauges?.odometerStatus === 'verified' ? 'Matches dashboard photo'
+                    : model.gauges?.odometerStatus === 'mismatch' ? `Photo reads ${model.gauges.odometerRead?.toLocaleString('en-US')} ${model.gauges.unit ?? 'mi'}`
+                    : model.odometer ? 'Not verified from photos' : null],
+                ['Inspected', `${fmtDate(model.date)}, ${fmtTime(model.date)}`, null],
+                ['Location', model.location ?? '—', null],
+                ['Inspector', model.inspectorName ?? '—', null],
+                ...(model.assetId ? [['Asset', model.assetId, null]] : []),
+              ] as Array<[string, string, string | null]>).map(([k, v, sub]) => (
                 <View key={k}>
                   <Text style={S.k}>{k}</Text>
                   <Text style={{ fontWeight: 600, marginTop: 1 }}>{v}</Text>
+                  {sub ? <Text style={{ fontSize: 6.5, marginTop: 1, color: model.gauges?.odometerStatus === 'mismatch' && k === 'Odometer' ? C.warn : C.ink3 }}>{sub}</Text> : null}
                 </View>
               ))}
             </View>

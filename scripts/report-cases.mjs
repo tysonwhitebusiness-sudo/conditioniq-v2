@@ -230,6 +230,20 @@ export const REPORT_CASES = [
     expect: ['Windshield', 'Uneven', 'Oil seep at pan gasket', 'Ticking', 'BRP-0042', 'Started', 'Signed on site', 'Engine start video', 'Door ding, paint intact', 'Interior · Driver Seat', 'Odometer'],
   },
   {
+    name: 'odometer verified',
+    // E · The dashboard photo's odometer matched what was typed.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    gauges: { odometerStatus: 'verified', odometerRead: 69279, unit: 'mi', fuel: 0.5 },
+    expect: ['Matches dashboard photo'],
+  },
+  {
+    name: 'odometer mismatch',
+    // E · The photo read a different odometer: flagged beside the reading and in Needs attention.
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    gauges: { odometerStatus: 'mismatch', odometerRead: 62104, unit: 'mi', fuel: null },
+    expect: ['Photo reads 62,104 mi', 'Odometer photo reads 62,104 mi'],
+  },
+  {
     name: 'assist filled',
     // Every AI slot the layout reserves, filled, so the phase C output has a
     // place to land that is already known to fit.

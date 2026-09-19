@@ -10,7 +10,9 @@ import StepOpener from './step-opener'
 const InspectionCamera = dynamic(() => import('@/components/ui/inspection-camera'), { ssr: false })
 
 const INT_PHOTOS = ['interiorDriverDoorPhoto', 'interiorRearDriverDoorPhoto', 'interiorTrunkPhoto', 'interiorRearPassengerDoorPhoto', 'interiorPassengerDoorPhoto', 'dashboardPhoto'] as const
-const INT_PHOTO_LABELS = ['Driver Door', 'Rear Driver Door', 'Trunk', 'Rear Passenger Door', 'Passenger Door', 'Dashboard']
+// E · The dashboard photo is where the odometer is read and checked against
+// the typed reading, so its label asks for the odometer to be in view.
+const INT_PHOTO_LABELS = ['Driver Door', 'Rear Driver Door', 'Trunk', 'Rear Passenger Door', 'Passenger Door', 'Dashboard & odometer']
 const INT_SLOTS = INT_PHOTOS.map((key, i) => ({ key, label: INT_PHOTO_LABELS[i] }))
 
 const CONDITIONS: Record<string, string[]> = {

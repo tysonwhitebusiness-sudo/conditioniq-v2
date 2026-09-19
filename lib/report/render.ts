@@ -146,8 +146,15 @@ export async function renderInspectionReport(inspectionId: string, options: { sa
 
   // D · The photo check line: always read fresh, since photos can be retaken
   // without the recorded answers changing.
-  const { data: checks } = await admin.from('photo_checks').select('slot, problems, right_subject, framed, note').eq('inspection_id', inspectionId)
+  const { data: checks } = await admin.from('photo_checks').select('slot, problems, right_subject, framed, note, odometer_read, odometer_unit, odometer_status, fuel_level').eq('inspection_id', inspectionId)
   const photoLine = photoCheckLine((checks ?? []) as StoredPhotoCheck[])
+
+  // E · The odometer and fuel gauge, from the odometer close-up if there is one,
+  // otherwise the dashboard photo.
+  const gaugeRow = ['odometerPhoto', 'dashboardPhoto'].map(slot => (checks ?? []).find(c => c.slot === slot && c.odometer_status)).find(Boolean)
+  if (gaugeRow) {
+    model.gauges = { odometerStatus: gaugeRow.odometer_status, odometerRead: gaugeRow.odometer_read, unit: gaugeRow.odometer_unit, fuel: gaugeRow.fuel_level == null ? null : Number(gaugeRow.fuel_level) }
+  }
 
   // C · The summary and recommendations. Reused when they were written by AI
   // from the same recorded answers; otherwise built (again), so a report made

@@ -5,7 +5,6 @@
 // Nothing about the report is built in the browser any more — no fonts, no
 // photos and no PDF library in the page's download.
 
-import { GRAY_700 } from './design-tokens'
 
 export interface ReportResult {
   path: string
@@ -38,48 +37,23 @@ export async function generateReport(inspectionId: string, options: { open?: boo
 }
 
 /**
- * R5 · Opens an inspection's report, building it first when there is none yet,
- * when it was drawn with an earlier layout, or when asked to rebuild.
+ * Opens an inspection's report in a new tab: the stored one when it is drawn
+ * with the current layout, otherwise built on the server first; rebuild asks
+ * for a fresh one.
  *
- * The tab opens straight away, while the tap still counts as a tap: phone
- * browsers block a tab opened after the few seconds a report takes to build.
+ * The tab opens straight away at /api/reports/open, which does its own
+ * waiting and then redirects to the PDF. The app no longer fills in a blank
+ * tab after the report is ready: phones pause the app's tab as soon as the new
+ * one takes focus, which left that blank tab empty. If the browser blocks the
+ * new tab, the report opens in this one.
  */
 export async function openReport(
   inspection: { id: string; report_url?: string | null },
   options: { rebuild?: boolean } = {},
 ): Promise<void> {
-  const tab = window.open('', '_blank')
-  if (tab) {
-    tab.document.title = 'Condition report'
-    tab.document.body.style.cssText = 'font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:' + GRAY_700
-    tab.document.body.textContent = 'Preparing the report…'
-  }
-  const show = (url: string) => { if (tab) tab.location.href = url; else window.open(url, '_blank') }
-
-  try {
-    const { isCurrentReport } = await import('./report/layout')
-    const stored = inspection.report_url ?? null
-    if (!options.rebuild && stored && isCurrentReport(inspection.id, stored)) {
-      const { getReportSignedUrlAction } = await import('./inspection-server-actions')
-      const url = await getReportSignedUrlAction(stored)
-      if (url) { show(url); return }
-    }
-    const response = await fetch('/api/reports', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inspectionId: inspection.id }),
-    })
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({}))
-      throw new Error(detail?.error ?? `Report generation failed (${response.status})`)
-    }
-    const result: ReportResult = await response.json()
-    if (!result.url) throw new Error('The report was built but could not be opened')
-    show(result.url)
-  } catch (e) {
-    tab?.close()
-    throw e
-  }
+  const url = `/api/reports/open?inspectionId=${encodeURIComponent(inspection.id)}${options.rebuild ? '&rebuild=1' : ''}`
+  const tab = window.open(url, '_blank')
+  if (!tab) window.location.href = url
 }
 
 /**

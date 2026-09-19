@@ -169,7 +169,7 @@ export default function InspectionWizard({ inspectionId, initialData, inspectorI
     // runs alongside the rest of completion: a report that fails to build can be
     // opened again later, and must never stop the inspection from finishing.
     import('@/lib/pdf-generator')
-      .then(({ generateReport }) => generateReport(inspectionId))
+      .then(({ generateReport }) => generateReport(inspectionId, { open: false }))
       .catch(e => console.error('[report] build after completion failed', e))
 
     // Silently sync to storage inventory — never blocks completion

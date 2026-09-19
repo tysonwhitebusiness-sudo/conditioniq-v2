@@ -9,7 +9,6 @@ import { Search, Trash2, Play, Plus, List, Clock, Share2, Send, Bot, X, Loader2,
 import { createShareToken } from '@/lib/usage-actions'
 import SendLinkSheet from '@/components/dispatch/send-link-sheet'
 import { downloadInspectionHistory } from '@/lib/inspection-export'
-import { usePlan } from '@/hooks/use-plan'
 import { useCachedScreenData } from '@/lib/screen-cache'
 import {
   loadInspectionRows, countByStatus, INSPECTION_STATUSES, INSPECTION_STATUS_LABEL,
@@ -513,7 +512,6 @@ export default function QueuePage({
   const [sendSheet, setSendSheet] = useState<SendSheetState>({ open: openSendSheet, vin: sendVin })
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
-  const { plan } = usePlan()
 
   const supabase = createClient()
   const companyId = effectiveCompany?.id ?? ''
@@ -596,7 +594,7 @@ export default function QueuePage({
   ]
 
   const chipBar = (
-    <div role="tablist" aria-label="Filter inspections by status" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+    <div role="tablist" aria-label="Filter inspections by status" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
       {chips.map(c => {
         const active = filter === c.id
         return (
@@ -702,6 +700,60 @@ export default function QueuePage({
 
   const showQueueActions = filter === 'all' || filter === 'queued'
 
+  const actionStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 12px',
+    height: 40, borderRadius: 10, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600,
+    fontFamily: 'inherit', minWidth: 0,
+  }
+  const searchBox = (
+    <div style={{ flex: '1 1 auto', minWidth: 0, position: 'relative' }}>
+      <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: GRAY_500 }} />
+      <input
+        id="inspections-search"
+        aria-label="Search inspections"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Search VIN or vehicle..."
+        style={{
+          width: '100%', paddingLeft: 36, paddingRight: 16, height: 40, borderRadius: 10,
+          background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_900,
+          fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+        }}
+      />
+    </div>
+  )
+  const startButton = (
+    <button onClick={() => onStartInspection()} style={{ ...actionStyle, border: 'none', background: PRIMARY, color: WHITE, fontWeight: 700 }}>
+      <Plus size={15} /> Start inspection
+    </button>
+  )
+  const sendButton = (
+    <button onClick={() => openSend()} style={{ ...actionStyle, background: WHITE, border: `1px solid ${GRAY_300}`, color: PRIMARY }}>
+      <Send size={14} /> Send link
+    </button>
+  )
+  const queueButton = (
+    <button onClick={() => setShowAddToQueue(true)} style={{ ...actionStyle, border: 'none', background: '#1B2D40', color: WHITE }}>
+      <Plus size={14} /> {isDesktop ? 'Add to Queue' : 'Queue'}
+    </button>
+  )
+  const exportButton = (
+    <button
+      onClick={handleExport}
+      disabled={exporting}
+      aria-label="Export inspection history as CSV"
+      title="Export CSV"
+      style={{
+        ...actionStyle, background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_700,
+        cursor: exporting ? 'default' : 'pointer', opacity: exporting ? 0.7 : 1,
+        ...(isDesktop ? {} : { width: 40, padding: 0, flexShrink: 0 }),
+      }}
+    >
+      {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={isDesktop ? 14 : 16} />}
+      {isDesktop ? ' Export CSV' : null}
+    </button>
+  )
+
   return (
     <div style={{
       minHeight: '100vh', background: GRAY_100,
@@ -729,71 +781,29 @@ export default function QueuePage({
 
         {isDesktop && <div style={{ marginBottom: 12 }}>{chipBar}</div>}
 
-        {/* Search + actions */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 220px', position: 'relative' }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: GRAY_500 }} />
-            <input
-              id="inspections-search"
-              aria-label="Search inspections"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search VIN or vehicle..."
-              style={{
-                width: '100%', paddingLeft: 36, paddingRight: 16, height: 40, borderRadius: 10,
-                background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_900,
-                fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-              }}
-            />
+        {/* Search + actions. On a phone: search with export beside it, then the
+            three actions in one row, Start inspection first. On desktop: one row. */}
+        {isDesktop ? (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {searchBox}
+            {sendButton}
+            {exportButton}
+            {showQueueActions && queueButton}
+            {startButton}
           </div>
-          <button
-            onClick={() => openSend()}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
-              height: 40, borderRadius: 10, cursor: 'pointer', whiteSpace: 'nowrap',
-              background: WHITE, border: `1px solid ${GRAY_300}`, color: PRIMARY, fontSize: 13, fontWeight: 600,
-            }}
-          >
-            <Send size={14} /> Send Link
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            aria-label="Export inspection history as CSV"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
-              height: 40, borderRadius: 10, cursor: exporting ? 'default' : 'pointer', whiteSpace: 'nowrap',
-              background: WHITE, border: `1px solid ${GRAY_300}`, color: GRAY_700, fontSize: 13, fontWeight: 600,
-              opacity: exporting ? 0.7 : 1, fontFamily: 'inherit',
-            }}
-          >
-            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export CSV
-          </button>
-          {showQueueActions && (
-            <>
-              <button
-                onClick={() => setShowAddToQueue(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
-                  height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
-                  background: '#1B2D40', color: WHITE, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={14} /> Add to Queue
-              </button>
-              <button
-                onClick={() => onStartInspection()}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px',
-                  height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
-                  background: PRIMARY, color: WHITE, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-                }}
-              >
-                <Plus size={14} /> {plan.hasPlatform ? 'Check-In' : 'Start Inspection'}
-              </button>
-            </>
-          )}
-        </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {searchBox}
+              {exportButton}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 8 }}>
+              {startButton}
+              {sendButton}
+              {queueButton}
+            </div>
+          </div>
+        )}
 
         {exportError && (
           <p role="status" style={{ fontSize: 13, color: exportError.startsWith('Export failed') ? DANGER_TEXT : GRAY_500, margin: '0 0 10px' }}>

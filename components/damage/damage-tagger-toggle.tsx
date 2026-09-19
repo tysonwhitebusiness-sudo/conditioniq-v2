@@ -6,6 +6,7 @@ import type { VehicleTemplate } from '@/lib/damage-actions'
 import type { DamageStore } from '@/lib/damage-store'
 import { PRIMARY, WHITE, GRAY_100, GRAY_700, GRAY_500 } from '@/lib/design-tokens'
 import Damage2DTagger from './damage-2d-tagger'
+import type { DamagePrefill } from './damage-tagger'
 // Loaded on demand: three.js and its helpers are the largest thing in the app,
 // and most inspections never leave the 2D diagram.
 const Damage3DTagger = dynamic(() => import('./damage-3d-tagger'), {
@@ -43,10 +44,15 @@ export interface DamageTaggerToggleProps {
   modelAsset2dId?: string | null
   modelAsset3dId?: string | null
   editable?: boolean
+  /** F · A suggestion being placed. Placed on the 2D diagram, whatever the mode. */
+  prefill?: DamagePrefill | null
+  onPrefillDone?: (suggestionId: string) => void
+  onPrefillCancel?: () => void
 }
 
 export default function DamageTaggerToggle({
   store, vehicleTemplate, modelAsset2dId, modelAsset3dId, editable = true,
+  prefill = null, onPrefillDone, onPrefillCancel,
 }: DamageTaggerToggleProps) {
   const has2d = !!modelAsset2dId
   const has3d = !!modelAsset3dId
@@ -61,6 +67,10 @@ export default function DamageTaggerToggle({
     const other: DamageTaggerMode = preferred === '2d' ? '3d' : '2d'
     return isAvailable(other) ? other : preferred
   })
+
+  // Suggestions name a view (front, rear, side), which only the 2D diagram has.
+  const placing = !!prefill && has2d
+  const shownMode: DamageTaggerMode = placing ? '2d' : mode
 
   const selectMode = (m: DamageTaggerMode) => {
     if (!isAvailable(m)) return
@@ -79,8 +89,8 @@ export default function DamageTaggerToggle({
             title={isAvailable(m) ? undefined : `${m.toUpperCase()} isn't available for this vehicle`}
             style={{
               flex: 1, height: 38, borderRadius: 8, border: 'none',
-              background: mode === m ? PRIMARY : 'transparent',
-              color: mode === m ? WHITE : GRAY_700,
+              background: shownMode === m ? PRIMARY : 'transparent',
+              color: shownMode === m ? WHITE : GRAY_700,
               opacity: isAvailable(m) ? 1 : 0.4,
               cursor: isAvailable(m) ? 'pointer' : 'default',
               fontWeight: 700, fontSize: 13, fontFamily: 'inherit',
@@ -91,13 +101,16 @@ export default function DamageTaggerToggle({
         ))}
       </div>
 
-      {mode === '2d' ? (
+      {shownMode === '2d' ? (
         has2d ? (
           <Damage2DTagger
             store={store}
             editable={editable}
             vehicleTemplate={vehicleTemplate}
             modelAsset2dId={modelAsset2dId!}
+            prefill={placing ? prefill : null}
+            onPrefillDone={onPrefillDone}
+            onPrefillCancel={onPrefillCancel}
           />
         ) : (
           <Unavailable />

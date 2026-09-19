@@ -155,6 +155,8 @@ export interface NewMarkerInput {
   modelAssetId?: string | null
   assetType?: DamageMarkerAssetType | null
   view?: DamageMarkerView | null
+  /** F · Set when the pin was added from an AI suggestion. */
+  suggestionId?: string | null
 }
 
 function assertPosition(n: unknown, label: string) {
@@ -175,6 +177,16 @@ export async function createInspectionMarker(inspectionId: string, input: NewMar
   // A pin must sit on this vehicle's own diagram.
   if (input.modelAssetId && input.modelAssetId !== context.modelAsset2dId && input.modelAssetId !== context.modelAsset3dId) {
     throw new Error('That diagram does not belong to this vehicle')
+  }
+
+  // A suggestion can only be used once, and only on its own inspection.
+  let suggestion: { id: string; area_code_id: string | null; type_code_id: string | null } | null = null
+  if (input.suggestionId) {
+    const { data: row } = await admin.from('damage_suggestions')
+      .select('id, area_code_id, type_code_id')
+      .eq('id', input.suggestionId).eq('inspection_id', inspectionId).eq('status', 'pending')
+      .maybeSingle()
+    suggestion = row ?? null
   }
 
   // Link inspectors have no profile row; created_by references user_profiles.
@@ -203,10 +215,20 @@ export async function createInspectionMarker(inspectionId: string, input: NewMar
       asset_type: input.assetType ?? null,
       view: input.assetType === '2d' ? input.view ?? null : null,
       created_by: createdBy,
+      suggestion_id: suggestion?.id ?? null,
     })
     .select(MARKER_SELECT)
     .single()
   if (error) throw error
+
+  // F · Close the suggestion. "Edited" when the inspector changed the area or
+  // type; those corrections are what the example library learns from first.
+  if (suggestion) {
+    const edited = suggestion.area_code_id !== input.areaCodeId || suggestion.type_code_id !== input.typeCodeId
+    await admin.from('damage_suggestions')
+      .update({ status: edited ? 'edited' : 'accepted', marker_id: data.id, decided_at: new Date().toISOString() })
+      .eq('id', suggestion.id)
+  }
   return data as DamageMarkerWithPhoto
 }
 
@@ -317,6 +339,8 @@ export interface ReportDamagePin {
   y: number
   photoUrl: string | null
   modelAssetId: string | null
+  /** F · Added from an AI suggestion the inspector confirmed. */
+  suggested?: boolean
 }
 
 export interface ReportDamageView {
@@ -369,4 +393,53 @@ export async function getInspectionReportDamage(inspectionId: string): Promise<{
   const viewOrder: DamageMarkerView[] = ['top', 'side', 'front', 'rear']
   views.sort((a, b) => viewOrder.indexOf(a.view) - viewOrder.indexOf(b.view))
   return { pins, views }
+}
+
+// F · Damage suggestions from the exterior photos.
+
+export interface DamageSuggestion {
+  id: string
+  slot: string
+  damageGroup: string
+  whereText: string | null
+  confidence: number
+  areaCodeId: string | null
+  areaLabel: string | null
+  typeCodeId: string | null
+  typeLabel: string | null
+  view: DamageMarkerView | null
+}
+
+/** The open suggestions worth showing: confident alone, or seen in two photos. */
+export async function listDamageSuggestions(inspectionId: string): Promise<DamageSuggestion[]> {
+  await authorize(inspectionId)
+  const { suggestionsToShow } = await import('./ai/damage-suggest')
+  const { data } = await createAdminClient()
+    .from('damage_suggestions')
+    .select('id, slot, damage_group, where_text, confidence, status, area_code_id, type_code_id, view, area:area_code_id(label), type:type_code_id(label)')
+    .eq('inspection_id', inspectionId)
+    .eq('status', 'pending')
+    .order('confidence', { ascending: false })
+  return suggestionsToShow((data ?? []).map((r: any) => ({ ...r, confidence: Number(r.confidence) }))).map((r: any) => ({
+    id: r.id,
+    slot: r.slot,
+    damageGroup: r.damage_group,
+    whereText: r.where_text,
+    confidence: r.confidence,
+    areaCodeId: r.area_code_id,
+    areaLabel: r.area?.label ?? null,
+    typeCodeId: r.type_code_id,
+    typeLabel: r.type?.label ?? null,
+    view: r.view,
+  }))
+}
+
+/** "Not damage": the inspector looked and disagreed. Kept as a correction. */
+export async function rejectDamageSuggestion(inspectionId: string, suggestionId: string): Promise<void> {
+  await authorize(inspectionId)
+  const { error } = await createAdminClient()
+    .from('damage_suggestions')
+    .update({ status: 'rejected', decided_at: new Date().toISOString() })
+    .eq('id', suggestionId).eq('inspection_id', inspectionId).eq('status', 'pending')
+  if (error) throw error
 }

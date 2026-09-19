@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Sparkles } from 'lucide-react'
 import {
   getDamageAreaCodes, getDamageTypeCodes, getDamageSeverityCodes,
   composeDamageLabel,
@@ -13,6 +13,19 @@ import type {
 import type { DamageStore, DamageMarkerWithPhoto } from '@/lib/damage-store'
 import DamagePickerSheet, { type PickerStep } from './damage-picker-sheet'
 import DamageMarkerDetail from './damage-marker-detail'
+
+// F · A damage suggestion being placed: the inspector taps where it is, then
+// only the steps the AI could not fill are asked. Severity is always asked.
+export interface DamagePrefill {
+  suggestionId: string
+  areaCodeId: string | null
+  typeCodeId: string | null
+  view: DamageMarkerView
+  /** "Possible dent" */
+  title: string
+  /** "Bumper Front", or the model's own words when no area matched. */
+  placeLabel: string | null
+}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +44,9 @@ export interface DamageTaggerProps {
   view?: DamageMarkerView
   modelAssetId?: string
   assetType?: DamageMarkerAssetType
+  prefill?: DamagePrefill | null
+  onPrefillDone?: (suggestionId: string) => void
+  onPrefillCancel?: () => void
 }
 
 type PendingPin = { x: number; y: number } | null
@@ -44,8 +60,16 @@ const TEMPLATE_LABEL: Record<VehicleTemplate, string> = {
 export default function DamageTagger({
   store, vehicleTemplate, editable = true, onMarkersChange,
   backgroundImageUrl, view, modelAssetId, assetType,
+  prefill = null, onPrefillDone, onPrefillCancel,
 }: DamageTaggerProps) {
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const bannerRef = useRef<HTMLDivElement>(null)
+  // The pin just added from a suggestion opens its close-up camera.
+  const [captureFor, setCaptureFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (prefill) bannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [prefill?.suggestionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [areaCodes, setAreaCodes] = useState<DamageAreaCode[]>([])
   const [typeCodes, setTypeCodes] = useState<DamageTypeCode[]>([])
@@ -99,6 +123,14 @@ export default function DamageTagger({
     const y = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
     setSelectedMarkerId(null)
     setPendingPin({ x, y })
+    if (prefill) {
+      const area = areaCodes.find(a => a.id === prefill.areaCodeId) ?? null
+      const type = typeCodes.find(t => t.id === prefill.typeCodeId) ?? null
+      setPickedArea(area)
+      setPickedType(type)
+      setPickerStep(!area ? 'area' : !type ? 'type' : 'severity')
+      return
+    }
     setPickedArea(null)
     setPickedType(null)
     setPickerStep('area')
@@ -116,7 +148,7 @@ export default function DamageTagger({
     else if (pickerStep === 'severity') { setPickerStep('type') }
   }
 
-  const pickArea = (area: DamageAreaCode) => { setPickedArea(area); setPickerStep('type') }
+  const pickArea = (area: DamageAreaCode) => { setPickedArea(area); setPickerStep(prefill && pickedType ? 'severity' : 'type') }
   const pickType = (type: DamageTypeCode) => { setPickedType(type); setPickerStep('severity') }
 
   const pickSeverity = async (severity: DamageSeverityCode) => {
@@ -131,11 +163,16 @@ export default function DamageTagger({
         xPosition: pendingPin.x,
         yPosition: pendingPin.y,
         modelAssetId, assetType, view,
+        suggestionId: prefill?.suggestionId ?? null,
       })
       if (created) {
         setMarkers(prev => [created, ...prev])
         // Open the new pin so its optional photo is one tap away.
         setSelectedMarkerId(created.id)
+        if (prefill) {
+          setCaptureFor(created.id)
+          onPrefillDone?.(prefill.suggestionId)
+        }
       } else {
         setSaveError('The damage pin was not saved. Try again.')
       }
@@ -166,6 +203,27 @@ export default function DamageTagger({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {prefill && editable && (
+        <div ref={bannerRef} key={prefill.suggestionId} className="ciq-rise" role="status" style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+          background: '#E0F7FC', border: '1px solid #A5E8F5', borderRadius: 12, scrollMarginTop: 80,
+        }}>
+          <span style={{ width: 30, height: 30, borderRadius: 15, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Sparkles size={15} color="#0097B2" />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>Tap the spot on the diagram</p>
+            <p style={{ margin: '1px 0 0', fontSize: 12, color: '#0E7490', lineHeight: 1.35 }}>
+              {[prefill.title, prefill.placeLabel].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <button type="button" onClick={() => { cancelPicker(); onPrefillCancel?.() }}
+            style={{ background: 'none', border: 'none', color: '#0E7490', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 4px', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* ── Diagram surface — real image when backgroundImageUrl is resolved
           (Phase 10), placeholder otherwise. Structured like lot-setup-overlay.tsx:
           a positioned background + absolutely positioned overlay pins, sized to
@@ -179,6 +237,8 @@ export default function DamageTagger({
           width: '100%',
           ...(backgroundImageUrl ? {} : { aspectRatio: '4 / 3', background: '#F5F8FA', border: '2px dashed #CBD5E1' }),
           borderRadius: 12,
+          boxShadow: prefill && editable ? '0 0 0 2px #00B4D8' : 'none',
+          transition: 'box-shadow 200ms ease',
           cursor: !editable || pickerStep ? 'default' : 'crosshair',
           overflow: 'hidden',
           userSelect: 'none',
@@ -248,6 +308,7 @@ export default function DamageTagger({
           editable={editable}
           onRemove={removeMarker}
           onPhotoChange={updatePhoto}
+          startCapturing={captureFor === selectedMarker.id}
         />
       )}
 

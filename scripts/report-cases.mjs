@@ -237,6 +237,14 @@ export const REPORT_CASES = [
     expect: ['Matches dashboard photo'],
   },
   {
+    name: 'suggested pin',
+    // F · A pin added from an AI suggestion says so; the others stay "Inspector".
+    ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),
+    pins: pins(2).map((p, i) => (i === 0 ? { ...p, suggested: true } : p)),
+    diagram: 'diagram-1',
+    expect: ['Suggested, confirmed by inspector'],
+  },
+  {
     name: 'odometer mismatch',
     // E · The photo read a different odometer: flagged beside the reading and in Needs attention.
     ...withPhotos(baseInspection(), FULL_SLOTS, 'tall'),

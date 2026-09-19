@@ -12,15 +12,17 @@ const CameraCapture = dynamic(() => import('@/components/ui/camera-capture'), { 
 // The selected pin's label, its optional close-up photo, and remove. Shared by
 // the 2D and 3D taggers so both behave the same.
 export default function DamageMarkerDetail({
-  marker, store, editable = true, onRemove, onPhotoChange,
+  marker, store, editable = true, onRemove, onPhotoChange, startCapturing = false,
 }: {
   marker: DamageMarkerWithPhoto
   store: DamageStore
   editable?: boolean
   onRemove: (id: string) => void
   onPhotoChange: (id: string, photoUrl: string | null, photoPath: string | null) => void
+  /** Open the close-up camera straight away (a pin just added from a suggestion). */
+  startCapturing?: boolean
 }) {
-  const [capturing, setCapturing] = useState(false)
+  const [capturing, setCapturing] = useState(startCapturing && editable)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

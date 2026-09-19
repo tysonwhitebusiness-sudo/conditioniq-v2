@@ -41,7 +41,7 @@ async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin
   const admin = createAdminClient()
   const { data: markers } = await admin
     .from('damage_markers')
-    .select('id, area:area_code_id(label, aiag_code), type:type_code_id(label, aiag_code), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path')
+    .select('id, area:area_code_id(label, aiag_code), type:type_code_id(label, aiag_code), severity:severity_code_id(code, label), asset_type, view, x_position, y_position, model_asset_id, photo_path, suggestion_id')
     .eq('inspection_id', inspectionId)
     .order('created_at', { ascending: true })
 
@@ -64,6 +64,7 @@ async function loadDamage(inspectionId: string): Promise<{ pins: ReportDamagePin
       y: Number(m.y_position),
       photoUrl,
       modelAssetId: m.model_asset_id,
+      suggested: !!m.suggestion_id,
     }
   }))
 

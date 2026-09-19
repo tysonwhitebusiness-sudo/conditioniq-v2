@@ -344,7 +344,7 @@ export default function ReportDocument({ model, images, diagrams, branding, qr }
                   <Text style={{ fontSize: 13, fontWeight: 800 }}>{pin.area ?? 'Area not recorded'}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 22, marginTop: 8 }}>
-                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ...(pin.aiagCode ? [['AIAG', pin.aiagCode]] : []), ['Found by', 'Inspector']].map(([k, v]) => (
+                  {[['Type', pin.type ?? '—'], ['Severity', pin.severity ?? '—'], ...(pin.aiagCode ? [['AIAG', pin.aiagCode]] : []), ['Found by', pin.suggested ? 'Suggested, confirmed by inspector' : 'Inspector']].map(([k, v]) => (
                     <View key={k}>
                       <Text style={S.label}>{k}</Text>
                       <Text style={{ fontWeight: 600, marginTop: 2 }}>{v}</Text>

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Eye, Camera } from 'lucide-react'
+import { Eye, Camera, Sparkles, ChevronDown } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import DamageEntry from './damage-entry'
 import InspectionDamagePicker from './inspection-damage-picker'
 import VoiceInput from '@/components/ui/voice-input'
 import StepOpener from './step-opener'
+import { requestDamageCheck, useDamageSuggestions } from '@/lib/damage-suggest-client'
 
 const InspectionCamera = dynamic(() => import('@/components/ui/inspection-camera'), { ssr: false })
 
@@ -120,6 +121,7 @@ function PhotoSlotCard({ label, value, onTap, failed }: { label: string; value?:
 export default function StepExterior({ data, onChange, onNext, onBack, inspectionId, vehicleInfo = {} }: Props) {
   const [cameraStartKey, setCameraStartKey] = useState<string | null>(null)
   const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set())
+  const { suggestions } = useDamageSuggestions(inspectionId)
 
   const set = (key: string, val: any) => onChange({ ...data, [key]: val })
   const setTire = (pos: string, key: string, val: any) =>
@@ -172,6 +174,26 @@ export default function StepExterior({ data, onChange, onNext, onBack, inspectio
               failed={failedKeys.has(key)}
             />
           ))}
+        </div>
+
+        {/* F · Points down to the damage suggestions, which sit above the diagram. */}
+        <div className="ciq-collapse" data-open={suggestions.length > 0} aria-hidden={suggestions.length === 0}>
+          <div>
+            <button type="button" tabIndex={suggestions.length ? 0 : -1}
+              onClick={() => document.getElementById('damage-suggestions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', marginBottom: 20,
+                background: '#E0F7FC', border: '1px solid #A5E8F5', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}>
+              <Sparkles size={16} color="#0097B2" style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#0D1B2A' }}>
+                {suggestions.length} possible {suggestions.length === 1 ? 'damage' : 'damages'} spotted in your photos
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0097B2', display: 'flex', alignItems: 'center', gap: 2 }}>
+                Review <ChevronDown size={14} />
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Condition pills */}
@@ -247,6 +269,7 @@ export default function StepExterior({ data, onChange, onNext, onBack, inspectio
             inspectionId={inspectionId}
             vehicleInfo={vehicleInfo}
             hasLegacyDamages={(data.damages ?? []).length > 0}
+            photos={data}
             fallback={<DamageEntry damages={data.damages ?? []} onChange={damages => set('damages', damages)} locationType="exterior" inspectionId={inspectionId} />}
           />
         </div>
@@ -281,6 +304,8 @@ export default function StepExterior({ data, onChange, onNext, onBack, inspectio
           onCapture={(key, url) => {
             setFailedKeys(prev => { if (!prev.has(key)) return prev; const next = new Set(prev); next.delete(key); return next })
             onChange({ ...data, [key]: url })
+            // F · Look for damage once the photo is stored; runs in the background.
+            requestDamageCheck(inspectionId, key)
           }}
           // The photo lands in its slot immediately; the upload follows.
           onPendingCapture={(key, dataUrl) => {

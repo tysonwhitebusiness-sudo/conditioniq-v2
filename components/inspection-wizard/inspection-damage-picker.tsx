@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import DamageTaggerToggle from '@/components/damage/damage-tagger-toggle'
+import type { DamagePrefill } from '@/components/damage/damage-tagger'
+import DamageSuggestionPanel, { suggestionPlace } from './damage-suggestion-panel'
+import { useDamageSuggestions, type DamageSuggestion } from '@/lib/damage-suggest-client'
+import { suggestionTitle } from '@/lib/ai/damage-suggest-labels'
 import { inspectionDamageStore } from '@/lib/damage-store'
 import {
   getInspectionDamageContext, ensureInspectionVehicle, setInspectionVehicleTemplate,
@@ -25,13 +29,17 @@ const BODY_TYPES: { value: VehicleTemplate; label: string }[] = [
 // cannot be used: an inspection that already has list entries (started before
 // the picker existed), or one whose vehicle cannot be set up.
 export default function InspectionDamagePicker({
-  inspectionId, vehicleInfo, hasLegacyDamages, fallback,
+  inspectionId, vehicleInfo, hasLegacyDamages, fallback, photos = {},
 }: {
   inspectionId: string
   vehicleInfo: Record<string, any>
   hasLegacyDamages: boolean
   fallback: React.ReactNode
+  /** The step's answers, for the photo behind each damage suggestion. */
+  photos?: Record<string, any>
 }) {
+  const { suggestions, checking, reject, settle } = useDamageSuggestions(inspectionId)
+  const [prefill, setPrefill] = useState<DamagePrefill | null>(null)
   const [context, setContext] = useState<InspectionDamageContext | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
@@ -119,13 +127,39 @@ export default function InspectionDamagePicker({
     )
   }
 
+  // F · Suggestions are placed on the 2D diagram; without one they are not offered.
+  const canSuggest = context.editable && !!context.modelAsset2dId
+  const add = (s: DamageSuggestion) => setPrefill({
+    suggestionId: s.id,
+    areaCodeId: s.areaCodeId,
+    typeCodeId: s.typeCodeId,
+    view: s.view ?? 'top',
+    title: suggestionTitle(s.damageGroup),
+    placeLabel: suggestionPlace(s),
+  })
+
   return (
-    <DamageTaggerToggle
-      store={store}
-      editable={context.editable}
-      vehicleTemplate={context.vehicleTemplate}
-      modelAsset2dId={context.modelAsset2dId}
-      modelAsset3dId={context.modelAsset3dId}
-    />
+    <>
+      {canSuggest && (
+        <DamageSuggestionPanel
+          suggestions={suggestions}
+          checking={checking}
+          photos={photos}
+          placingId={prefill?.suggestionId ?? null}
+          onAdd={add}
+          onReject={s => reject(s.id)}
+        />
+      )}
+      <DamageTaggerToggle
+        store={store}
+        editable={context.editable}
+        vehicleTemplate={context.vehicleTemplate}
+        modelAsset2dId={context.modelAsset2dId}
+        modelAsset3dId={context.modelAsset3dId}
+        prefill={prefill}
+        onPrefillDone={id => { setPrefill(null); settle(id) }}
+        onPrefillCancel={() => setPrefill(null)}
+      />
+    </>
   )
 }

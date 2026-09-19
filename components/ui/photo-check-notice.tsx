@@ -73,14 +73,26 @@ export default function PhotoCheckNotice({ src, slotKey, inspectionId }: Props) 
     return () => { cancelled = true }
   }, [src, slotKey, inspectionId])
 
-  const lines = [...problems.map(p => `${PROBLEM_TEXT[p]}.`), ...(note ? [note] : [])]
-  if (!lines.length) return null
+  // The phone's own check is instant; the AI note can arrive a second later.
+  // The notice rises in once, and a late note opens smoothly inside it rather
+  // than making the box jump.
+  const phoneLines = problems.map(p => `${PROBLEM_TEXT[p]}.`)
+  if (!phoneLines.length && !note) return null
+  const lines = [...phoneLines, ...(note && !phoneLines.length ? [note] : [])]
+  const lateNote = note && phoneLines.length ? note : null
   return (
-    <div role="status" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: WARN_LIGHT, color: WARN_DARK, borderRadius: 10, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}>
-      <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+    <div role="status" aria-live="polite" className="ciq-rise" style={{
+      position: 'absolute', left: 12, right: 12, bottom: 12, background: WARN_LIGHT, color: WARN_DARK,
+      border: '1px solid rgba(146,64,14,0.15)', borderRadius: 12, padding: '10px 12px',
+      display: 'flex', gap: 10, alignItems: 'flex-start', boxShadow: '0 6px 20px rgba(0,0,0,0.28)',
+    }}>
+      <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+      <div style={{ fontSize: 13, lineHeight: 1.4, minWidth: 0 }}>
         {lines.map((l, i) => <p key={i} style={{ margin: 0, fontWeight: i === 0 ? 700 : 500 }}>{l}</p>)}
-        <p style={{ margin: '2px 0 0', fontWeight: 500 }}>Retake it, or keep it if it is right.</p>
+        <div className="ciq-collapse" data-open={!!lateNote}>
+          <div><p style={{ margin: 0, fontWeight: 500 }}>{lateNote}</p></div>
+        </div>
+        <p style={{ margin: '2px 0 0', fontWeight: 500, opacity: 0.85 }}>Retake it, or keep it if it is right.</p>
       </div>
     </div>
   )

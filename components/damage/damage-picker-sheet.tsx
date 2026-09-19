@@ -49,8 +49,8 @@ export default function DamagePickerSheet({
       position: 'fixed', inset: 0, zIndex: 400,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
-      <div onClick={onCancel} style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} />
-      <div style={{
+      <div onClick={onCancel} className="ciq-fade" style={{ position: 'absolute', inset: 0, background: 'rgba(13,27,42,0.5)' }} />
+      <div className="ciq-sheet" style={{
         position: 'relative', background: '#FFFFFF', borderRadius: '20px 20px 0 0',
         width: '100%', maxWidth: 480, maxHeight: '75vh', display: 'flex', flexDirection: 'column',
         boxShadow: '0 -8px 32px rgba(13,27,42,0.2)',
@@ -85,7 +85,7 @@ export default function DamagePickerSheet({
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 8px' }}>
+        <div key={pickerStep} className="ciq-fade" style={{ flex: 1, overflowY: 'auto', padding: '12px 8px' }}>
           {pickerStep === 'area' && Object.entries(areasByCategory).map(([category, areas]) => (
             <div key={category} style={{ marginBottom: 8 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 12px 4px' }}>

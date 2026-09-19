@@ -8,7 +8,7 @@ import { composeDamageLabel } from '@/lib/damage-actions'
 import type { DamageMarkerView, VehicleTemplate } from '@/lib/damage-actions'
 import type { DamageStore, DamageMarkerWithPhoto } from '@/lib/damage-store'
 import { PRIMARY, GRAY_900, GRAY_500, GRAY_300, DANGER, WHITE } from '@/lib/design-tokens'
-import DamageTagger from './damage-tagger'
+import DamageTagger, { type DamagePrefill } from './damage-tagger'
 
 // Phase 10 (2D Damage Picker): orchestrates the 5-view switcher (Top/Front/
 // Side/Rear/All) on top of Phase 9's split 2D asset — resolves the 4 view
@@ -24,6 +24,9 @@ export interface Damage2DTaggerProps {
   vehicleTemplate: VehicleTemplate
   modelAsset2dId: string
   editable?: boolean
+  prefill?: DamagePrefill | null
+  onPrefillDone?: (suggestionId: string) => void
+  onPrefillCancel?: () => void
 }
 
 type ActiveTab = DamageMarkerView | 'all'
@@ -37,8 +40,14 @@ const VIEW_TABS: { id: DamageMarkerView; label: string }[] = [
 
 export default function Damage2DTagger({
   store, vehicleTemplate, modelAsset2dId, editable = true,
+  prefill = null, onPrefillDone, onPrefillCancel,
 }: Damage2DTaggerProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('top')
+  const [activeTab, setActiveTab] = useState<ActiveTab>(prefill?.view ?? 'top')
+
+  // A suggestion opens the view its photo was taken from.
+  useEffect(() => {
+    if (prefill) setActiveTab(prefill.view)
+  }, [prefill?.suggestionId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [urls, setUrls] = useState<VehicleAssetViews | null>(null)
   const [loadingUrls, setLoadingUrls] = useState(true)
 
@@ -85,6 +94,9 @@ export default function Damage2DTagger({
           view={activeTab}
           modelAssetId={modelAsset2dId}
           assetType="2d"
+          prefill={prefill}
+          onPrefillDone={onPrefillDone}
+          onPrefillCancel={onPrefillCancel}
         />
       )}
     </div>
